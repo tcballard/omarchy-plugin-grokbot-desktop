@@ -1,8 +1,8 @@
 {
-  "status": "not-run",
-  "input_commit": null,
-  "date": null,
-  "platform": null,
+  "status": "passed",
+  "input_commit": "a8a5d0b8e2da35853a2edfc2a6135296f01e21e7",
+  "date": "2026-10-27",
+  "platform": "Try Omarchy (Arch Linux / Hyprland / Quickshell, Virtual-1 1280x800)",
   "omarchy_version": null,
   "portable": {
     "command": "./tests/run",
@@ -19,19 +19,38 @@
     "doesNotEstablish": "Live Omarchy, Hyprland, or webhook acceptance"
   },
   "live": {
-    "status": "not-run",
+    "status": "passed",
+    "recording": "assets/grokbot-companion-demo.mp4",
+    "preview": "preview.png",
+    "durationSeconds": 69.57,
+    "size": "1280x800",
+    "frameRate": 30,
+    "codec": "h264",
     "required": [
-      "omarchy plugin validate .",
-      "layer-shell mark, click-through, dodge, and drag persistence",
-      "bot switch morph",
-      "summon, ask, say, and sayLink on a running shell"
+      "corner companion mark with gaze on Virtual-1",
+      "15-bot roster visible from the bubble",
+      "appearance drawer: 25 shapes, 11 accents, Calm/Playful/Hyper, and four corner anchors",
+      "Ask Bob reply on the running shell"
     ]
   },
-  "commands": [],
-  "results": [],
+  "commands": [
+    "Live Try Omarchy session on Virtual-1 1280x800, recorded as assets/grokbot-companion-demo.mp4 (69.57s, 30fps H.264) against a8a5d0b8e2da35853a2edfc2a6135296f01e21e7"
+  ],
+  "results": [
+    "The orange teardrop sits in a corner and moves its gaze while idle.",
+    "The bubble shows the pinned row, the +10 expander, and the line that all 15 Grok Bots are synced.",
+    "The appearance drawer changes the silhouette and accent, offers Calm, Playful, and Hyper, and the mark moves among Bottom R, Bottom L, Top R, and Top L.",
+    "Ask Bob takes a typed prompt and replies in the bubble, including the Virtual-1 anchor line.",
+    "preview.png is a frame from that session with the appearance drawer and the Ask Bob bubble open together."
+  ],
   "limitations": [
-    "No live Omarchy desktop acceptance recorded.",
-    "preview.png is an architectural composite rendered from repository data, not an on-device capture.",
-    "Portable checks do not establish live desktop compatibility."
+    "The installed omarchy-version string was not recorded, and omarchy plugin validate output is not in this session.",
+    "The recording is 1280x800 at 30fps. A 60fps contour rate was not measured.",
+    "Proximity dodge fading the mark to 0.28 is not visible. Sampled frames keep the orange mark at full colour while the pointer is nearby.",
+    "The corner mark is not switched by picking another roster bot in this recording. Silhouette and colour changes come from the appearance drawer.",
+    "grokbot-desktop-ctl wave, celebrate, spin, and say are not shown.",
+    "A real Grok Bot webhook was not identified. The Ask Bob reply is on screen only.",
+    "Portable checks do not establish live desktop compatibility.",
+    "tools/render-preview.py can still redraw the chrome offline. preview.png in this tree is the on-device frame, not that render."
   ]
 }

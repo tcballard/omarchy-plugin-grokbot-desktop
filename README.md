@@ -6,13 +6,13 @@
 
 **Inspired by [Clippy for Omarchy](https://github.com/jankeesvw/omarchy-clippy) and [Clanky](https://github.com/rdoupe/omarchy-clanky).** The layer-shell window, click-through mask, dodge behaviour, cursor helper, and speech-bubble IPC follow those companions. Plugin conventions come from [Build Omarchy Plugins](https://github.com/tcballard/build-omarchy-plugins).
 
-<img src="preview.png" width="800" alt="Architectural preview of the Grok Bot companion: monochrome speech bubble, appearance drawer, and a flat mark in the corner of a desktop.">
+<img src="preview.png" width="800" alt="Live Try Omarchy capture on Virtual-1: appearance drawer, Ask Bob bubble, and the orange companion mark.">
 
-**Preview:** `preview.png` is an architectural preview rendered by `tools/render-preview.py`. It is not a live on-device capture. No desktop acceptance is claimed.
+**Preview:** `preview.png` and [the 70-second demo](assets/grokbot-companion-demo.mp4) are from a live Try Omarchy session on `Virtual-1` at 1280×800 (69.57s, 30fps H.264, 2026-10-27, commit `a8a5d0b`). `tools/render-preview.py` can still redraw the chrome offline. It is not the source of this preview.
 
 ## Install
 
-Intended for Omarchy 4 (Quattro) on Hyprland. This repository has no recorded live install yet. The command to try, once you have reviewed the code, is:
+Intended for Omarchy 4 (Quattro) on Hyprland. A live session on Try Omarchy (`Virtual-1`, 1280×800) is recorded in [acceptance evidence](docs/ACCEPTANCE.json). The command to try, once you have reviewed the code, is:
 
 ```bash
 omarchy plugin add https://github.com/tcballard/omarchy-plugin-grokbot-desktop --enable
@@ -129,8 +129,8 @@ That removes the plugin checkout and its `shell.json` entry. It does not delete 
 
 ## Compatibility
 
-Intended target: Omarchy 4 / Hyprland. Exact installed Omarchy versions tested: **none yet**.
-Portable checks cover structure, the roster, shape morphing, the palette, and the ask and sync helpers. They do not establish live desktop compatibility. Record a real run in [acceptance evidence](docs/ACCEPTANCE.json).
+Intended target: Omarchy 4 / Hyprland. Live session: Try Omarchy on Virtual-1, 1280×800, 2026-10-27. The installed Omarchy version string was not captured.
+Portable checks cover structure, the roster, shape morphing, the palette, and the ask and sync helpers. They do not establish live desktop compatibility. The recorded session is in [acceptance evidence](docs/ACCEPTANCE.json).
 
 ## Credits
 
