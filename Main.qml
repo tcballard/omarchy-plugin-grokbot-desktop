@@ -1470,7 +1470,7 @@ Item {
       visible: opacity > 0.01
       opacity: root.menuOpen ? 1 : 0
       scale: root.menuOpen ? 1 : 0.92
-      transformOrigin: x < stage.x ? Item.TopRight : Item.TopLeft
+      transformOrigin: x < stage.x ? (root.anchorFromBottom ? Item.BottomRight : Item.TopRight) : (root.anchorFromBottom ? Item.BottomLeft : Item.TopLeft)
       Behavior on opacity { NumberAnimation { duration: root.ms(root.menuOpen ? 140 : 100); easing.type: Easing.OutCubic } }
       Behavior on scale { NumberAnimation { duration: root.ms(root.menuOpen ? 180 : 100); easing.type: Easing.OutCubic } }
       width: 188
@@ -1479,8 +1479,18 @@ Item {
       color: "#141416"
       border.width: 1
       border.color: "#27272A"
-      x: Math.max(8, stage.x - width - 8)
-      y: Math.max(8, stage.y)
+      // Opens on the side of the mark that faces the screen, level with the
+      // mark's floor or top depending on the corner.
+      x: {
+        var side = root.anchorFromRight ? stage.x - width - 8 : stage.x + stage.width + 8
+        if (side < 8) side = stage.x + stage.width + 8
+        if (side + width > win.width - 8) side = stage.x - width - 8
+        return Math.max(8, Math.min(side, win.width - width - 8))
+      }
+      y: {
+        var level = root.anchorFromBottom ? stage.y + stage.height - height - 8 : stage.y + 8
+        return Math.max(8, Math.min(level, win.height - height - 8))
+      }
       Column {
         id: menuColumn
         x: 8

@@ -828,3 +828,9 @@ test('pins follow use and a closed-bubble switch names the bot', () => {
   assert.match(select, /showSwitchTag\(\)/)
   assert.match(qmlFunction(main, 'saveSettings'), /settings\.recentBots = root\.recentBots/)
 })
+
+test('the right-click menu opens toward the screen from any corner', () => {
+  const menu = main.slice(main.indexOf('id: menuCard'), main.indexOf('id: menuCard') + 1600)
+  assert.match(menu, /root\.anchorFromRight \? stage\.x - width - 8 : stage\.x \+ stage\.width \+ 8/)
+  assert.doesNotMatch(menu, /x: Math\.max\(8, stage\.x - width - 8\)/)
+})
