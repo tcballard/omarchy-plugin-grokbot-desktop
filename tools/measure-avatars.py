@@ -158,8 +158,8 @@ def orient(p):
     return np.roll(p, -top, axis=0)
 
 N = 120
-names = ['circle', 'cloud', 'squircle', 'sparkle', 'blob', 'pebble', 'flower', 'teardrop', 'tablet',
-         'wedge', 'gem', 'burst', 'hex', 'pumpkin']
+names = ['blob', 'cloud', 'squircle', 'sparkle', 'clover', 'heart', 'flower', 'teardrop', 'tablet',
+         'wedge', 'gem', 'burst', 'hex', 'pebble']
 out = {'unit_px': unit, 'pitch_px': pitch_x, 'shapes': {}}
 
 # High-resolution teardrop from the large preview, mapped onto the grid one.
@@ -182,7 +182,7 @@ for i, name in enumerate(names):
     pts = orient(normalise(resample(smooth(resample(outer, 720), sig * 6), N), ccx, ccy))
     eyes = sorted([capsule_fit(normalise(h, ccx, ccy)) for h in holes], key=lambda e: e['x'])
     entry = dict(points=[[round(v, 4) for v in q] for q in pts], eyes=[{k: round(float(v), 4) for k, v in e.items()} for e in eyes])
-    if g['stem'] is not None and name == 'pumpkin':
+    if g['stem'] is not None and name == 'pebble':
         st = orient(normalise(resample(smooth(resample(g["stem"], 240), 3), 40), ccx, ccy))
         entry['stem'] = [[round(v, 4) for v in q] for q in st]
     out['shapes'][name] = entry

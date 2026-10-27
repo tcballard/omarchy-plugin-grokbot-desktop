@@ -76,9 +76,9 @@ test('service manifest replaces the bar-widget starter', () => {
 
 test('the fourteen Grok Bot shapes morph through the same contour length', () => {
   assert.deepEqual([...shapes.NAMES], [
-    'circle', 'cloud', 'squircle', 'sparkle',
-    'blob', 'pebble', 'flower', 'teardrop', 'tablet',
-    'wedge', 'gem', 'burst', 'hex', 'pumpkin'
+    'blob', 'cloud', 'squircle', 'sparkle',
+    'clover', 'heart', 'flower', 'teardrop', 'tablet',
+    'wedge', 'gem', 'burst', 'hex', 'pebble'
   ])
   assert.deepEqual([...shapes.ROWS], [4, 5, 5])
   // Names the bundled roster uses are the app's own.
@@ -92,6 +92,9 @@ test('the fourteen Grok Bot shapes morph through the same contour length', () =>
   assert.equal(shapes.resolve('triangle'), 'wedge')
   assert.equal(shapes.resolve('spark'), 'sparkle')
   assert.equal(shapes.resolve('capsule'), 'tablet')
+  // Grok Bot's roster shows blob as the round shape and pebble as the lumpy one.
+  assert.equal(shapes.resolve('circle'), 'blob')
+  assert.equal(shapes.resolve('pumpkin'), 'pebble')
   assert.equal(shapes.known('nonsense'), false)
   for (const name of shapes.NAMES) {
     const shape = shapes.SHAPES[name]
@@ -108,8 +111,8 @@ test('the fourteen Grok Bot shapes morph through the same contour length', () =>
     }
   }
   // The circle is the unit: its outline sits on radius 1 about its box centre.
-  for (const point of shapes.SHAPES.circle.points) assert.ok(Math.abs(Math.hypot(point[0], point[1]) - 1) < 0.03)
-  assert.ok(shapes.SHAPES.pumpkin.stem.length > 8)
+  for (const point of shapes.SHAPES.blob.points) assert.ok(Math.abs(Math.hypot(point[0], point[1]) - 1) < 0.03)
+  assert.ok(shapes.SHAPES.pebble.stem.length > 8)
   assert.equal(shapes.SHAPES.teardrop.stem, null)
   const mixed = shapes.blend('teardrop', 'hex', 0)
   const ended = shapes.blend('teardrop', 'hex', 1)
@@ -944,7 +947,10 @@ test('the stem stays in the cut-out layer and fades by opacity', () => {
   const mark = read('CompanionMark.qml')
   const stem = mark.slice(mark.indexOf('id: stem'), mark.indexOf('id: stem') + 500)
   assert.match(stem, /visible: !mark\.showImage/)
-  assert.match(stem, /opacity: mark\.stemLevel/)
-  const st = shapes.SHAPES.pumpkin.stem
+  assert.match(stem, /opacity: mark\.showStem \? mark\.stemLevel : 0/)
+  assert.match(read('SettingsPanel.qml'), /showStem: true/)
+  const corner = main.slice(main.indexOf('id: mark'), main.indexOf('id: mark') + 900)
+  assert.doesNotMatch(corner, /showStem: true/, 'the desktop avatar wears no stem')
+  const st = shapes.SHAPES.pebble.stem
   assert.ok(Math.min(...st.map((p) => p[1])) < -1, 'the stem rises above the body')
 })

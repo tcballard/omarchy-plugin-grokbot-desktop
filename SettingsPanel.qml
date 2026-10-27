@@ -194,6 +194,7 @@ Item {
               height: cell.markSize
               shapeFrom: cell.modelData
               shapeTo: cell.modelData
+              showStem: true
               morph: 1
               colorName: app.shownColor
               accent: app.accent

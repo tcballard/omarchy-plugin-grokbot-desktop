@@ -33,6 +33,9 @@ Item {
   // Stem visibility supplied by the caller, alongside `face`; below zero
   // means work it out from the named shapes.
   property real stemOverride: -1
+  // Grok Bot's picker decorates the pebble with a pumpkin stem; avatars
+  // themselves do not wear it.
+  property bool showStem: false
   readonly property real stemLevel: mark.stemOverride >= 0 ? mark.stemOverride : Shapes.stemLevel(mark.shapeFrom, mark.shapeTo, mark.morph)
   readonly property string stemPath: Shapes.svgPath(Shapes.stemPoints(), mark.rad, mark.cx, mark.cy)
   // Punch the eyes through the shape so whatever is behind shows, as Grok
@@ -151,7 +154,7 @@ Item {
       // Kept visible and faded with opacity: a child that turns visible
       // inside the hidden cut-out layer is not picked up by it.
       visible: !mark.showImage
-      opacity: mark.stemLevel
+      opacity: mark.showStem ? mark.stemLevel : 0
       ShapePath {
         strokeWidth: -1
         strokeColor: "transparent"
