@@ -74,40 +74,52 @@ test('service manifest replaces the bar-widget starter', () => {
   assert.doesNotMatch(main, /BarWidget/)
 })
 
-test('every official shape morphs through the same contour length', () => {
+test('the fourteen Grok Bot shapes morph through the same contour length', () => {
   assert.deepEqual([...shapes.NAMES], [
-    'circle', 'square', 'triangle', 'diamond', 'pentagon',
-    'hexagon', 'octagon', 'heptagon', 'pill', 'cloud',
-    'heart', 'crescent', 'star', 'spark', 'burst',
-    'flower', 'clover', 'sprout', 'drop', 'bean',
-    'peanut', 'pebble', 'shield', 'ghost', 'bolt'
+    'circle', 'cloud', 'squircle', 'sparkle',
+    'blob', 'pebble', 'flower', 'teardrop', 'tablet',
+    'wedge', 'gem', 'burst', 'hex', 'pumpkin'
   ])
-  assert.equal(shapes.resolve('teardrop'), 'drop')
-  assert.equal(shapes.resolve('blob'), 'bean')
-  assert.equal(shapes.resolve('hex'), 'hexagon')
-  assert.equal(shapes.resolve('tablet'), 'pill')
-  assert.equal(shapes.resolve('wedge'), 'bolt')
-  assert.equal(shapes.resolve('squircle'), 'square')
-  assert.equal(shapes.resolve('sparkle'), 'spark')
-  assert.equal(shapes.resolve('leaf'), 'sprout')
-  assert.equal(shapes.known('teardrop'), true)
-  assert.notDeepEqual([...shapes.SHAPES.square.points[0]], [...shapes.SHAPES.diamond.points[0]])
+  assert.deepEqual([...shapes.ROWS], [4, 5, 5])
+  // Names the bundled roster uses are the app's own.
+  for (const name of ['teardrop', 'blob', 'hex', 'tablet', 'wedge', 'squircle', 'pebble', 'cloud']) {
+    assert.equal(shapes.resolve(name), name)
+  }
+  // Older names from this plugin and from Grok Bot still land on a shape.
+  assert.equal(shapes.resolve('drop'), 'teardrop')
+  assert.equal(shapes.resolve('pill'), 'tablet')
+  assert.equal(shapes.resolve('hexagon'), 'hex')
+  assert.equal(shapes.resolve('triangle'), 'wedge')
+  assert.equal(shapes.resolve('spark'), 'sparkle')
+  assert.equal(shapes.resolve('capsule'), 'tablet')
+  assert.equal(shapes.known('nonsense'), false)
   for (const name of shapes.NAMES) {
     const shape = shapes.SHAPES[name]
     assert.equal(shape.points.length, shapes.POINT_COUNT, name)
     for (const point of shape.points) {
-      assert.ok(Math.abs(point[0]) <= 1 && Math.abs(point[1]) <= 1, name)
+      assert.ok(Math.abs(point[0]) <= 1.12 && Math.abs(point[1]) <= 1.12, name)
     }
     assert.ok(shape.points[0][1] <= shape.points[10][1] + 0.2, `${name} starts near the top`)
+    assert.equal(shape.eyes.length, 2, name)
+    assert.ok(shape.eyes[0].x < shape.eyes[1].x, `${name} eyes run left to right`)
+    for (const eye of shape.eyes) {
+      assert.ok(eye.length > eye.width, `${name} eyes are upright capsules`)
+      assert.ok(eye.angle > 25 && eye.angle < 80, `${name} eyes lean with the top to the left`)
+    }
   }
+  // The circle is the unit: its outline sits on radius 1 about its box centre.
+  for (const point of shapes.SHAPES.circle.points) assert.ok(Math.abs(Math.hypot(point[0], point[1]) - 1) < 0.03)
+  assert.ok(shapes.SHAPES.pumpkin.stem.length > 8)
+  assert.equal(shapes.SHAPES.teardrop.stem, null)
   const mixed = shapes.blend('teardrop', 'hex', 0)
   const ended = shapes.blend('teardrop', 'hex', 1)
   assert.deepEqual(mixed.points[0], shapes.SHAPES.teardrop.points[0])
   const offset = shapes.bestOffset(shapes.SHAPES.teardrop.points, shapes.SHAPES.hex.points)
   assert.deepEqual(ended.points[40], shapes.SHAPES.hex.points[(40 + offset) % shapes.POINT_COUNT])
-  const mid = shapes.blend('star', 'blob', 0.5)
+  const mid = shapes.blend('burst', 'blob', 0.5)
   assert.equal(mid.points.length, shapes.POINT_COUNT)
-  assert.ok(mid.eyeY > Math.min(shapes.SHAPES.star.eyeY, shapes.SHAPES.blob.eyeY) - 0.001)
+  const ex = (shapes.SHAPES.burst.eyes[0].x + shapes.SHAPES.blob.eyes[0].x) / 2
+  assert.ok(Math.abs(mid.eyes[0].x - ex) < 1e-9)
 })
 
 test('palette eyes stay readable on each fill', () => {

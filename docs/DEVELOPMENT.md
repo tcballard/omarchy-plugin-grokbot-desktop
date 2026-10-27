@@ -6,7 +6,7 @@ The project is already initialized as `io.github.tcballard.grokbot-desktop`. Run
 ./tests/run
 ```
 
-On a target Omarchy machine, run `omarchy plugin validate .` and record `omarchy-version` in `docs/ACCEPTANCE.json`. Portable checks cover the service manifest, the 25-shape morph, the palette, the bundled roster, and the ask, sync, and cursor helpers. The installed host's validator is authoritative. Passing `./tests/run` does not mean the layer shell, Hyprland socket, or webhook was exercised on a desktop.
+On a target Omarchy machine, run `omarchy plugin validate .` and record `omarchy-version` in `docs/ACCEPTANCE.json`. Portable checks cover the service manifest, the 14-shape morph, the palette, the bundled roster, and the ask, sync, and cursor helpers. The installed host's validator is authoritative. Passing `./tests/run` does not mean the layer shell, Hyprland socket, or webhook was exercised on a desktop.
 
 `preview.png` is a frame from the live Try Omarchy session in `assets/grokbot-companion-demo.mp4` (`Virtual-1`, 1280×800). `tools/render-preview.py` remains a 3× supersampled offline drawing of the monochrome chrome and flat marks. When the design backdrop is present that script uses it; otherwise it paints a flat field. Regenerating with the script replaces the on-device preview, so keep the live frame unless the chrome itself has changed. The script still draws the older separate appearance drawer; the appearance settings now live on the bubble card's second page. The recorded session is in `docs/ACCEPTANCE.json`.
 
@@ -40,3 +40,13 @@ Before a public release, document the exact verified install command and the ins
 Also leave Hyprland bindings, `~/.local/share/applications/grokbot-desktop.desktop`, and `~/.local/bin/grokbot-desktop-close` unless those copies were part of the removal the owner requested.
 
 Installed runtime files are the manifest, QML, `qml/*.js`, `data/bots.json`, `bin/*`, the licence, and the optional desktop, icon, and close helper. Authoring files (blueprint, workflows, tests, and `tools/`) are not part of that runtime set.
+
+## Re-measuring Grok Bot's shapes
+
+`qml/shapes.js` carries outlines and eyes measured from a screenshot of Grok Bot's Avatar > Shape sheet. To refresh them after the app changes its shapes, capture that sheet on a phone, convert it to sRGB, and run:
+
+```bash
+python3 tools/measure-avatars.py picker-srgb.png /tmp/measured.json --js qml/shapes.js
+```
+
+The tool needs numpy, scipy, scikit-image, and Pillow. It rewrites only the block between the `MEASURED SHAPES` markers. It expects the fourteen shapes in rows of four, five, and five; check the printed extents and eye angles before committing.

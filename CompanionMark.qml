@@ -75,7 +75,8 @@ Item {
   Behavior on poseOpen { NumberAnimation { duration: mark.reduceMotion ? 0 : 180; easing.type: Easing.InOutCubic } }
 
   // Geometry shared by the body and the eyes.
-  readonly property real rad: Math.min(width, height) * 0.46
+  // One unit is the circle's radius; the widest shapes reach about 1.08.
+  readonly property real rad: Math.min(width, height) * 0.43
   readonly property real cx: width / 2
   readonly property real cy: height / 2
   readonly property string outline: Shapes.svgPath(mark.blended ? mark.blended.points : null, mark.rad, mark.cx, mark.cy)
