@@ -597,3 +597,26 @@ test('readme credits both companions and records the live Try Omarchy capture', 
   assert.match(acceptance.limitations.join('\n'), /0\.28/)
   assert.match(acceptance.limitations.join('\n'), /grokbot-desktop-ctl/)
 })
+
+function qmlFunction(source, name) {
+  const start = source.indexOf(`function ${name}(`)
+  assert.ok(start >= 0, `missing function ${name}`)
+  let depth = 0
+  for (let i = source.indexOf('{', start); i < source.length; i++) {
+    if (source[i] === '{') depth++
+    else if (source[i] === '}' && --depth === 0) return source.slice(start, i + 1)
+  }
+  return source.slice(start)
+}
+
+test('closing the bubble keeps an ask running and a busy prompt is kept', () => {
+  assert.doesNotMatch(qmlFunction(main, 'dismissSurfaces'), /cancelAsk/)
+  assert.doesNotMatch(qmlFunction(main, 'closeBubble'), /cancelAsk/)
+  assert.match(qmlFunction(main, 'stopAsk'), /cancelAsk\(\)/)
+  assert.match(qmlFunction(main, 'replyLanded'), /replyUnread = true/)
+  assert.match(qmlFunction(main, 'openBubble'), /replyUnread = false/)
+  const submit = qmlFunction(main, 'submitPrompt')
+  assert.ok(submit.indexOf('root.asking') < submit.indexOf('promptDraft = ""'))
+  const dictate = qmlFunction(main, 'dictateText')
+  assert.ok(dictate.indexOf('"busy"') < dictate.indexOf('promptDraft = ""'))
+})

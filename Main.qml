@@ -657,9 +657,11 @@ Item {
     return "ok"
   }
 
+  // While an ask is running the field stays editable for the next prompt,
+  // and Enter leaves the draft alone instead of throwing it away.
   function submitPrompt(value) {
     var prompt = root.plainLine(value, 4000)
-    if (prompt === "") return
+    if (prompt === "" || root.asking) return
     var route = Dictation.route(prompt, root.bots, root.defaultBotId)
     if (route.matched) {
       if (route.botId) root.selectBot(route.botId)
@@ -681,6 +683,7 @@ Item {
     if (raw === "") return "empty"
     var route = Dictation.route(raw, root.bots, root.defaultBotId)
     if (!route.matched) return "ignored"
+    if (root.asking) return "busy"
     if (route.botId) root.selectBot(route.botId)
     root.promptDraft = ""
     root.noticeLinks = []
