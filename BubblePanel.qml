@@ -225,6 +225,7 @@ Rectangle {
             morph: app.morphProgress
             face: app.shownFace
             eyeSet: app.shownEyes
+            stemOverride: app.shownStem
             colorFromName: app.colorFrom
             colorName: app.colorTo
             mixFromColors: app.morphFromPoints !== null

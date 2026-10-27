@@ -925,3 +925,21 @@ test('the desktop mark cuts its eyes through the shape, as Grok Bot does', () =>
   const start = qmlFunction(main, 'startMorph')
   assert.ok(start.indexOf('var eyesNow = mark.restEyes') < start.indexOf('morphToEyes ='))
 })
+
+test('the pumpkin wears its stem and the stem fades through a morph', () => {
+  assert.equal(shapes.stemLevel('pumpkin', 'pumpkin', 0.3), 1)
+  assert.equal(shapes.stemLevel('circle', 'pumpkin', 0.25), 0.25)
+  assert.equal(shapes.stemLevel('pumpkin', 'hex', 0.25), 0.75)
+  assert.equal(shapes.stemLevel('circle', 'hex', 0.5), 0)
+  assert.match(read('CompanionMark.qml'), /fillColor: Shapes\.STEM_COLOR/)
+  assert.match(qmlFunction(main, 'startMorph'), /root\.stemFrom = mark\.stemLevel/)
+})
+
+test('the stem stays in the cut-out layer and fades by opacity', () => {
+  const mark = read('CompanionMark.qml')
+  const stem = mark.slice(mark.indexOf('id: stem'), mark.indexOf('id: stem') + 500)
+  assert.match(stem, /visible: !mark\.showImage/)
+  assert.match(stem, /opacity: mark\.stemLevel/)
+  const st = shapes.SHAPES.pumpkin.stem
+  assert.ok(Math.min(...st.map((p) => p[1])) < -1, 'the stem rises above the body')
+})

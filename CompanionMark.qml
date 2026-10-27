@@ -30,6 +30,11 @@ Item {
   property var face: null
   // Resting eyes supplied by the caller, alongside `face`.
   property var eyeSet: null
+  // Stem visibility supplied by the caller, alongside `face`; below zero
+  // means work it out from the named shapes.
+  property real stemOverride: -1
+  readonly property real stemLevel: mark.stemOverride >= 0 ? mark.stemOverride : Shapes.stemLevel(mark.shapeFrom, mark.shapeTo, mark.morph)
+  readonly property string stemPath: Shapes.svgPath(Shapes.stemPoints(), mark.rad, mark.cx, mark.cy)
   // Punch the eyes through the shape so whatever is behind shows, as Grok
   // Bot does. Off, they are painted in eyeColor, which callers set to the
   // surface behind the mark.
@@ -137,6 +142,21 @@ Item {
         strokeColor: "transparent"
         fillColor: mark.fillColor
         PathSvg { path: mark.outline }
+      }
+    }
+
+    Shape {
+      id: stem
+      anchors.fill: parent
+      // Kept visible and faded with opacity: a child that turns visible
+      // inside the hidden cut-out layer is not picked up by it.
+      visible: !mark.showImage
+      opacity: mark.stemLevel
+      ShapePath {
+        strokeWidth: -1
+        strokeColor: "transparent"
+        fillColor: Shapes.STEM_COLOR
+        PathSvg { path: mark.stemPath }
       }
     }
 

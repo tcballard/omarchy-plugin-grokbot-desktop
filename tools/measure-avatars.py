@@ -84,9 +84,13 @@ def outlines(region, white, ox, oy, min_area=800):
         outer = cons[0]
         holes = [c for c in cons[1:] if abs(area(c)) > 20]
         stem = None
-        if (sub_t > 0.5).sum() > 40:
-            sc = sorted(measure.find_contours(sub_t, 0.5), key=lambda c: -abs(area(c)))[0]
-            stem = sc
+        # The stem rises above the body's box, so look for it in a wider window.
+        wide = 60
+        wy0, wx0 = max(0, r0 - wide), max(0, c0 - wide)
+        sub_tw = t[wy0:r1 + wide, wx0:c1 + wide]
+        if (sub_tw > 0.5).sum() > 40:
+            sc = sorted(measure.find_contours(sub_tw, 0.5), key=lambda c: -abs(area(c)))[0]
+            stem = sc + [wy0 - y0, wx0 - x0]
         shift = np.array([y0 + oy, x0 + ox])
         found.append(dict(outer=(outer + shift)[:, ::-1], holes=[(h + shift)[:, ::-1] for h in holes],
                           stem=None if stem is None else (stem + shift)[:, ::-1]))
@@ -179,7 +183,7 @@ for i, name in enumerate(names):
     eyes = sorted([capsule_fit(normalise(h, ccx, ccy)) for h in holes], key=lambda e: e['x'])
     entry = dict(points=[[round(v, 4) for v in q] for q in pts], eyes=[{k: round(float(v), 4) for k, v in e.items()} for e in eyes])
     if g['stem'] is not None and name == 'pumpkin':
-        st = orient(normalise(resample(smooth(resample(g['stem'], 240), 3), 24), ccx, ccy))
+        st = orient(normalise(resample(smooth(resample(g["stem"], 240), 3), 40), ccx, ccy))
         entry['stem'] = [[round(v, 4) for v in q] for q in st]
     out['shapes'][name] = entry
     ext = np.abs(pts).max(0)

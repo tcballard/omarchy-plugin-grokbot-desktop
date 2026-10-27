@@ -89,10 +89,13 @@ Item {
   property var morphFromPoints: null
   property var morphToPoints: null
   property var morphFromEyes: null
+  property real stemFrom: 0
+  property real stemTo: 0
   property var morphToEyes: null
   property color fillFrom: "#FF6700"
   property color eyeFrom: "#141416"
   readonly property var shownFace: root.morphFromPoints ? Shapes.mix(root.morphFromPoints, root.morphToPoints, root.morphProgress) : null
+  readonly property real shownStem: root.morphFromEyes ? root.stemFrom + (root.stemTo - root.stemFrom) * root.morphProgress : -1
   readonly property var shownEyes: root.morphFromEyes ? Shapes.mixEyes(root.morphFromEyes, root.morphToEyes, root.morphProgress) : null
   property string expression: "idle"
   property bool sleepHold: false
@@ -495,6 +498,8 @@ Item {
   function startMorph(nextShape, nextColor) {
     var face = mark.blended.points
     var eyesNow = mark.restEyes
+    root.stemFrom = mark.stemLevel
+    root.stemTo = Shapes.resolve(nextShape) === Shapes.STEM_SHAPE ? 1 : 0
     root.morphToEyes = Shapes.eyes(nextShape)
     root.morphFromEyes = eyesNow
     root.fillFrom = mark.fillColor
@@ -1701,6 +1706,7 @@ Item {
         morph: root.morphProgress
         face: root.shownFace
         eyeSet: root.shownEyes
+        stemOverride: root.shownStem
         cutout: true
         colorFromName: root.colorFrom
         colorName: root.colorTo
