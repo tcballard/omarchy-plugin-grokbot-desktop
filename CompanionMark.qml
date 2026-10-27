@@ -25,6 +25,10 @@ Item {
   // A contour supplied by the caller replaces the named blend. The main
   // mark uses it to morph from whatever was on screen.
   property var face: null
+  // Eye opening multiplier for attention, such as the pointer resting on
+  // the mark.
+  property real attention: 1
+  onAttentionChanged: canvas.requestPaint()
   property bool mixFromColors: false
   property color fillFrom: "#F28B30"
   property color eyeFrom: "#141416"
@@ -151,7 +155,7 @@ Item {
       var open = Math.min(mark.eyeOpen, mark.poseOpen)
       var tilt = mark.poseTilt + (mark.expression === "think" ? Math.sin(mark.thinkAngle) * 2 : 0)
       var heightScale = mark.poseHeight
-      heightScale *= 1 - Math.min(0.2, Math.abs(mark.gazeY) * 0.12)
+      heightScale *= mark.attention * (1 - Math.min(0.2, Math.abs(mark.gazeY) * 0.12))
 
       var gx = cx + mark.gazeX * rad * 0.16
       var gy = cy + mark.gazeY * rad * 0.1 + mark.sleepDrift * 0.12

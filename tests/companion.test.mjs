@@ -741,3 +741,11 @@ test('thinking and sleeping read at a glance', () => {
   assert.match(main, /running: root\.present && !root\.dragging && root\.expression === "sleep"/)
   assert.match(read('BubblePanel.qml'), /visible: app\.asking && app\.bubbleBody === ""/)
 })
+
+test('the mark answers hover and lifts while dragged', () => {
+  assert.match(main, /cursorShape: root\.dragging \? Qt\.ClosedHandCursor : Qt\.PointingHandCursor/)
+  assert.match(main, /property real hoverScale: root\.hovering && !root\.dragging \? 1\.04 : 1/)
+  assert.match(main, /root\.dragLift \* 14/)
+  assert.match(qmlFunction(main, 'endDrag'), /landAnim\.restart\(\)/)
+  assert.match(qmlFunction(main, 'dragMove'), /dragTiltTarget =/)
+})

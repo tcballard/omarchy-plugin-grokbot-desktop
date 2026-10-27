@@ -103,6 +103,17 @@ Item {
   property real breathe: 1
   property real talkScale: 1
   property real morphPop: 1
+  // Pointer feedback: a resting pointer perks the mark up; a drag lifts it
+  // off the floor and leans it into the motion.
+  property bool hovering: false
+  property real hoverScale: root.hovering && !root.dragging ? 1.04 : 1
+  Behavior on hoverScale { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+  property real dragLift: root.dragging ? 1 : 0
+  Behavior on dragLift { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+  property real dragTilt: 0
+  property real dragTiltTarget: 0
+  property real lastDragX: 0
+  property real lastDragAt: 0
   property real idleY: 0
   property real hopY: 0
   // Vertical squash and stretch about the base; width answers inversely so
@@ -1179,6 +1190,8 @@ Item {
     root.dragCursorX = px
     root.dragCursorY = py
     root.dragRight = root.posRight
+    root.lastDragX = px
+    root.lastDragAt = Date.now()
     root.dragBottom = root.posBottom
   }
 
@@ -1192,9 +1205,29 @@ Item {
     var nextY = root.anchorFromBottom ? root.dragBottom - dy : root.dragBottom + dy
     root.posRight = Math.max(0, Math.min(maxRight, Math.round(nextX)))
     root.posBottom = Math.max(0, Math.min(maxBottom, Math.round(nextY)))
+    var now = Date.now()
+    var dt = Math.max(4, now - root.lastDragAt)
+    root.dragTiltTarget = Math.max(-8, Math.min(8, (px - root.lastDragX) / dt * 4))
+    root.lastDragX = px
+    root.lastDragAt = now
+  }
+
+  FrameAnimation {
+    running: root.dragging || Math.abs(root.dragTilt) > 0.05 || Math.abs(root.dragTiltTarget) > 0.05
+    onTriggered: {
+      root.dragTiltTarget *= Math.exp(-frameTime * 6)
+      root.dragTilt += (root.dragTiltTarget - root.dragTilt) * (1 - Math.exp(-frameTime * 14))
+    }
+  }
+
+  SequentialAnimation {
+    id: landAnim
+    NumberAnimation { target: root; property: "squash"; to: 0.9; duration: 80; easing.type: Easing.OutQuad }
+    NumberAnimation { target: root; property: "squash"; to: 1; duration: 260; easing.type: Easing.OutBack }
   }
 
   function endDrag() {
+    landAnim.restart()
     root.dragging = false
     root.saveSettings()
   }
@@ -1392,7 +1425,7 @@ Item {
       // floor, so bobbing and hopping read as height rather than sliding.
       Shape {
         id: floorShadow
-        readonly property real lift: Math.max(0, -(root.idleY + root.hopY + Math.sin(root.orbit * Math.PI / 180) * 5 * root.orbitAmp))
+        readonly property real lift: Math.max(0, -(root.idleY + root.hopY + Math.sin(root.orbit * Math.PI / 180) * 5 * root.orbitAmp)) + root.dragLift * 14
         readonly property real flat: Math.max(10, root.markSize * 0.12) / width
         property real rest: root.ghost ? 0.08 : 0.34
         Behavior on rest { NumberAnimation { duration: 160 } }
@@ -1458,7 +1491,9 @@ Item {
           return "file://" + bot.avatarImage
         }
         opacity: root.ghost ? 0.28 : 1
-        scale: root.breathe * root.talkScale * root.morphPop
+        scale: root.breathe * root.talkScale * root.morphPop * root.hoverScale * (1 + 0.06 * root.dragLift)
+        attention: root.hovering ? 1.12 : 1
+        Behavior on attention { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
         transformOrigin: Item.Bottom
         transform: [
           Scale {
@@ -1469,9 +1504,9 @@ Item {
           },
           Translate {
             x: Math.cos(root.orbit * Math.PI / 180) * 6 * root.orbitAmp
-            y: root.idleY + root.hopY + Math.sin(root.orbit * Math.PI / 180) * 5 * root.orbitAmp
+            y: root.idleY + root.hopY + Math.sin(root.orbit * Math.PI / 180) * 5 * root.orbitAmp - root.dragLift * 10
           },
-          Rotation { origin.x: mark.width / 2; origin.y: mark.height; angle: root.spinAngle + root.waveAngle + Math.sin(root.thinkAngle * 0.5) * 3 * root.thinkLook }
+          Rotation { origin.x: mark.width / 2; origin.y: mark.height; angle: root.spinAngle + root.waveAngle + Math.sin(root.thinkAngle * 0.5) * 3 * root.thinkLook + root.dragTilt }
         ]
         Behavior on opacity { NumberAnimation { duration: 160 } }
 
@@ -1496,6 +1531,7 @@ Item {
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         hoverEnabled: true
         preventStealing: true
+        cursorShape: root.dragging ? Qt.ClosedHandCursor : Qt.PointingHandCursor
         property point pressAt: Qt.point(0, 0)
         property bool moved: false
         function windowPoint(mouse) { return mapToItem(win.contentItem, mouse.x, mouse.y) }
@@ -1529,6 +1565,7 @@ Item {
           }
         }
         onContainsMouseChanged: {
+          root.hovering = containsMouse
           if (containsMouse) {
             root.claimed = true
             root.ghost = false
