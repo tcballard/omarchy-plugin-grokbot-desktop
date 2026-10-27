@@ -708,3 +708,12 @@ test('the mark is grounded by a shadow that answers its height', () => {
   const mark = main.slice(main.indexOf('id: mark'), main.indexOf('id: mark') + 2000)
   assert.match(mark, /transformOrigin: Item\.Bottom/)
 })
+
+test('hops squash and stretch about the base', () => {
+  const hop = main.slice(main.indexOf('id: hopAnim'), main.indexOf('id: hopAnim') + 1400)
+  assert.match(hop, /property: "squash"; to: 0\.88/)
+  assert.match(hop, /property: "squash"; to: 1\.07/)
+  assert.match(hop, /property: "squash"; to: 0\.9;/)
+  assert.doesNotMatch(hop, /OutBounce/)
+  assert.match(main, /yScale: root\.stretchY/)
+})

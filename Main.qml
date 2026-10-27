@@ -104,6 +104,12 @@ Item {
   property real talkScale: 1
   property real idleY: 0
   property real hopY: 0
+  // Vertical squash and stretch about the base; width answers inversely so
+  // the mark keeps its volume.
+  property real squash: 1
+  property real bobAmp: root.motionName === "playful" ? 1 : 0
+  Behavior on bobAmp { NumberAnimation { duration: 420; easing.type: Easing.InOutCubic } }
+  readonly property real stretchY: root.squash * (1 + root.bobAmp * (-root.idleY / 7 * 0.04 - 0.02))
   property real spinAngle: 0
   property real waveAngle: 0
   property real orbit: 0
@@ -1091,10 +1097,20 @@ Item {
     NumberAnimation { target: root; property: "sleepDrift"; to: 0; duration: 1400; easing.type: Easing.InOutSine }
   }
 
+  // Anticipate, launch stretched, fall, land squashed, then settle.
   SequentialAnimation {
     id: hopAnim
-    NumberAnimation { target: root; property: "hopY"; to: -18; duration: 160; easing.type: Easing.OutQuad }
-    NumberAnimation { target: root; property: "hopY"; to: 0; duration: 320; easing.type: Easing.OutBounce }
+    NumberAnimation { target: root; property: "squash"; to: 0.88; duration: 70; easing.type: Easing.OutQuad }
+    ParallelAnimation {
+      NumberAnimation { target: root; property: "hopY"; to: -18; duration: 170; easing.type: Easing.OutQuad }
+      NumberAnimation { target: root; property: "squash"; to: 1.07; duration: 120; easing.type: Easing.OutQuad }
+    }
+    ParallelAnimation {
+      NumberAnimation { target: root; property: "hopY"; to: 0; duration: 170; easing.type: Easing.InQuad }
+      NumberAnimation { target: root; property: "squash"; to: 1; duration: 170; easing.type: Easing.InOutQuad }
+    }
+    NumberAnimation { target: root; property: "squash"; to: 0.9; duration: 70; easing.type: Easing.OutQuad }
+    NumberAnimation { target: root; property: "squash"; to: 1; duration: 240; easing.type: Easing.OutBack }
   }
 
   SequentialAnimation {
@@ -1422,6 +1438,12 @@ Item {
         scale: root.breathe * root.talkScale
         transformOrigin: Item.Bottom
         transform: [
+          Scale {
+            origin.x: mark.width / 2
+            origin.y: mark.height
+            yScale: root.stretchY
+            xScale: 1 + (1 - root.stretchY) * 0.8
+          },
           Translate {
             x: Math.cos(root.orbit * Math.PI / 180) * 6 * root.orbitAmp
             y: root.idleY + root.hopY + Math.sin(root.orbit * Math.PI / 180) * 5 * root.orbitAmp
