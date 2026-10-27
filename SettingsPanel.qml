@@ -319,8 +319,8 @@ Item {
         property real cardW: (width - spacing * 2) / 3
         Repeater {
           model: [
-            { "id": "calm", "label": "Calm", "detail": "Breathing" },
-            { "id": "playful", "label": "Playful", "detail": "Bob + Gaze" },
+            { "id": "calm", "label": "Calm", "detail": "Still, like the app" },
+            { "id": "playful", "label": "Playful", "detail": "Breathe + Bob" },
             { "id": "hyper", "label": "Hyper", "detail": "Orbit + Hop" }
           ]
           delegate: Rectangle {

@@ -62,7 +62,7 @@ Item {
   property bool pointerNear: false
   property bool dodgeOn: true
   property bool idleOn: true
-  property string motionName: "playful"
+  property string motionName: "calm"
   property string anchorName: "br"
   property bool rosterExpanded: false
   property string askedText: ""
@@ -529,7 +529,7 @@ Item {
     root.dodgeOn = root.setting("dodge", true) !== false
     var motion = String(root.setting("motion", ""))
     if (motion !== "calm" && motion !== "playful" && motion !== "hyper")
-      motion = root.setting("idleMotion", true) !== false ? "playful" : "calm"
+      motion = root.setting("idleMotion", false) === true ? "playful" : "calm"
     root.motionName = motion
     root.idleOn = motion !== "calm"
     var anchor = String(root.setting("anchor", "br"))
@@ -1041,11 +1041,7 @@ Item {
     root.lastMoveAt = Date.now()
     if (root.sleepHold || root.expression === "sleep") root.wake()
     root.updateGazeTarget()
-    if (root.idleOn) gazeFrames.running = true
-    else {
-      root.gazeX = root.gazeTargetX
-      root.gazeY = root.gazeTargetY
-    }
+    gazeFrames.running = true
     root.pointerNear = root.pointerIsNear()
     root.updateDodge()
   }
@@ -1198,12 +1194,24 @@ Item {
     }
   }
 
+  // Calm holds still, as Grok Bot's avatars do at rest; coming from another
+  // motion, the breath settles back first.
+  NumberAnimation {
+    id: settleBreath
+    target: root
+    property: "breathe"
+    to: 1
+    duration: root.ms(300)
+    easing.type: Easing.OutCubic
+  }
+  onLiveMotionChanged: if (root.liveMotion === "calm") settleBreath.restart()
+
   // A new gap is drawn after every blink so the rhythm never settles.
   Timer {
     id: blinkTimer
     interval: 3200
     repeat: true
-    running: root.present && root.expression === "idle" && !root.asking
+    running: root.present && root.expression === "idle" && !root.asking && root.liveMotion !== "calm"
     onTriggered: {
       root.blinkTwice = Math.random() < 0.35
       blinkAnim.restart()
@@ -1220,7 +1228,7 @@ Item {
   }
 
   SequentialAnimation {
-    running: root.present && !root.dragging && !root.reduceMotion && root.expression !== "sleep"
+    running: root.present && !root.dragging && root.liveMotion !== "calm" && root.expression !== "sleep"
     loops: Animation.Infinite
     NumberAnimation { target: root; property: "breathe"; to: 1.035; duration: 1700; easing.type: Easing.InOutSine }
     NumberAnimation { target: root; property: "breathe"; to: 0.985; duration: 1700; easing.type: Easing.InOutSine }
@@ -1228,7 +1236,7 @@ Item {
 
   // Asleep, the breath slows and deepens.
   SequentialAnimation {
-    running: root.present && !root.dragging && !root.reduceMotion && root.expression === "sleep"
+    running: root.present && !root.dragging && root.liveMotion !== "calm" && root.expression === "sleep"
     loops: Animation.Infinite
     NumberAnimation { target: root; property: "breathe"; to: 1.05; duration: 3000; easing.type: Easing.InOutSine }
     NumberAnimation { target: root; property: "breathe"; to: 0.975; duration: 3000; easing.type: Easing.InOutSine }

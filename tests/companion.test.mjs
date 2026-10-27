@@ -770,7 +770,7 @@ test('morph colours keep their saturation through the blend', () => {
 test('thinking and sleeping read at a glance', () => {
   assert.match(main, /property real thinkLook: root\.expression === "think" \? 1 : 0/)
   assert.match(main, /Math\.sin\(root\.thinkAngle \* 0\.5\) \* 3 \* root\.thinkLook/)
-  assert.match(main, /running: root\.present && !root\.dragging && !root\.reduceMotion && root\.expression === "sleep"/)
+  assert.match(main, /running: root\.present && !root\.dragging && root\.liveMotion !== "calm" && root\.expression === "sleep"/)
   assert.match(read('BubblePanel.qml'), /visible: app\.asking && app\.bubbleBody === ""/)
 })
 
@@ -973,4 +973,14 @@ test('picking a shape or colour swaps at once, as Grok Bot\'s picker does', () =
   assert.match(page, /opacity: shapeArea\.pressed \? 0\.55 : 1/)
   assert.match(page, /opacity: swatchArea\.pressed \? 0\.55 : 1/)
   assert.match(page, /visible: cell\.active/)
+})
+
+test('at rest the avatar holds still and does not blink, as in Grok Bot', () => {
+  assert.match(main, /property string motionName: "calm"/)
+  const blink = main.slice(main.indexOf('id: blinkTimer'), main.indexOf('id: blinkTimer') + 300)
+  assert.match(blink, /root\.liveMotion !== "calm"/)
+  for (const m of main.matchAll(/property: "breathe"; to: 1\.0?35/g)) assert.ok(m)
+  const breath = main.slice(main.indexOf('property: "breathe"; to: 1.035') - 300, main.indexOf('property: "breathe"; to: 1.035'))
+  assert.match(breath, /root\.liveMotion !== "calm"/)
+  assert.doesNotMatch(qmlFunction(main, 'cursorLine'), /root\.gazeX = root\.gazeTargetX/, 'the eyes always ease to the pointer')
 })
