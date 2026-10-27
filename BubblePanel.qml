@@ -1,16 +1,22 @@
 import QtQuick
 import QtQuick.Controls
 
-// Grok Bot popover. Roster text, replies, prompts, and links stay plain text.
+// Grok Bot popover. One card with two pages: the chat and, behind the
+// sliders button, the appearance page. Roster text, replies, prompts, and
+// links stay plain text.
 Rectangle {
   id: bubble
   property var app: null
+  property real maxHeight: 640
+  readonly property bool appearancePage: app ? app.settingsOpen : false
+  readonly property real pageHeight: appearancePage ? settingsPage.implicitHeight : column.implicitHeight
   implicitWidth: 464
-  implicitHeight: column.implicitHeight + 28
+  implicitHeight: Math.min(maxHeight, pageHeight + 28)
   radius: 22
   color: "#141416"
   border.width: 1
   border.color: "#27272A"
+  clip: true
 
   readonly property var pinnedBots: {
     var wanted = [
@@ -81,12 +87,25 @@ Rectangle {
     onTriggered: voiceButton.wave = (voiceButton.wave + 0.45) % 6.28318
   }
 
+  SettingsPanel {
+    id: settingsPage
+    app: bubble.app
+    x: bubble.appearancePage ? 16 : bubble.width + 16
+    y: 14
+    width: bubble.width - 32
+    height: bubble.height - 28
+    visible: bubble.appearancePage || x < bubble.width
+    Behavior on x { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+  }
+
   Column {
     id: column
-    x: 16
+    x: bubble.appearancePage ? 16 - bubble.width : 16
     y: 14
     width: parent.width - 32
     spacing: 12
+    visible: !bubble.appearancePage || x > -bubble.width + 16
+    Behavior on x { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
 
     Item {
       id: header

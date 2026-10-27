@@ -45,7 +45,8 @@ Item {
   property bool ready: false
   property bool present: true
   property bool bubbleOpen: false
-  property bool settingsOpen: false
+  property string cardPage: "chat"
+  readonly property bool settingsOpen: root.bubbleOpen && root.cardPage === "appearance"
   property bool menuOpen: false
   property bool switcherOpen: false
   property bool asking: false
@@ -125,7 +126,7 @@ Item {
   readonly property string canonicalShape: Shapes.resolve(root.shownShape)
   readonly property bool anchorFromRight: root.anchorName === "br" || root.anchorName === "tr"
   readonly property bool anchorFromBottom: root.anchorName === "br" || root.anchorName === "bl"
-  readonly property bool surfacesOpen: root.bubbleOpen || root.settingsOpen || root.menuOpen
+  readonly property bool surfacesOpen: root.bubbleOpen || root.menuOpen
 
   function tomlColor(text, key) {
     var lines = String(text || "").split("\n")
@@ -529,6 +530,7 @@ Item {
 
   function openBubble() {
     root.present = true
+    root.cardPage = "chat"
     root.bubbleOpen = true
     root.menuOpen = false
     root.wake()
@@ -543,12 +545,13 @@ Item {
 
   function openSettings() {
     root.present = true
-    root.settingsOpen = true
+    root.cardPage = "appearance"
+    root.bubbleOpen = true
     root.menuOpen = false
     root.wake()
   }
 
-  function closeSettings() { root.settingsOpen = false }
+  function closeSettings() { root.cardPage = "chat" }
 
   function toggleBubble() {
     if (!root.present) root.summon()
@@ -577,7 +580,7 @@ Item {
   }
 
   function dismissSurfaces() {
-    var had = root.bubbleOpen || root.settingsOpen || root.menuOpen || root.asking
+    var had = root.bubbleOpen || root.menuOpen || root.asking
     if (root.asking) root.cancelAsk()
     root.closeBubble()
     root.closeSettings()
@@ -1183,25 +1186,17 @@ Item {
       onClicked: root.dismissSurfaces()
     }
 
-    SettingsPanel {
-      app: root
-      visible: root.settingsOpen
-      width: Math.min(420, Math.max(280, win.width - 24))
-      height: Math.min(660, Math.max(280, win.height - 32))
-      x: {
-        var beside = root.anchorFromRight ? stage.x - width - 16 : stage.x + stage.width + 16
-        if (beside < 8) beside = stage.x + stage.width + 16
-        if (beside + width > win.width - 8) beside = stage.x - width - 16
-        return Math.max(8, Math.min(beside, win.width - width - 8))
-      }
-      y: Math.max(8, Math.min(stage.y, win.height - height - 8))
-    }
-
     BubblePanel {
       id: bubblePanel
       app: root
       visible: root.bubbleOpen
       width: Math.min(464, Math.max(320, win.width - 24))
+      maxHeight: {
+        var above = stage.y - 20
+        var below = win.height - stage.y - stage.height - 20
+        var room = root.anchorFromBottom ? above : below
+        return Math.max(360, Math.min(room, win.height - 16))
+      }
       x: Math.max(8, Math.min(stage.x + stage.width - width, win.width - width - 8))
       y: {
         var above = stage.y - height - 12

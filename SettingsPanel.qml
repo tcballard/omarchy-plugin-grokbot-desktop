@@ -1,14 +1,12 @@
 import QtQuick
 
-// Monochrome appearance drawer. Inactive marks stay muted; the active shape
-// uses the selected accent. Strings are plain text.
-Rectangle {
+// Monochrome appearance page. It slides in inside the bubble card, so it has
+// no chrome of its own. Inactive marks stay muted; the active shape uses the
+// selected accent. Strings are plain text.
+Item {
   id: drawer
   property var app: null
-  radius: 22
-  color: "#141416"
-  border.width: 1
-  border.color: "#27272A"
+  implicitHeight: header.height + 14 + body.implicitHeight
 
   readonly property color tone: app.shownColor === "omarchy" ? app.accent : app.paletteFill(app.shownColor)
   readonly property var accentNames: {
@@ -19,10 +17,88 @@ Rectangle {
     return out
   }
 
+  Item {
+    id: header
+    width: parent.width
+    height: 36
+
+    Rectangle {
+      id: backButton
+      width: 32
+      height: 32
+      radius: 16
+      anchors.verticalCenter: parent.verticalCenter
+      color: "#1C1C1F"
+      border.width: 1
+      border.color: "#2E2E32"
+      Canvas {
+        anchors.fill: parent
+        onPaint: {
+          var ctx = getContext("2d")
+          ctx.reset()
+          ctx.strokeStyle = "#E4E4E7"
+          ctx.lineWidth = 1.6
+          ctx.lineCap = "round"
+          ctx.lineJoin = "round"
+          ctx.beginPath()
+          ctx.moveTo(width * 0.56, height * 0.34)
+          ctx.lineTo(width * 0.42, height * 0.5)
+          ctx.lineTo(width * 0.56, height * 0.66)
+          ctx.stroke()
+        }
+      }
+      MouseArea { anchors.fill: parent; onClicked: app.closeSettings() }
+    }
+
+    Text {
+      anchors.left: backButton.right
+      anchors.leftMargin: 10
+      anchors.verticalCenter: parent.verticalCenter
+      text: "Appearance"
+      color: "#F4F4F5"
+      font.pixelSize: 15
+      font.bold: true
+      textFormat: Text.PlainText
+    }
+
+    Rectangle {
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      width: syncLabel.implicitWidth + 28
+      height: 24
+      radius: 12
+      color: app.syncOn ? "#18261E" : "#19191C"
+      border.width: 1
+      border.color: app.syncOn ? "#284233" : "#2E2E32"
+      Rectangle {
+        x: 8
+        y: 8
+        width: 8
+        height: 8
+        radius: 4
+        color: app.syncOn ? "#5BC67A" : "#71717A"
+      }
+      Text {
+        id: syncLabel
+        x: 20
+        y: 4
+        text: app.syncOn ? "Synced · " + app.botLabel() : "Custom"
+        color: app.syncOn ? "#5BC67A" : "#A1A1AA"
+        font.pixelSize: 11
+        font.bold: true
+        textFormat: Text.PlainText
+      }
+      MouseArea { anchors.fill: parent; onClicked: app.setSync(!app.syncOn) }
+    }
+  }
+
   Flickable {
     id: flick
-    anchors.fill: parent
-    anchors.margins: 16
+    anchors.top: header.bottom
+    anchors.topMargin: 14
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
     contentHeight: body.implicitHeight
     clip: true
     boundsBehavior: Flickable.StopAtBounds
@@ -31,48 +107,6 @@ Rectangle {
       id: body
       width: flick.width
       spacing: 14
-
-      Item {
-        width: parent.width
-        height: 28
-        Text {
-          text: "Companion Appearance"
-          color: "#F4F4F5"
-          font.pixelSize: 15
-          font.bold: true
-          anchors.verticalCenter: parent.verticalCenter
-          textFormat: Text.PlainText
-        }
-        Rectangle {
-          anchors.right: parent.right
-          anchors.verticalCenter: parent.verticalCenter
-          width: syncLabel.implicitWidth + 28
-          height: 24
-          radius: 12
-          color: app.syncOn ? "#18261E" : "#19191C"
-          border.width: 1
-          border.color: app.syncOn ? "#284233" : "#2E2E32"
-          Rectangle {
-            x: 8
-            y: 8
-            width: 8
-            height: 8
-            radius: 4
-            color: app.syncOn ? "#5BC67A" : "#71717A"
-          }
-          Text {
-            id: syncLabel
-            x: 20
-            y: 4
-            text: app.syncOn ? "Synced · " + app.botLabel() : "Custom"
-            color: app.syncOn ? "#5BC67A" : "#A1A1AA"
-            font.pixelSize: 11
-            font.bold: true
-            textFormat: Text.PlainText
-          }
-          MouseArea { anchors.fill: parent; onClicked: app.setSync(!app.syncOn) }
-        }
-      }
 
       Text {
         text: "MARK SILHOUETTE  ·  25 SHAPES"
