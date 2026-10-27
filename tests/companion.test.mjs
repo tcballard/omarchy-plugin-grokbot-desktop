@@ -810,10 +810,15 @@ test('size eases and corner changes pop out and back in', () => {
   assert.doesNotMatch(corner, /root\.anchorName = name/)
 })
 
-test('the appearance page fits without scrolling on a 800px screen', () => {
+test('the appearance page is laid out like Grok Bot\'s picker', () => {
   const page = read('SettingsPanel.qml')
   assert.doesNotMatch(page, /font\.pixelSize: 8\b/, 'no unreadable 8px labels')
-  assert.match(page, /"MARK SILHOUETTE  ·  " \+ drawer\.title/)
+  assert.match(page, /readonly property var shapeRows: Shapes\.ROWS/)
+  assert.match(page, /colorName: app\.shownColor/, 'every shape wears the chosen colour')
+  assert.doesNotMatch(page, /fillHex: active \? "" : /, 'no muted inactive shapes')
+  assert.match(page, /joinStyle: ShapePath\.RoundJoin/, 'the ring follows the outline')
+  assert.match(page, /text: "Reset to default"/)
+  assert.match(page, /onActivated: app\.setSync\(true\)/)
   assert.match(page, /"PLACEMENT  ·  "/)
   assert.match(page, /id: cornerPicker/)
   assert.match(page, /ScrollBar\.vertical/)

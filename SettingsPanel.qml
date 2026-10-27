@@ -1,18 +1,30 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Shapes
 import "qml/theme.js" as Theme
+import "qml/shapes.js" as Shapes
 
-// Monochrome appearance page. It slides in inside the bubble card, so it has
-// no chrome of its own. Inactive marks stay muted; the active shape uses the
-// selected accent. Strings are plain text.
+// Appearance page, laid out like Grok Bot's avatar picker. It slides in
+// inside the bubble card, so it has no chrome of its own. Strings are plain
+// text.
 Item {
   id: drawer
   property var app: null
   implicitHeight: header.height + 14 + body.implicitHeight
 
-  // The section headers name what is chosen, or what the pointer is over.
-  property string hoverShape: ""
-  property string hoverColor: ""
+  readonly property var shapeRows: Shapes.ROWS
+
+  // Row, column, and row length for the shape at `index`.
+  function cellPlace(index) {
+    var start = 0
+    var r
+    for (r = 0; r < drawer.shapeRows.length; r++) {
+      if (index < start + drawer.shapeRows[r]) return { row: r, col: index - start, count: drawer.shapeRows[r] }
+      start += drawer.shapeRows[r]
+    }
+    return { row: 0, col: 0, count: 1 }
+  }
+
   function title(name) {
     var text = String(name || "")
     return text.charAt(0).toUpperCase() + text.slice(1)
@@ -121,141 +133,179 @@ Item {
     Column {
       id: body
       width: flick.width
-      spacing: 14
+      spacing: 12
 
-      Text {
-        text: "MARK SILHOUETTE  ·  " + drawer.title(drawer.hoverShape !== "" ? drawer.hoverShape : app.canonicalShape)
-        color: Theme.textFaint
-        font.pixelSize: 10
-        font.bold: true
-        font.family: "monospace"
-        textFormat: Text.PlainText
-      }
-
-      Grid {
+      // Shapes as Grok Bot's picker lays them out: rows of four, five, and
+      // five, every shape in the chosen colour, and a ring that follows the
+      // chosen shape's outline.
+      Item {
         id: shapeGrid
         width: parent.width
-        columns: 5
-        rowSpacing: 8
-        columnSpacing: 8
-        property real cellW: (width - columnSpacing * 4) / 5
+        readonly property real pitch: width / 5
+        readonly property real rowPitch: pitch * 0.8
+        height: rowPitch * drawer.shapeRows.length
         Repeater {
           model: app.shapeNames
-          delegate: Rectangle {
+          delegate: Item {
+            id: cell
             required property string modelData
+            required property int index
             readonly property bool active: modelData === app.canonicalShape
-            width: shapeGrid.cellW
-            height: 44
-            radius: 12
-            color: Theme.field
-            border.width: active ? 1.5 : 1
-            border.color: active ? drawer.tone : Theme.edgeSoft
-            Rectangle {
-              anchors.fill: parent
-              radius: parent.radius
-              color: drawer.tone
-              opacity: active ? 0.16 : 0
+            readonly property var place: drawer.cellPlace(index)
+            readonly property real markSize: shapeGrid.pitch * 0.711
+            readonly property real unit: markSize * 0.43
+            width: shapeGrid.pitch
+            height: shapeGrid.rowPitch
+            x: (shapeGrid.width - place.count * shapeGrid.pitch) / 2 + place.col * shapeGrid.pitch
+            y: place.row * shapeGrid.rowPitch
+
+            // The ring is two strokes of the outline: a wide one in the ring
+            // colour and a narrower one in the page colour, so it follows the
+            // shape at an even distance, round every concave turn.
+            Shape {
+              id: ring
+              anchors.centerIn: parent
+              width: cell.markSize
+              height: cell.markSize
+              opacity: cell.active ? 1 : 0
+              scale: cell.active ? 1 : 0.9
+              Behavior on opacity { NumberAnimation { duration: app && app.reduceMotion ? 0 : 160 } }
+              Behavior on scale { NumberAnimation { duration: app && app.reduceMotion ? 0 : 200; easing.type: Easing.OutCubic } }
+              readonly property string outline: Shapes.svgPath(Shapes.get(cell.modelData).points, cell.unit, width / 2, height / 2)
+              ShapePath {
+                strokeColor: Theme.textMuted
+                strokeWidth: 2 * (0.224 + 0.055) * cell.unit
+                fillColor: "transparent"
+                joinStyle: ShapePath.RoundJoin
+                PathSvg { path: ring.outline }
+              }
+              ShapePath {
+                strokeColor: Theme.surface
+                strokeWidth: 2 * (0.224 - 0.055) * cell.unit
+                fillColor: Theme.surface
+                joinStyle: ShapePath.RoundJoin
+                PathSvg { path: ring.outline }
+              }
             }
+
             CompanionMark {
               anchors.centerIn: parent
-              width: 28
-              height: 28
-              shapeFrom: modelData
-              shapeTo: modelData
+              width: cell.markSize
+              height: cell.markSize
+              shapeFrom: cell.modelData
+              shapeTo: cell.modelData
               morph: 1
-              colorName: active ? app.shownColor : "gray"
+              colorName: app.shownColor
               accent: app.accent
-              fillHex: active ? "" : Theme.textFaint
-              cutoutHex: active && app.shownColor === "black" ? Theme.text : Theme.field
+              cutoutHex: app.shownColor === "black" ? Theme.text : Theme.surface
               eyeOpen: 1
+              scale: shapeArea.containsMouse && !cell.active ? 1.07 : 1
+              Behavior on scale { NumberAnimation { duration: app && app.reduceMotion ? 0 : 140; easing.type: Easing.OutCubic } }
             }
+
             HoverArea {
-              label: drawer.title(modelData)
-              onContainsMouseChanged: drawer.hoverShape = containsMouse ? modelData : (drawer.hoverShape === modelData ? "" : drawer.hoverShape)
-              onActivated: app.selectShape(modelData)
+              id: shapeArea
+              label: drawer.title(cell.modelData)
+              tint: false
+              onActivated: app.selectShape(cell.modelData)
             }
           }
         }
       }
 
-      Text {
-        text: "COLOUR  ·  " + (drawer.hoverColor !== "" ? drawer.hoverColor : (app.shownColor === "omarchy" ? "Theme accent" : drawer.title(app.shownColor)))
-        color: Theme.textFaint
-        font.pixelSize: 10
-        font.bold: true
-        font.family: "monospace"
-        textFormat: Text.PlainText
-      }
-
-      Row {
+      // Colours as the picker shows them, in rows of six; the last swatch
+      // follows the Omarchy theme accent. The chosen one wears a ring with a
+      // gap, as in Grok Bot.
+      Item {
+        id: swatchGrid
         width: parent.width
-        spacing: Math.max(2, (width - 30 * (drawer.accentNames.length + 1)) / drawer.accentNames.length)
+        readonly property var names: drawer.accentNames.concat(["omarchy"])
+        readonly property real pitch: width / 6
+        readonly property real rowPitch: 44
+        readonly property real dot: 28
+        height: rowPitch * Math.ceil(names.length / 6)
         Repeater {
-          model: drawer.accentNames
+          model: swatchGrid.names
           delegate: Item {
             required property string modelData
-            width: 30
-            height: 30
+            required property int index
+            readonly property bool active: modelData === app.shownColor
+            readonly property int row: Math.floor(index / 6)
+            readonly property int inRow: Math.min(6, swatchGrid.names.length - row * 6)
+            width: swatchGrid.pitch
+            height: swatchGrid.rowPitch
+            x: (swatchGrid.width - inRow * swatchGrid.pitch) / 2 + (index % 6) * swatchGrid.pitch
+            y: row * swatchGrid.rowPitch
             Rectangle {
               anchors.centerIn: parent
-              width: 28
-              height: 28
-              radius: 14
+              width: swatchGrid.dot * 1.32 + swatchGrid.dot * 0.16
+              height: width
+              radius: width / 2
               color: "transparent"
-              border.width: modelData === app.shownColor ? 2 : 0
-              border.color: Theme.text
+              border.width: swatchGrid.dot * 0.08
+              border.color: Theme.textMuted
+              opacity: parent.active ? 1 : 0
+              scale: parent.active ? 1 : 0.85
+              Behavior on opacity { NumberAnimation { duration: app && app.reduceMotion ? 0 : 160 } }
+              Behavior on scale { NumberAnimation { duration: app && app.reduceMotion ? 0 : 200; easing.type: Easing.OutCubic } }
             }
             Rectangle {
               anchors.centerIn: parent
-              width: 20
-              height: 20
-              radius: 10
-              color: app.paletteFill(modelData)
-              border.width: 1
-              border.color: Theme.lifted
+              width: swatchGrid.dot
+              height: width
+              radius: width / 2
+              color: modelData === "omarchy" ? app.accent : app.paletteFill(modelData)
+              border.width: modelData === "black" ? 1 : 0
+              border.color: Theme.edgeStrong
+              scale: swatchArea.containsMouse && !parent.active ? 1.08 : 1
+              Behavior on scale { NumberAnimation { duration: app && app.reduceMotion ? 0 : 140; easing.type: Easing.OutCubic } }
+              // A hole marks the swatch that follows the theme accent.
+              Rectangle {
+                anchors.centerIn: parent
+                visible: modelData === "omarchy"
+                width: parent.width * 0.36
+                height: width
+                radius: width / 2
+                color: Theme.surface
+              }
             }
             HoverArea {
-              label: drawer.title(modelData)
+              id: swatchArea
+              label: modelData === "omarchy" ? "Theme accent" : drawer.title(modelData)
               tint: false
-              onContainsMouseChanged: drawer.hoverColor = containsMouse ? drawer.title(modelData) : ""
               onActivated: app.selectColor(modelData)
             }
           }
         }
+      }
+
+      Rectangle {
+        width: parent.width
+        height: 1
+        color: Theme.divider
+      }
+
+      Item {
+        width: parent.width
+        height: 24
+        Text {
+          id: resetText
+          anchors.verticalCenter: parent.verticalCenter
+          text: "Reset to default"
+          color: Theme.link
+          opacity: app.syncOn ? 0.45 : 1
+          font.pixelSize: 14
+          font.family: app.fontFamily
+          textFormat: Text.PlainText
+        }
         Item {
-          width: 30
-          height: 30
-          Rectangle {
-            anchors.centerIn: parent
-            width: 28
-            height: 28
-            radius: 14
-            color: "transparent"
-            border.width: app.shownColor === "omarchy" ? 2 : 0
-            border.color: Theme.text
-          }
-          Rectangle {
-            anchors.centerIn: parent
-            width: 20
-            height: 20
-            radius: 10
-            color: app.accent
-            border.width: 1
-            border.color: Theme.lifted
-            // A hole marks the swatch that follows the theme accent.
-            Rectangle {
-              anchors.centerIn: parent
-              width: 8
-              height: 8
-              radius: 4
-              color: Theme.surface
-            }
-          }
+          width: resetText.implicitWidth
+          height: parent.height
           HoverArea {
-            label: "Theme accent"
+            label: "Reset to " + app.botLabel() + "'s look"
             tint: false
-            onContainsMouseChanged: drawer.hoverColor = containsMouse ? "Theme accent" : ""
-            onActivated: app.selectColor("omarchy")
+            enabled: !app.syncOn
+            onActivated: app.setSync(true)
           }
         }
       }
