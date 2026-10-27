@@ -30,7 +30,7 @@ Rectangle {
   border.color: "#27272A"
   clip: true
 
-  // The primary bot plus the four most recently used, shown in roster
+  // The primary bot plus the three most recently used, shown in roster
   // order so chips do not reshuffle as you switch between them.
   readonly property var pinnedBots: {
     var bots = app && app.bots ? app.bots : []
@@ -40,12 +40,12 @@ Rectangle {
     if (primary) { wanted[primary.id] = true; count++ }
     var recent = app ? app.recentBots : []
     var i
-    for (i = 0; i < recent.length && count < 5; i++) {
+    for (i = 0; i < recent.length && count < 4; i++) {
       if (wanted[recent[i]] || !app.findBot(recent[i])) continue
       wanted[recent[i]] = true
       count++
     }
-    for (i = 0; i < bots.length && count < 5; i++) {
+    for (i = 0; i < bots.length && count < 4; i++) {
       if (wanted[bots[i].id]) continue
       wanted[bots[i].id] = true
       count++
