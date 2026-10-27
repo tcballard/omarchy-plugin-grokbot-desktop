@@ -2,10 +2,11 @@
 
 // Grok Bot avatar colours, in the app's order. The fills are the app's own
 // values: the colour names and hex values Grok Bot stores for each bot,
-// which match its avatar picker. Eyes are cut through the shape, so a
-// surface that cannot show what is behind paints them in its own colour
-// (CUTOUT); black uses a light cut-out so its face still reads on the dark
-// chrome. "omarchy" is resolved by the shell from the active theme accent.
+// which match its avatar picker. On a dark surface Grok Bot draws black as
+// white (darkFill), as its dark roster and picker show. Eyes are cut through
+// the shape, so a surface that cannot show what is behind paints them in its
+// own colour (CUTOUT). "omarchy" is resolved by the shell from the active
+// theme accent.
 
 var NAMES = [
   "black", "brown", "red", "orange", "yellow", "green",
@@ -15,10 +16,9 @@ var NAMES = [
 var OMARCHY = "omarchy"
 
 var CUTOUT = "#141416"
-var CUTOUT_ON_BLACK = "#F4F4F5"
 
 var COLORS = {
-  black:   { fill: "#000000", eye: CUTOUT_ON_BLACK },
+  black:   { fill: "#000000", darkFill: "#FFFFFF", eye: CUTOUT },
   brown:   { fill: "#936439", eye: CUTOUT },
   red:     { fill: "#FF263C", eye: CUTOUT },
   orange:  { fill: "#FF6700", eye: CUTOUT },
@@ -47,6 +47,12 @@ function known(name) {
 
 function accepts(name) {
   return known(name) || String(name || "") === OMARCHY
+}
+
+// The fill Grok Bot uses for `name` on a dark or light surface.
+function fillFor(name, dark) {
+  var tone = get(name)
+  return dark && tone.darkFill ? tone.darkFill : tone.fill
 }
 
 function get(name) {

@@ -31,7 +31,7 @@ Item {
   }
 
   // Active borders use the chosen colour, or near-white when that colour is
-  // too dark to read on the chrome (black, for one).
+  // too dark to read on the chrome.
   readonly property color tone: app.ringColor(app.shownColor === "omarchy" ? app.accent : app.paletteFill(app.shownColor))
   readonly property var accentNames: {
     var names = app && app.colorNames ? app.colorNames : []
@@ -198,7 +198,7 @@ Item {
               morph: 1
               colorName: app.shownColor
               accent: app.accent
-              cutoutHex: app.shownColor === "black" ? Theme.text : Theme.surface
+              cutoutHex: Theme.surface
               eyeOpen: 1
               scale: shapeArea.containsMouse && !cell.active ? 1.07 : 1
               Behavior on scale { NumberAnimation { duration: app && app.reduceMotion ? 0 : 140; easing.type: Easing.OutCubic } }
@@ -256,8 +256,6 @@ Item {
               height: width
               radius: width / 2
               color: modelData === "omarchy" ? app.accent : app.paletteFill(modelData)
-              border.width: modelData === "black" ? 1 : 0
-              border.color: Theme.edgeStrong
               scale: swatchArea.containsMouse && !parent.active ? 1.08 : 1
               Behavior on scale { NumberAnimation { duration: app && app.reduceMotion ? 0 : 140; easing.type: Easing.OutCubic } }
               // A hole marks the swatch that follows the theme accent.

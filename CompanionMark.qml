@@ -36,6 +36,9 @@ Item {
   // Grok Bot's picker decorates the pebble with a pumpkin stem; avatars
   // themselves do not wear it.
   property bool showStem: false
+  // Whether the mark sits on a dark surface; Grok Bot then draws black as
+  // white.
+  property bool darkSurface: true
   readonly property real stemLevel: mark.stemOverride >= 0 ? mark.stemOverride : Shapes.stemLevel(mark.shapeFrom, mark.shapeTo, mark.morph)
   readonly property string stemPath: Shapes.svgPath(Shapes.stemPoints(), mark.rad, mark.cx, mark.cy)
   // Punch the eyes through the shape so whatever is behind shows, as Grok
@@ -71,7 +74,7 @@ Item {
       if (key === "eye") return mark.parseHex(mark.accentLuma < 0.16 ? "#F4F4F5" : "#141416")
       return mark.parseHex(mark.accentLuma < 0.16 ? "#FFFFFF" : "#09090B")
     }
-    return mark.parseHex(Palette.get(chosen)[key])
+    return mark.parseHex(key === "fill" ? Palette.fillFor(chosen, mark.darkSurface) : Palette.get(chosen)[key])
   }
 
   function mixToken(key) {

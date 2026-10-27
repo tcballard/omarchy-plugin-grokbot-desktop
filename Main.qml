@@ -430,9 +430,13 @@ Item {
     return bot && bot.isPrimary ? "Main" : "Bot"
   }
 
+  // Fills as they appear on the dark bubble chrome.
   function paletteFill(name) {
-    return Palette.known(name) ? Palette.get(name).fill : root.accent
+    return Palette.known(name) ? Palette.fillFor(name, true) : root.accent
   }
+
+  // The desktop counts as dark when the Omarchy theme's background is.
+  readonly property bool desktopDark: (0.2126 * root.paper.r + 0.7152 * root.paper.g + 0.0722 * root.paper.b) < 0.5
 
   function ringColor(value) {
     var c = Qt.color(value)
@@ -1708,6 +1712,7 @@ Item {
         eyeSet: root.shownEyes
         stemOverride: root.shownStem
         cutout: true
+        darkSurface: root.desktopDark
         colorFromName: root.colorFrom
         colorName: root.colorTo
         mixFromColors: root.morphFromPoints !== null

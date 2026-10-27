@@ -142,10 +142,16 @@ test('palette eyes stay readable on each fill', () => {
   for (const name of palette.NAMES) {
     const tone = palette.COLORS[name]
     assert.equal(tone.fill.toLowerCase(), app[name], name)
-    assert.ok(contrast(tone.eye, tone.fill) >= 3, `${name} eye/fill contrast`)
-    if (name === 'black') assert.equal(tone.eye.toLowerCase(), '#f4f4f5')
-    else assert.equal(tone.eye.toLowerCase(), '#141416')
+    // Eyes show the dark chrome behind them; the fill there must stand off it.
+    assert.equal(tone.eye.toLowerCase(), '#141416')
+    assert.ok(contrast(tone.eye, palette.fillFor(name, true)) >= 3, `${name} on the dark chrome`)
   }
+  // Grok Bot draws black as white on dark surfaces.
+  assert.equal(palette.fillFor('black', true), '#FFFFFF')
+  assert.equal(palette.fillFor('black', false), '#000000')
+  assert.equal(palette.fillFor('orange', true), palette.fillFor('orange', false))
+  assert.match(main, /darkSurface: root\.desktopDark/)
+  assert.doesNotMatch(read('BubblePanel.qml'), /=== "black"/)
   assert.equal(palette.canonical('purple'), 'violet')
   assert.equal(palette.canonical('grey'), 'gray')
 })

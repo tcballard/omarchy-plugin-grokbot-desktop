@@ -232,7 +232,7 @@ Rectangle {
             fillFrom: app.fillFrom
             eyeFrom: app.eyeFrom
             accent: app.accent
-            cutoutHex: app.shownColor === "black" ? Theme.text : Theme.raised
+            cutoutHex: Theme.raised
             expression: "idle"
             eyeOpen: 1
           }
@@ -306,7 +306,7 @@ Rectangle {
             required property var modelData
             readonly property bool active: bubble.activePin(modelData.id)
             readonly property string plate: active ? Theme.lifted : Theme.raised
-            readonly property string eyePlate: modelData.color === "black" ? Theme.text : plate
+            readonly property string eyePlate: plate
             width: pinLabel.width + 34
             height: 28
             radius: 14
@@ -384,7 +384,7 @@ Rectangle {
             required property var modelData
             readonly property bool active: bubble.activePin(modelData.id)
             readonly property string plate: active ? Theme.lifted : Theme.raised
-            readonly property string eyePlate: modelData.color === "black" ? Theme.text : plate
+            readonly property string eyePlate: plate
             width: extraName.implicitWidth + 34
             height: 28
             radius: 14
