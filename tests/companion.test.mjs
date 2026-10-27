@@ -102,7 +102,8 @@ test('every official shape morphs through the same contour length', () => {
   const mixed = shapes.blend('teardrop', 'hex', 0)
   const ended = shapes.blend('teardrop', 'hex', 1)
   assert.deepEqual(mixed.points[0], shapes.SHAPES.teardrop.points[0])
-  assert.deepEqual(ended.points[40], shapes.SHAPES.hex.points[40])
+  const offset = shapes.bestOffset(shapes.SHAPES.teardrop.points, shapes.SHAPES.hex.points)
+  assert.deepEqual(ended.points[40], shapes.SHAPES.hex.points[(40 + offset) % shapes.POINT_COUNT])
   const mid = shapes.blend('star', 'blob', 0.5)
   assert.equal(mid.points.length, shapes.POINT_COUNT)
   assert.ok(mid.eyeY > Math.min(shapes.SHAPES.star.eyeY, shapes.SHAPES.blob.eyeY) - 0.001)
@@ -624,4 +625,20 @@ test('closing the bubble keeps an ask running and a busy prompt is kept', () => 
   assert.ok(submit.indexOf('root.asking') < submit.indexOf('promptDraft = ""'))
   const dictate = qmlFunction(main, 'dictateText')
   assert.ok(dictate.indexOf('"busy"') < dictate.indexOf('promptDraft = ""'))
+})
+
+test('morphs pair contour points at the least travel', () => {
+  for (const a of shapes.NAMES) {
+    for (const b of shapes.NAMES) {
+      if (a === b) continue
+      const A = shapes.SHAPES[a].points
+      const B = shapes.SHAPES[b].points
+      let best = Infinity
+      for (let o = 0; o < B.length; o++) best = Math.min(best, shapes.travel(A, B, o))
+      const mid = shapes.blend(a, b, 1).points
+      let used = 0
+      for (let k = 0; k < A.length; k++) used += Math.hypot(mid[k][0] - A[k][0], mid[k][1] - A[k][1])
+      assert.ok(used / A.length <= best + 1e-9, `${a} -> ${b} travels ${used / A.length} > ${best}`)
+    }
+  }
 })

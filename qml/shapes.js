@@ -272,21 +272,70 @@ function get(name) {
   return SHAPES[resolve(name)]
 }
 
+// Mean distance each point travels when contour b is read from index
+// `offset`. Contours start at their top-most point, which can sit a quarter
+// turn apart on two shapes, so pairing indices directly spins the morph.
+function travel(a, b, offset) {
+  var n = a.length
+  var sum = 0
+  var k
+  for (k = 0; k < n; k++) {
+    var q = b[(k + offset) % n]
+    sum += hypot(q[0] - a[k][0], q[1] - a[k][1])
+  }
+  return sum / n
+}
+
+function bestOffset(a, b) {
+  var best = 0
+  var bestCost = Infinity
+  var o
+  for (o = 0; o < b.length; o++) {
+    var cost = travel(a, b, o)
+    if (cost < bestCost) {
+      bestCost = cost
+      best = o
+    }
+  }
+  return best
+}
+
+// Contour b rotated so its points pair with a's at the least travel.
+function align(a, b) {
+  var offset = bestOffset(a, b)
+  if (offset === 0) return b
+  return b.slice(offset).concat(b.slice(0, offset))
+}
+
+var ALIGNED = {}
+
+function alignedPoints(nameA, nameB) {
+  var a = resolve(nameA)
+  var b = resolve(nameB)
+  var key = a + ">" + b
+  if (!ALIGNED[key]) ALIGNED[key] = align(SHAPES[a].points, SHAPES[b].points)
+  return ALIGNED[key]
+}
+
+function mix(a, b, t) {
+  var u = t < 0 ? 0 : t > 1 ? 1 : t
+  var pts = []
+  var k
+  for (k = 0; k < a.length; k++) {
+    pts.push([
+      a[k][0] + (b[k][0] - a[k][0]) * u,
+      a[k][1] + (b[k][1] - a[k][1]) * u
+    ])
+  }
+  return pts
+}
+
 function blend(nameA, nameB, t) {
   var a = get(nameA)
   var b = get(nameB)
   var u = t < 0 ? 0 : t > 1 ? 1 : t
-  var pts = []
-  var n = POINT_COUNT
-  var k
-  for (k = 0; k < n; k++) {
-    pts.push([
-      a.points[k][0] + (b.points[k][0] - a.points[k][0]) * u,
-      a.points[k][1] + (b.points[k][1] - a.points[k][1]) * u
-    ])
-  }
   return {
-    points: pts,
+    points: mix(a.points, alignedPoints(nameA, nameB), u),
     eyeY: a.eyeY + (b.eyeY - a.eyeY) * u,
     spread: a.spread + (b.spread - a.spread) * u
   }
