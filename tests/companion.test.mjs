@@ -717,3 +717,20 @@ test('hops squash and stretch about the base', () => {
   assert.doesNotMatch(hop, /OutBounce/)
   assert.match(main, /yScale: root\.stretchY/)
 })
+
+test('morph colours keep their saturation through the blend', () => {
+  const hex = (h) => ({ r: parseInt(h.slice(1, 3), 16) / 255, g: parseInt(h.slice(3, 5), 16) / 255, b: parseInt(h.slice(5, 7), 16) / 255 })
+  const orange = hex(palette.COLORS.orange.fill)
+  const blue = hex(palette.COLORS.blue.fill)
+  const ends = Math.min(palette.oklch(orange).c, palette.oklch(blue).c)
+  const mid = palette.mix(orange, blue, 0.5)
+  assert.ok(palette.oklch(mid).c > ends * 0.85, 'OKLCH midpoint stays saturated')
+  const flat = { r: (orange.r + blue.r) / 2, g: (orange.g + blue.g) / 2, b: (orange.b + blue.b) / 2 }
+  assert.ok(palette.oklch(flat).c < ends * 0.5, 'an sRGB midpoint would go grey')
+  for (const name of palette.NAMES) {
+    const c = hex(palette.COLORS[name].fill)
+    const back = palette.mix(c, c, 0.5)
+    assert.ok(Math.abs(back.r - c.r) < 0.002 && Math.abs(back.g - c.g) < 0.002 && Math.abs(back.b - c.b) < 0.002, name)
+  }
+  assert.match(main, /morphPopAnim\.restart\(\)/)
+})

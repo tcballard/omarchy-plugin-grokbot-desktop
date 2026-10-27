@@ -55,13 +55,9 @@ Item {
     var fromName = mark.colorFromName !== "" ? mark.colorFromName : mark.colorName
     var a = mark.mixFromColors ? (key === "fill" ? mark.fillFrom : mark.eyeFrom) : mark.tokenColor(fromName, key)
     var b = mark.tokenColor(mark.colorName, key)
-    var t = mark.morph
-    return Qt.rgba(
-      a.r + (b.r - a.r) * t,
-      a.g + (b.g - a.g) * t,
-      a.b + (b.b - a.b) * t,
-      1
-    )
+    if (mark.morph >= 1) return b
+    var c = Palette.mix(a, b, mark.morph)
+    return Qt.rgba(c.r, c.g, c.b, 1)
   }
 
   function tracePath(ctx, pts, rad, cx, cy) {

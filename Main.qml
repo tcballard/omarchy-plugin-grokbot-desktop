@@ -102,6 +102,7 @@ Item {
   property real sleepDrift: 0
   property real breathe: 1
   property real talkScale: 1
+  property real morphPop: 1
   property real idleY: 0
   property real hopY: 0
   // Vertical squash and stretch about the base; width answers inversely so
@@ -398,6 +399,7 @@ Item {
     root.colorTo = nextColor
     root.morphProgress = 0
     morphAnim.restart()
+    morphPopAnim.restart()
   }
 
   function loadSettings() {
@@ -1138,6 +1140,15 @@ Item {
     NumberAnimation { target: root; property: "waveAngle"; to: 0; duration: 160 }
   }
 
+  // A small give while the contour changes: shrink through the middle of
+  // the morph, overshoot as it lands, settle.
+  SequentialAnimation {
+    id: morphPopAnim
+    NumberAnimation { target: root; property: "morphPop"; to: 0.94; duration: 260; easing.type: Easing.InOutQuad }
+    NumberAnimation { target: root; property: "morphPop"; to: 1.03; duration: 170; easing.type: Easing.OutQuad }
+    NumberAnimation { target: root; property: "morphPop"; to: 1; duration: 200; easing.type: Easing.InOutQuad }
+  }
+
   NumberAnimation {
     id: morphAnim
     target: root
@@ -1435,7 +1446,7 @@ Item {
           return "file://" + bot.avatarImage
         }
         opacity: root.ghost ? 0.28 : 1
-        scale: root.breathe * root.talkScale
+        scale: root.breathe * root.talkScale * root.morphPop
         transformOrigin: Item.Bottom
         transform: [
           Scale {
