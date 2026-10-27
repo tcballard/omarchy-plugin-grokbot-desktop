@@ -199,10 +199,15 @@ Rectangle {
             width: 22
             height: 22
             y: 7
-            shapeFrom: app.shownShape
-            shapeTo: app.shownShape
-            morph: 1
-            colorName: app.shownColor
+            shapeFrom: app.shapeFrom
+            shapeTo: app.shapeTo
+            morph: app.morphProgress
+            face: app.shownFace
+            colorFromName: app.colorFrom
+            colorName: app.colorTo
+            mixFromColors: app.morphFromPoints !== null
+            fillFrom: app.fillFrom
+            eyeFrom: app.eyeFrom
             accent: app.accent
             cutoutHex: app.shownColor === "black" ? "#F4F4F5" : "#1C1C1F"
             expression: "idle"

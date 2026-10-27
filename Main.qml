@@ -84,6 +84,7 @@ Item {
   property var morphToPoints: null
   property color fillFrom: "#F28B30"
   property color eyeFrom: "#141416"
+  readonly property var shownFace: root.morphFromPoints ? Shapes.mix(root.morphFromPoints, root.morphToPoints, root.morphProgress) : null
   property string expression: "idle"
   property bool sleepHold: false
   property real eyeOpen: 1
@@ -105,6 +106,9 @@ Item {
   property real spinAngle: 0
   property real waveAngle: 0
   property real orbit: 0
+  // Hyper's orbit radius fades in and out so switching motion never jumps.
+  property real orbitAmp: root.motionName === "hyper" ? 1 : 0
+  Behavior on orbitAmp { NumberAnimation { duration: 420; easing.type: Easing.InOutCubic } }
   property var bots: []
   property string bubbleBody: ""
   property string promptDraft: ""
@@ -500,10 +504,6 @@ Item {
     if (name !== "calm" && name !== "playful" && name !== "hyper") return
     root.motionName = name
     root.idleOn = name !== "calm"
-    if (name === "calm") {
-      root.idleY = 0
-      root.orbit = 0
-    }
     root.scheduleSave()
   }
 
@@ -1047,9 +1047,21 @@ Item {
     NumberAnimation { target: root; property: "breathe"; to: 0.985; duration: 1700; easing.type: Easing.InOutSine }
   }
 
+  // When the bob stops (another motion, or a drag) the mark settles back
+  // to rest instead of freezing or snapping.
+  NumberAnimation {
+    id: settleIdle
+    target: root
+    property: "idleY"
+    to: 0
+    duration: 360
+    easing.type: Easing.OutCubic
+  }
+
   SequentialAnimation {
     running: root.motionName === "playful" && root.present && !root.dragging
     loops: Animation.Infinite
+    onRunningChanged: if (!running && root.idleY !== 0) settleIdle.restart()
     NumberAnimation { target: root; property: "idleY"; to: -7; duration: 1800; easing.type: Easing.InOutSine }
     NumberAnimation { target: root; property: "idleY"; to: 0; duration: 1800; easing.type: Easing.InOutSine }
   }
@@ -1344,6 +1356,7 @@ Item {
         radius: 5
         color: "#000000"
         opacity: root.ghost ? 0.05 : 0.18
+        Behavior on opacity { NumberAnimation { duration: 160 } }
       }
 
       CompanionMark {
@@ -1356,7 +1369,7 @@ Item {
         shapeFrom: root.shapeFrom
         shapeTo: root.shapeTo
         morph: root.morphProgress
-        face: root.morphFromPoints ? Shapes.mix(root.morphFromPoints, root.morphToPoints, root.morphProgress) : null
+        face: root.shownFace
         colorFromName: root.colorFrom
         colorName: root.colorTo
         mixFromColors: root.morphFromPoints !== null
@@ -1378,8 +1391,8 @@ Item {
         scale: root.breathe * root.talkScale
         transform: [
           Translate {
-            x: root.motionName === "hyper" ? Math.cos(root.orbit * Math.PI / 180) * 6 : 0
-            y: root.idleY + root.hopY + (root.motionName === "hyper" ? Math.sin(root.orbit * Math.PI / 180) * 5 : 0)
+            x: Math.cos(root.orbit * Math.PI / 180) * 6 * root.orbitAmp
+            y: root.idleY + root.hopY + Math.sin(root.orbit * Math.PI / 180) * 5 * root.orbitAmp
           },
           Rotation { origin.x: mark.width / 2; origin.y: mark.height / 2; angle: root.spinAngle + root.waveAngle }
         ]
