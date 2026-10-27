@@ -90,6 +90,18 @@ Item {
     ctx.restore()
   }
 
+  // The eye pose eases between expressions instead of snapping.
+  readonly property var pose: Face.pose(expression)
+  property real poseTilt: pose.tilt
+  property real poseHeight: pose.height
+  property real poseOpen: pose.open
+  Behavior on poseTilt { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+  Behavior on poseHeight { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+  Behavior on poseOpen { NumberAnimation { duration: 180; easing.type: Easing.InOutCubic } }
+  onPoseTiltChanged: canvas.requestPaint()
+  onPoseHeightChanged: canvas.requestPaint()
+  onPoseOpenChanged: canvas.requestPaint()
+
   onBlendedChanged: canvas.requestPaint()
   onFillColorChanged: canvas.requestPaint()
   onEyeColorChanged: canvas.requestPaint()
@@ -140,22 +152,9 @@ Item {
         ctx.fill()
       }
 
-      var open = mark.eyeOpen
-      var tilt = 11
-      var heightScale = 1
-      if (mark.expression === "sleep") {
-        open = Math.min(open, 0.04)
-      } else if (mark.expression === "think") {
-        open = Math.min(open, 0.45)
-        tilt = 18 + Math.sin(mark.thinkAngle) * 2
-        heightScale = 0.62
-      } else if (mark.expression === "alert") {
-        tilt = 7
-        heightScale = 1.16
-      } else if (mark.expression === "happy" || mark.expression === "celebrate") {
-        tilt = 16
-        heightScale = 0.72
-      }
+      var open = Math.min(mark.eyeOpen, mark.poseOpen)
+      var tilt = mark.poseTilt + (mark.expression === "think" ? Math.sin(mark.thinkAngle) * 2 : 0)
+      var heightScale = mark.poseHeight
       heightScale *= 1 - Math.min(0.2, Math.abs(mark.gazeY) * 0.12)
 
       var gx = cx + mark.gazeX * rad * 0.16

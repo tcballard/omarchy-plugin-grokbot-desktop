@@ -675,3 +675,11 @@ test('a closing eye flattens into a lid instead of shrinking to a dot', () => {
   assert.equal(shut.r, shut.h / 2)
   assert.doesNotMatch(read('CompanionMark.qml'), /paintCapsule/)
 })
+
+test('expressions ease between eye poses', () => {
+  const mark = read('CompanionMark.qml')
+  for (const name of ['poseTilt', 'poseHeight', 'poseOpen']) assert.match(mark, new RegExp(`Behavior on ${name}`))
+  assert.equal(face.pose('nope').tilt, face.pose('idle').tilt)
+  assert.ok(face.pose('sleep').open < 0.1)
+  assert.ok(face.pose('think').height < face.pose('idle').height)
+})
