@@ -507,6 +507,13 @@ Rectangle {
           onPaint: {
             var ctx = getContext("2d")
             ctx.reset()
+            if (app && app.asking) {
+              ctx.fillStyle = "#F4F4F5"
+              ctx.beginPath()
+              ctx.roundedRect(width / 2 - 6, height / 2 - 6, 12, 12, 3, 3)
+              ctx.fill()
+              return
+            }
             ctx.strokeStyle = voiceButton.ink
             ctx.lineCap = "round"
             ctx.lineWidth = 1.7
@@ -527,6 +534,8 @@ Rectangle {
           onVisibleChanged: requestPaint()
         }
 
+        readonly property bool asking: app ? app.asking : false
+        onAskingChanged: waveCanvas.requestPaint()
         onDictatingChanged: waveCanvas.requestPaint()
         onWaveChanged: waveCanvas.requestPaint()
         onInkChanged: waveCanvas.requestPaint()
@@ -535,6 +544,10 @@ Rectangle {
           anchors.fill: parent
           onClicked: {
             if (!app) return
+            if (app.asking) {
+              app.stopAsk()
+              return
+            }
             if (promptField.text.trim() !== "") {
               voiceButton.dictating = false
               app.submitPrompt(promptField.text)

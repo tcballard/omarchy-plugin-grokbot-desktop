@@ -17,7 +17,7 @@ Both helpers are started with a cleared environment.
 - `bin/grokbot-cursor` is `/usr/bin/python3 -I -S`. It may see only `HYPRLAND_INSTANCE_SIGNATURE` and `XDG_RUNTIME_DIR`, asks Hyprland for `cursorpos`, and prints `x y` when the position changes. It exits when its parent changes.
 - `bin/grokbot-ask` is `/usr/bin/setpriv --pdeathsig TERM` then `/usr/bin/python3 -I`. Stdin is `{"botId","botName","prompt","host"}`. Webhook mode reads the bearer token from `~/.config/omarchy/grokbot-webhook.key` or `GROKBOT_WEBHOOK_KEY` and POSTs those four fields. Agent mode resolves `grok`, `claude`, `codex`, `opencode`, and the other Omarchy agent names from trusted directories, writes the prompt to that process's stdin, and stops at 64 KiB of stdout. The token and the prompt are not arguments.
 
-`Component.onDestruction` stops both processes. Hiding the companion cancels an ask in flight.
+`Component.onDestruction` stops both processes. Hiding the companion cancels an ask in flight. Closing the bubble, Esc, or a click outside it does not; the Stop button in the composer does. A reply that arrives while the bubble is closed leaves a dot on the mark until the bubble opens.
 
 `bin/grokbot-sync` is not a shell child. Run it when a local agents directory should replace `~/.config/omarchy/grokbot-bots.json`. The service watches that file and falls back to `data/bots.json`.
 

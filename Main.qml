@@ -50,6 +50,7 @@ Item {
   property bool menuOpen: false
   property bool switcherOpen: false
   property bool asking: false
+  property bool replyUnread: false
   property bool dragging: false
   property bool ghost: false
   property bool claimed: false
@@ -532,6 +533,7 @@ Item {
     root.present = true
     root.cardPage = "chat"
     root.bubbleOpen = true
+    root.replyUnread = false
     root.menuOpen = false
     root.wake()
     Qt.callLater(function () { if (bubblePanel) bubblePanel.focusPrompt() })
@@ -579,9 +581,10 @@ Item {
     root.present = true
   }
 
+  // Closing never cancels an ask. A reply that lands while the bubble is
+  // closed leaves a dot on the mark until the bubble is opened again.
   function dismissSurfaces() {
-    var had = root.bubbleOpen || root.menuOpen || root.asking
-    if (root.asking) root.cancelAsk()
+    var had = root.bubbleOpen || root.menuOpen
     root.closeBubble()
     root.closeSettings()
     root.menuOpen = false
@@ -769,6 +772,19 @@ Item {
     root.asking = false
   }
 
+  function stopAsk() {
+    if (!root.asking) return
+    root.cancelAsk()
+    root.bubbleBody = "Stopped."
+    root.expression = "idle"
+  }
+
+  function replyLanded() {
+    if (root.bubbleOpen) return
+    root.replyUnread = true
+    root.hop()
+  }
+
   Process {
     id: askProc
     clearEnvironment: true
@@ -793,6 +809,7 @@ Item {
         root.bubbleBody = err !== "" ? err : "The ask didn't return a reply."
         root.expression = "idle"
       }
+      root.replyLanded()
     }
   }
 
@@ -802,6 +819,8 @@ Item {
     onTriggered: {
       root.cancelAsk()
       root.bubbleBody = "That took too long, so I stopped waiting."
+      root.expression = "idle"
+      root.replyLanded()
     }
   }
 
@@ -1315,6 +1334,21 @@ Item {
           Rotation { origin.x: mark.width / 2; origin.y: mark.height / 2; angle: root.spinAngle + root.waveAngle }
         ]
         Behavior on opacity { NumberAnimation { duration: 160 } }
+
+        Rectangle {
+          id: replyDot
+          width: Math.max(12, root.markSize * 0.11)
+          height: width
+          radius: width / 2
+          x: mark.width * 0.7
+          y: mark.height * 0.14
+          color: "#F4F4F5"
+          border.width: 2
+          border.color: "#141416"
+          scale: root.replyUnread ? 1 : 0
+          visible: scale > 0.01
+          Behavior on scale { NumberAnimation { duration: 260; easing.type: Easing.OutBack } }
+        }
       }
 
       MouseArea {
