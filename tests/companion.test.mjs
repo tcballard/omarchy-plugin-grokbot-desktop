@@ -149,7 +149,7 @@ test('bundled roster is the fifteen live bots, with Bob first', () => {
 })
 
 test('QML exposes the speech-bubble IPC and keeps outside text plain', () => {
-  for (const name of ['summon', 'show', 'hide', 'toggle', 'settings', 'ask', 'bot', 'appearance', 'animate', 'say', 'sayLink', 'sayLinks', 'dismiss']) {
+  for (const name of ['summon', 'show', 'hide', 'toggle', 'settings', 'ask', 'dictate', 'bot', 'appearance', 'animate', 'say', 'sayLink', 'sayLinks', 'dismiss']) {
     assert.match(main, new RegExp(`function ${name}\\(`))
   }
   assert.match(main, /target:\s*"io\.github\.tcballard\.grokbot-desktop"/)
@@ -299,6 +299,274 @@ test('webhook mode posts the four fields and keeps the key off argv', async () =
   })
   assert.notEqual(rejected.status, 0)
   assert.doesNotMatch(rejected.stderr, new RegExp(key))
+})
+
+const BOB = 'e0195a7d-f804-4688-9191-e2cf3574a6d1'
+const OMA = 'd0357ba3-1642-47bd-9b0c-95000cb33992'
+const INBOX = 'bed72fb0-0323-4349-81df-dfd08c1f25f6'
+const EGG = '23c1f61a-4475-40dc-9735-3f6c2356ad08'
+const SHOP = 'e3d5b428-7673-4527-b902-376eb1f43f14'
+const OMARCHY_BOT = '656295d3-33f7-49bb-a46b-ac9c8e27b7c9'
+const WRITER = '129f9b89-bb06-43ce-867e-401aebd9ac77'
+
+function loadRouteModule() {
+  const file = path.join(root, 'bin/grokbot-dictation-route')
+  const probe = spawnSync('/usr/bin/python3', ['-c', `
+import importlib.util, importlib.machinery, json
+loader = importlib.machinery.SourceFileLoader("route", ${JSON.stringify(file)})
+spec = importlib.util.spec_from_loader("route", loader)
+mod = importlib.util.module_from_spec(spec)
+loader.exec_module(mod)
+print(json.dumps({
+  "recordingIdle": mod.recording_finished("recording", "idle"),
+  "transcribingIdle": mod.recording_finished("transcribing", "idle"),
+  "idleIdle": mod.recording_finished("idle", "idle"),
+  "idleRecording": mod.recording_finished("", "recording")
+}))
+`], { encoding: 'utf8' })
+  assert.equal(probe.status, 0, probe.stderr)
+  return JSON.parse(probe.stdout)
+}
+
+test('wake phrases agree for Superwhisper and Voxtype', () => {
+  const dictation = loadLibrary('qml/dictation.js')
+  const phrases = [
+    ['Hey Bot, what\'s on my calendar?', true, BOB, "what's on my calendar?"],
+    ['hey bob check the weather', true, BOB, 'check the weather'],
+    ['Hey grok bot: status', true, BOB, 'status'],
+    ['HEY GROK hello', true, BOB, 'hello'],
+    ['Hey OmaBot: check the VM', true, OMA, 'check the VM'],
+    ['Hey OmaBot check the VM', true, OMA, 'check the VM'],
+    ['Hey Inbox Admin, triage', true, INBOX, 'triage'],
+    ['Hey Writer draft a note', true, WRITER, 'draft a note'],
+    ['Hey dr eggbot, sketch a mark', true, EGG, 'sketch a mark'],
+    ['Hey Shop With Grok, find a mug', true, SHOP, 'find a mug'],
+    ['Hey Omarchy Bot publish the notes', true, OMARCHY_BOT, 'publish the notes'],
+    ['Hey Bot', true, BOB, ''],
+    ['check the VM', false, '', 'check the VM'],
+    ['Hey there friend', false, '', 'Hey there friend'],
+    ['HeyBob', false, '', 'HeyBob'],
+    ['please Hey Bot, hi', false, '', 'please Hey Bot, hi']
+  ]
+  for (const [text, matched, botId, prompt] of phrases) {
+    const js = dictation.route(text, bots, BOB)
+    assert.equal(js.matched, matched, text)
+    assert.equal(js.botId, botId, text)
+    assert.equal(js.prompt, prompt, text)
+    const py = spawnSync('/usr/bin/python3', [path.join(root, 'bin/grokbot-dictation-route')], {
+      input: text,
+      encoding: 'utf8'
+    })
+    assert.equal(py.status, matched ? 0 : 1, py.stderr || text)
+    const parsed = JSON.parse(py.stdout)
+    assert.equal(parsed.matched, js.matched, text)
+    assert.equal(parsed.botId, js.botId, text)
+    assert.equal(parsed.prompt, js.prompt, text)
+  }
+  const flags = loadRouteModule()
+  assert.equal(flags.recordingIdle, true)
+  assert.equal(flags.transcribingIdle, true)
+  assert.equal(flags.idleIdle, false)
+  assert.equal(flags.idleRecording, false)
+})
+
+test('dictation toggle follows the Omarchy backend, with direct fallbacks', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'grokbot-dictate-'))
+  const bin = path.join(dir, 'bin')
+  fs.mkdirSync(bin)
+  const log = path.join(dir, 'log')
+  const write = (name, body) => {
+    const file = path.join(bin, name)
+    fs.writeFileSync(file, body)
+    fs.chmodSync(file, 0o755)
+  }
+  write('omarchy', '#!/bin/sh\nprintf "%s\\n" "$*" > "$DICTATION_LOG"\n')
+  write('superwhisper', '#!/bin/sh\nprintf "%s\\n" "superwhisper $*" > "$DICTATION_LOG"\n')
+  write('voxtype', '#!/bin/sh\nprintf "%s\\n" "voxtype $*" > "$DICTATION_LOG"\n')
+  write('wtype', '#!/bin/sh\nprintf "%s\\n" "$*" > "$WTYPE_LOG"\n')
+  const config = path.join(dir, 'config')
+  const runDictate = (pathDir, backend) => {
+    fs.rmSync(log, { force: true })
+    if (backend) fs.mkdirSync(path.join(config, 'omarchy', 'defaults'), { recursive: true })
+    if (backend) fs.writeFileSync(path.join(config, 'omarchy', 'defaults', 'dictation'), `${backend}\n`)
+    else fs.rmSync(path.join(config, 'omarchy', 'defaults', 'dictation'), { force: true })
+    return spawnSync('/usr/bin/python3', [path.join(root, 'bin/grokbot-dictate')], {
+      encoding: 'utf8',
+      env: { PATH: pathDir, XDG_CONFIG_HOME: config, DICTATION_LOG: log, HOME: dir }
+    })
+  }
+  let result = runDictate(bin, 'voxtype')
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(fs.readFileSync(log, 'utf8').trim(), 'dictation toggle')
+
+  const noOmarchy = bin + '-no'
+  fs.mkdirSync(noOmarchy)
+  fs.copyFileSync(path.join(bin, 'superwhisper'), path.join(noOmarchy, 'superwhisper'))
+  fs.copyFileSync(path.join(bin, 'voxtype'), path.join(noOmarchy, 'voxtype'))
+  fs.chmodSync(path.join(noOmarchy, 'superwhisper'), 0o755)
+  fs.chmodSync(path.join(noOmarchy, 'voxtype'), 0o755)
+  result = runDictate(noOmarchy, 'voxtype')
+  assert.equal(fs.readFileSync(log, 'utf8').trim(), 'voxtype record toggle')
+  result = runDictate(noOmarchy, 'superwhisper')
+  assert.equal(fs.readFileSync(log, 'utf8').trim(), 'superwhisper record')
+  result = runDictate(noOmarchy, '')
+  assert.equal(fs.readFileSync(log, 'utf8').trim(), 'superwhisper record')
+  fs.writeFileSync(path.join(config, 'omarchy', 'defaults', 'dictation'), '../not-a-command\n')
+  result = runDictate(path.join(noOmarchy), 'keep')
+  // runDictate('keep') overwrites the file. Write the bad name after a dedicated call.
+  fs.writeFileSync(path.join(config, 'omarchy', 'defaults', 'dictation'), '../not-a-command\n')
+  result = spawnSync('/usr/bin/python3', [path.join(root, 'bin/grokbot-dictate')], {
+    encoding: 'utf8',
+    env: { PATH: noOmarchy, XDG_CONFIG_HOME: config, DICTATION_LOG: log, HOME: dir }
+  })
+  assert.equal(fs.readFileSync(log, 'utf8').trim(), 'superwhisper record')
+
+  const onlyVox = path.join(dir, 'vox-only')
+  fs.mkdirSync(onlyVox)
+  fs.copyFileSync(path.join(bin, 'voxtype'), path.join(onlyVox, 'voxtype'))
+  fs.chmodSync(path.join(onlyVox, 'voxtype'), 0o755)
+  fs.rmSync(log, { force: true })
+  fs.rmSync(path.join(config, 'omarchy', 'defaults', 'dictation'), { force: true })
+  result = spawnSync('/usr/bin/python3', [path.join(root, 'bin/grokbot-dictate')], {
+    encoding: 'utf8',
+    env: { PATH: onlyVox, XDG_CONFIG_HOME: config, DICTATION_LOG: log, HOME: dir }
+  })
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(fs.readFileSync(log, 'utf8').trim(), 'voxtype record toggle')
+})
+
+test('Superwhisper and Voxtype wake lines route instead of being typed', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'grokbot-voice-'))
+  const sink = path.join(dir, 'sink')
+  const wtypeLog = path.join(dir, 'wtype')
+  const wtype = path.join(dir, 'wtype')
+  fs.writeFileSync(wtype, '#!/bin/sh\nprintf "%s\\n" "$*" > "$WTYPE_LOG"\n')
+  fs.chmodSync(wtype, 0o755)
+  const filter = (backend, text) => spawnSync('/usr/bin/python3', [
+    path.join(root, 'bin/grokbot-dictation-route'), '--filter', '--backend', backend
+  ], {
+    input: text,
+    encoding: 'utf8',
+    env: { ...process.env, GROKBOT_DICTATE_SINK: sink, PATH: dir }
+  })
+  for (const backend of ['superwhisper', 'voxtype']) {
+    fs.rmSync(sink, { force: true })
+    const wake = filter(backend, 'Hey OmaBot, check the VM')
+    assert.equal(wake.status, 0, wake.stderr)
+    assert.equal(wake.stdout, '')
+    assert.equal(JSON.parse(fs.readFileSync(sink, 'utf8')).text, 'Hey OmaBot, check the VM')
+    assert.equal(JSON.parse(fs.readFileSync(sink, 'utf8')).backend, backend)
+    fs.rmSync(sink, { force: true })
+    const plain = filter(backend, 'check the VM')
+    assert.equal(plain.stdout, 'check the VM')
+    assert.equal(fs.existsSync(sink), false)
+  }
+
+  const typed = spawnSync('/usr/bin/python3', [path.join(root, 'bin/grokbot-dictation-route'), '--wtype'], {
+    input: 'check the VM',
+    encoding: 'utf8',
+    env: { ...process.env, GROKBOT_WTYPE: wtype, WTYPE_LOG: wtypeLog, GROKBOT_DICTATE_SINK: sink, PATH: dir }
+  })
+  assert.equal(typed.status, 0, typed.stderr)
+  assert.match(fs.readFileSync(wtypeLog, 'utf8'), /check the VM/)
+  fs.rmSync(sink, { force: true })
+  fs.rmSync(wtypeLog, { force: true })
+  const routed = spawnSync('/usr/bin/python3', [path.join(root, 'bin/grokbot-dictation-route'), '--wtype', '--backend', 'voxtype'], {
+    input: 'Hey Bot, status',
+    encoding: 'utf8',
+    env: { ...process.env, GROKBOT_WTYPE: wtype, WTYPE_LOG: wtypeLog, GROKBOT_DICTATE_SINK: sink, PATH: dir }
+  })
+  assert.equal(routed.status, 0, routed.stderr)
+  assert.equal(routed.stdout, '')
+  assert.equal(fs.existsSync(wtypeLog), false)
+  assert.equal(JSON.parse(fs.readFileSync(sink, 'utf8')).backend, 'voxtype')
+
+  const watch = path.join(root, 'bin/grokbot-voice-watch')
+  const off = spawnSync('/usr/bin/python3', [watch], { encoding: 'utf8' })
+  assert.equal(off.status, 2)
+  const batch = spawnSync('/usr/bin/python3', [watch, '--enable', '--decide-batch'], {
+    input: JSON.stringify([
+      { text: 'Hey Bot, hi', source: 'clipboard', backend: 'superwhisper', recordingAge: 1, now: 100 },
+      { text: 'Hey Bot, hi', source: 'clipboard', backend: 'voxtype', recordingAge: 1, now: 101 },
+      { text: 'Hey Writer, draft', source: 'clipboard', backend: 'voxtype', recordingAge: 30, now: 200 },
+      { text: 'copy this note', source: 'clipboard', backend: 'superwhisper', recordingAge: 0.2, now: 201 },
+      { text: 'Hey OmaBot, check the VM', source: 'transcript', backend: 'voxtype', recordingAge: null, now: 300 },
+      { text: 'Hey Inbox Admin, triage', source: 'transcript', backend: 'superwhisper', recordingAge: null, now: 301 }
+    ]),
+    encoding: 'utf8'
+  })
+  assert.equal(batch.status, 0, batch.stderr)
+  const decisions = JSON.parse(batch.stdout)
+  assert.deepEqual(decisions.map((item) => item.deliver), [true, false, false, false, true, true])
+  assert.equal(decisions[4].botId, OMA)
+  assert.equal(decisions[4].prompt, 'check the VM')
+  assert.equal(decisions[5].backend, 'superwhisper')
+
+  for (const backend of ['superwhisper', 'voxtype']) {
+    const note = path.join(dir, `${backend}.txt`)
+    fs.writeFileSync(note, 'Hey Writer draft a note')
+    fs.rmSync(sink, { force: true })
+    const checked = spawnSync('/usr/bin/python3', [watch, '--enable', '--check-file', note, '--backend', backend], {
+      encoding: 'utf8',
+      env: { ...process.env, GROKBOT_DICTATE_SINK: sink }
+    })
+    assert.equal(checked.status, 0, checked.stderr)
+    const row = JSON.parse(fs.readFileSync(sink, 'utf8'))
+    assert.equal(row.backend, backend)
+    assert.equal(row.text, 'Hey Writer draft a note')
+  }
+
+  const home = path.join(dir, 'home')
+  const bare = spawnSync('/usr/bin/python3', [watch, '--install-voxtype-hook'], {
+    encoding: 'utf8',
+    env: { ...process.env, XDG_CONFIG_HOME: home }
+  })
+  assert.equal(bare.status, 2)
+  assert.equal(fs.existsSync(path.join(home, 'voxtype', 'config.toml')), false)
+  const installed = spawnSync('/usr/bin/python3', [watch, '--enable', '--install-voxtype-hook'], {
+    encoding: 'utf8',
+    env: { ...process.env, XDG_CONFIG_HOME: home }
+  })
+  assert.equal(installed.status, 0, installed.stderr)
+  const toml = fs.readFileSync(path.join(home, 'voxtype', 'config.toml'), 'utf8')
+  assert.match(toml, /\[output\.post_process\]/)
+  assert.match(toml, /grokbot-dictation-route --filter/)
+  assert.match(toml, /fallback_on_empty = false/)
+  const again = spawnSync('/usr/bin/python3', [watch, '--enable', '--install-voxtype-hook'], {
+    encoding: 'utf8',
+    env: { ...process.env, XDG_CONFIG_HOME: home }
+  })
+  assert.equal(again.status, 0, again.stderr)
+  const busyHome = path.join(dir, 'busy')
+  fs.mkdirSync(path.join(busyHome, 'voxtype'), { recursive: true })
+  const busyFile = path.join(busyHome, 'voxtype', 'config.toml')
+  fs.writeFileSync(busyFile, '[output.post_process]\ncommand = "sed \'s/uh //g\'"\n')
+  const busy = spawnSync('/usr/bin/python3', [watch, '--enable', '--install-voxtype-hook'], {
+    encoding: 'utf8',
+    env: { ...process.env, XDG_CONFIG_HOME: busyHome }
+  })
+  assert.equal(busy.status, 2)
+  assert.equal(fs.readFileSync(busyFile, 'utf8'), '[output.post_process]\ncommand = "sed \'s/uh //g\'"\n')
+
+  const readme = read('README.md')
+  const bubble = read('BubblePanel.qml')
+  const source = read('Main.qml')
+  assert.match(readme, /omarchy dictation toggle/)
+  assert.match(readme, /superwhisper record/)
+  assert.match(readme, /voxtype record toggle/)
+  assert.match(readme, /fallback_on_empty/)
+  assert.match(readme, /grokbot-voice-watch/)
+  assert.match(source, /function dictate\(text: string\)/)
+  assert.match(source, /function dictateText\(/)
+  assert.match(source, /function toggleDictation\(/)
+  assert.match(source, /Dictation\.route/)
+  const click = bubble.slice(bubble.indexOf('id: voiceButton'))
+  const submitAt = click.indexOf('app.submitPrompt(promptField.text)')
+  const focusAt = click.indexOf('promptField.forceActiveFocus()')
+  const toggleAt = click.indexOf('voiceButton.dictating = !voiceButton.dictating')
+  const commandAt = click.indexOf('app.toggleDictation()')
+  assert.match(click, /promptField\.text\.trim\(\) !== ""/)
+  assert.ok(submitAt > 0 && submitAt < focusAt && focusAt < toggleAt && toggleAt < commandAt)
 })
 
 test('readme credits both companions and records the live Try Omarchy capture', () => {

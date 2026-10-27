@@ -73,6 +73,14 @@ Rectangle {
     return app && id === app.chosenBotId
   }
 
+  Timer {
+    id: waveTimer
+    interval: 70
+    repeat: true
+    running: voiceButton.dictating && bubble.visible
+    onTriggered: voiceButton.wave = (voiceButton.wave + 0.45) % 6.28318
+  }
+
   Column {
     id: column
     x: 16
@@ -463,35 +471,60 @@ Rectangle {
 
       Rectangle {
         id: voiceButton
+        property bool dictating: false
+        property real wave: 0
+        property string ink: dictating ? "#F28B30" : "#F4F4F5"
         width: 42
         height: 42
         radius: 21
         anchors.right: parent.right
         color: "#232327"
-        border.width: 1
-        border.color: "#3F3F46"
+        border.width: dictating ? 1.5 : 1
+        border.color: dictating ? (app ? app.accent : "#F28B30") : "#3F3F46"
+
         Canvas {
+          id: waveCanvas
           anchors.fill: parent
           onPaint: {
             var ctx = getContext("2d")
             ctx.reset()
-            ctx.strokeStyle = "#F4F4F5"
+            ctx.strokeStyle = voiceButton.ink
             ctx.lineCap = "round"
             ctx.lineWidth = 1.7
             var bars = [5, 11, 16, 9, 5]
             var i
             for (i = 0; i < bars.length; i++) {
+              var scale = 1
+              if (voiceButton.dictating)
+                scale = 0.35 + 0.65 * Math.abs(Math.sin(voiceButton.wave + i * 0.9))
+              var bar = bars[i] * scale
               var x = 12 + i * 4
               ctx.beginPath()
-              ctx.moveTo(x, height / 2 - bars[i] / 2)
-              ctx.lineTo(x, height / 2 + bars[i] / 2)
+              ctx.moveTo(x, height / 2 - bar / 2)
+              ctx.lineTo(x, height / 2 + bar / 2)
               ctx.stroke()
             }
           }
+          onVisibleChanged: requestPaint()
         }
+
+        onDictatingChanged: waveCanvas.requestPaint()
+        onWaveChanged: waveCanvas.requestPaint()
+        onInkChanged: waveCanvas.requestPaint()
+
         MouseArea {
           anchors.fill: parent
-          onClicked: app.submitPrompt(promptField.text)
+          onClicked: {
+            if (!app) return
+            if (promptField.text.trim() !== "") {
+              voiceButton.dictating = false
+              app.submitPrompt(promptField.text)
+              return
+            }
+            promptField.forceActiveFocus()
+            voiceButton.dictating = !voiceButton.dictating
+            app.toggleDictation()
+          }
         }
       }
 

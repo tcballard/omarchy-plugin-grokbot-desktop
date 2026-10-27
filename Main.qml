@@ -7,6 +7,7 @@ import qs.Commons
 import qs.Commons as Commons
 import "qml/shapes.js" as Shapes
 import "qml/palette.js" as Palette
+import "qml/dictation.js" as Dictation
 
 // Grok Bot desktop companion. A service inside omarchy-shell: a transparent
 // layer-shell window, click-through except for the mark (and the bubble or
@@ -39,6 +40,7 @@ Item {
   readonly property string bundledBotsPath: root.localPath(Qt.resolvedUrl("data/bots.json"))
   readonly property string cursorHelper: root.localPath(Qt.resolvedUrl("bin/grokbot-cursor"))
   readonly property string askHelper: root.localPath(Qt.resolvedUrl("bin/grokbot-ask"))
+  readonly property string dictateHelper: root.localPath(Qt.resolvedUrl("bin/grokbot-dictate"))
 
   property bool ready: false
   property bool present: true
@@ -652,10 +654,41 @@ Item {
   function submitPrompt(value) {
     var prompt = root.plainLine(value, 4000)
     if (prompt === "") return
+    var route = Dictation.route(prompt, root.bots, root.defaultBotId)
+    if (route.matched) {
+      if (route.botId) root.selectBot(route.botId)
+      prompt = root.plainLine(route.prompt, 4000)
+      root.promptDraft = ""
+      if (prompt === "") {
+        root.openBubble()
+        return
+      }
+    }
     root.promptDraft = ""
     root.noticeLinks = []
     root.bubbleBody = ""
     root.launchAsk(prompt)
+  }
+
+  function dictateText(text) {
+    var raw = root.plainLine(text, 4000)
+    if (raw === "") return "empty"
+    var route = Dictation.route(raw, root.bots, root.defaultBotId)
+    if (!route.matched) return "ignored"
+    if (route.botId) root.selectBot(route.botId)
+    root.promptDraft = ""
+    root.noticeLinks = []
+    root.bubbleBody = ""
+    root.openBubble()
+    if (!route.prompt) return "opened"
+    return root.launchAsk(route.prompt)
+  }
+
+  function toggleDictation() {
+    if (root.dictateHelper.indexOf("/bin/grokbot-dictate") < 0 || root.dictateHelper.indexOf("..") >= 0)
+      return "error"
+    Quickshell.execDetached(["/usr/bin/python3", root.dictateHelper])
+    return "ok"
   }
 
   function trustedBin(path) {
@@ -1091,6 +1124,7 @@ Item {
       if (text === "") return "empty"
       return root.launchAsk(text)
     }
+    function dictate(text: string): string { return root.dictateText(text) }
     function bot(name: string): string {
       var found = root.matchBot(name)
       if (!found) return "unknown bot"

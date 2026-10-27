@@ -1,0 +1,241 @@
+#!/usr/bin/python3
+"""Route a "Hey Bot" / "Hey <name>" dictation, for Superwhisper and Voxtype.
+
+The same rules run for both backends. A wake phrase at the start selects
+the roster bot and returns the rest of the sentence. Other text is ignored.
+
+  grokbot-dictation-route            stdin -> JSON, exit 0 when matched
+  grokbot-dictation-route --filter   Voxtype [output.post_process] filter
+  grokbot-dictation-route --wtype    type with wtype, or route a wake phrase
+
+--filter reads the transcript on stdin. A wake phrase is handed to
+grokbot-desktop-ctl and omitted from stdout so Voxtype does not type it
+(set fallback_on_empty = false). Any other transcript is written back
+unchanged. If the companion cannot be reached, the original text is
+written back so the dictation is not discarded.
+
+--wtype is the same decision in front of wtype. A wake phrase is not typed.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+PRIMARY_ID = "e0195a7d-f804-4688-9191-e2cf3574a6d1"
+CLIP_WINDOW = 3.0
+DEDUP_SECONDS = 10.0
+TEXT_LIMIT = 4000
+SPACE = re.compile(r"[\x00-\x1f]+")
+LEAD = re.compile(r"^[\s,;:.!?\-–—]+")
+
+
+def normalize(text: str) -> str:
+    return SPACE.sub(" ", text or "").split() and " ".join(SPACE.sub(" ", text or "").split()) or ""
+
+
+def boundary(rest: str, length: int) -> bool:
+    if len(rest) == length:
+        return True
+    return not rest[length].isalnum()
+
+
+def strip_lead(value: str) -> str:
+    return LEAD.sub("", value or "").strip()
+
+
+def route(text: str, bots: list, primary_id: str = PRIMARY_ID) -> dict:
+    raw = normalize(text)[:TEXT_LIMIT]
+    folded = raw.lower()
+    missed = {"matched": False, "botId": "", "prompt": raw, "wake": ""}
+    if not folded.startswith("hey "):
+        return missed
+    rest = raw[4:]
+    rest_fold = folded[4:]
+    primary = primary_id or PRIMARY_ID
+
+    if rest_fold == "grok bot" or (rest_fold.startswith("grok bot") and boundary(rest_fold, len("grok bot"))):
+        return {
+            "matched": True,
+            "botId": primary,
+            "prompt": strip_lead(rest[len("grok bot"):]),
+            "wake": "hey grok bot",
+        }
+
+    best = None
+    best_len = 0
+    for bot in bots or []:
+        for label in (bot.get("shortName") or "", bot.get("name") or ""):
+            cleaned = normalize(str(label)).lower()
+            if not cleaned or len(cleaned) <= best_len:
+                continue
+            if not rest_fold.startswith(cleaned):
+                continue
+            if not boundary(rest_fold, len(cleaned)):
+                continue
+            best = bot
+            best_len = len(cleaned)
+    if best is not None:
+        who = normalize(str(best.get("shortName") or best.get("name") or ""))
+        return {
+            "matched": True,
+            "botId": str(best.get("id") or ""),
+            "prompt": strip_lead(rest[best_len:]),
+            "wake": f"hey {who}" if who else "hey",
+        }
+
+    for tail in ("bot", "bob", "grok"):
+        if rest_fold.startswith(tail) and boundary(rest_fold, len(tail)):
+            return {
+                "matched": True,
+                "botId": primary,
+                "prompt": strip_lead(rest[len(tail):]),
+                "wake": f"hey {tail}",
+            }
+    return missed
+
+
+def load_bots(path: str | None = None) -> list:
+    chosen = path or os.environ.get("GROKBOT_BOTS")
+    if not chosen:
+        chosen = str(Path(__file__).resolve().parent.parent / "data" / "bots.json")
+    try:
+        data = json.loads(Path(chosen).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    bots = data.get("bots") if isinstance(data, dict) else None
+    if not isinstance(bots, list):
+        return []
+    clean = []
+    for bot in bots:
+        if not isinstance(bot, dict) or not bot.get("id"):
+            continue
+        clean.append({
+            "id": str(bot.get("id") or ""),
+            "name": str(bot.get("name") or ""),
+            "shortName": str(bot.get("shortName") or ""),
+        })
+    return clean
+
+
+def deliver(text: str, backend: str = "") -> bool:
+    payload = normalize(text)[:TEXT_LIMIT]
+    if payload == "":
+        return False
+    sink = os.environ.get("GROKBOT_DICTATE_SINK", "")
+    if sink:
+        with open(sink, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps({"backend": backend, "text": payload}, ensure_ascii=False) + "\n")
+        return True
+    ctl = Path(__file__).resolve().with_name("grokbot-desktop-ctl")
+    if not ctl.is_file():
+        return False
+    proc = subprocess.run(
+        [sys.executable, str(ctl), "dictate", payload],
+        check=False,
+        env=os.environ.copy(),
+    )
+    return proc.returncode == 0
+
+
+def real_wtype() -> str:
+    override = os.environ.get("GROKBOT_WTYPE", "")
+    if override:
+        return override
+    own = Path(__file__).resolve()
+    for directory in os.environ.get("PATH", "").split(":"):
+        if not directory:
+            continue
+        candidate = Path(directory) / "wtype"
+        try:
+            if candidate.resolve() == own:
+                continue
+        except OSError:
+            continue
+        if os.access(candidate, os.X_OK):
+            return str(candidate)
+    return ""
+
+
+def recording_finished(previous: str, current: str) -> bool:
+    prev = (previous or "").strip().lower()
+    cur = (current or "").strip().lower()
+    return prev in {"recording", "transcribing"} and cur in {"idle", ""}
+
+
+def should_deliver(text: str, source: str, recording_age, now: float, memory: dict, bots: list) -> tuple[bool, dict]:
+    decided = route(text, bots)
+    if not decided["matched"]:
+        return False, decided
+    if source == "clipboard":
+        if recording_age is None or recording_age < 0 or recording_age > CLIP_WINDOW:
+            return False, decided
+    elif source != "transcript":
+        return False, decided
+    key = normalize(text).lower()
+    last = memory.get(key)
+    if last is not None and now - last < DEDUP_SECONDS:
+        return False, decided
+    memory[key] = now
+    return True, decided
+
+
+def read_stdin() -> str:
+    data = sys.stdin.read(TEXT_LIMIT + 1)
+    return data[:TEXT_LIMIT]
+
+
+def filter_text(text: str, bots: list, backend: str) -> str:
+    decided = route(text, bots)
+    if not decided["matched"]:
+        return text
+    if deliver(text, backend):
+        return ""
+    return text
+
+
+def main(argv: list[str]) -> int:
+    bots = load_bots()
+    mode = "json"
+    backend = os.environ.get("GROKBOT_DICTATION_BACKEND", "")
+    if "--filter" in argv:
+        mode = "filter"
+    elif "--wtype" in argv:
+        mode = "wtype"
+    if "--backend" in argv:
+        index = argv.index("--backend")
+        if index + 1 >= len(argv):
+            return 2
+        backend = argv[index + 1]
+    if backend not in ("", "superwhisper", "voxtype"):
+        print("backend must be superwhisper or voxtype", file=sys.stderr)
+        return 2
+
+    text = read_stdin()
+    if mode == "json":
+        decided = route(text, bots)
+        json.dump(decided, sys.stdout)
+        sys.stdout.write("\n")
+        return 0 if decided["matched"] else 1
+    if mode == "filter":
+        sys.stdout.write(filter_text(text, bots, backend or "voxtype"))
+        return 0
+    decided = route(text, bots)
+    if decided["matched"] and deliver(text, backend or "superwhisper"):
+        return 0
+    typer = real_wtype()
+    if typer:
+        os.execv(typer, [typer, "--", text])
+    sys.stdout.write(text)
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main(sys.argv[1:]))
+    except BrokenPipeError:
+        raise SystemExit(0)

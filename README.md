@@ -39,7 +39,8 @@ The companion sits in a corner. Clicks outside the mark pass through. Drag it, o
 | Action | Result |
 | --- | --- |
 | Click, `summon`, or `toggle` | Opens the speech bubble |
-| Enter | Sends the prompt to the active Bot |
+| Enter, or the waveform button with text | Sends the prompt. A leading "Hey <Bot>" selects that bot first |
+| Waveform button on an empty field | Focuses the field and toggles Superwhisper or Voxtype |
 | Escape | Closes the bubble |
 | Switch Bot | Morphs into that Bot's shape and colour when sync is on, and routes the next ask there |
 | Pointer nearby, dodge on | Fades and lets clicks through until you rest on the mark |
@@ -66,6 +67,42 @@ omarchy-shell io.github.tcballard.grokbot-desktop sayLink "PR Merged" "omarchy-s
 `animate` accepts `wave`, `think`, `happy`, `celebrate`, `alert`, `sleep`, `hop`, `spin`, and `morph`. `sayLinks` takes a second label and URL. Links must be `https`, or `http` to localhost, with no credentials. A button opens only when you click it.
 
 `bot` accepts an id, a short name (`OmaBot`, `Poteto`, `dr eggbot`), or the full profile name.
+
+```bash
+omarchy-shell io.github.tcballard.grokbot-desktop dictate "Hey OmaBot, check the VM"
+bin/grokbot-desktop-ctl dictate "Hey Bob, what's on my calendar?"
+```
+
+`dictate` understands the same wake phrases as the prompt field. Anything that does not start with one is ignored, so a normal ask still uses `ask`.
+
+## Dictation
+
+The waveform button does two jobs. With text in the field, it sends that prompt. With an empty field, it focuses the field, lights the waveform, and runs `omarchy dictation toggle`.
+
+Omarchy reads `~/.config/omarchy/defaults/dictation` and toggles whichever backend you picked, Superwhisper or Voxtype. Superwhisper's own toggle is Alt+Space (`superwhisper record`). Voxtype's is `voxtype record toggle`, also bound to Super+Ctrl+X. If `omarchy` is not on `PATH`, the button calls that backend command directly. Both backends share one wake-phrase router.
+
+Say "Hey Bot", "Hey Bob", "Hey Grok", or "Hey Grok Bot" and the companion asks Bob (`e0195a7d-f804-4688-9191-e2cf3574a6d1`). Say "Hey OmaBot", "Hey Writer", "Hey Inbox Admin", or any other roster short name or full name, and it selects that bot. The wake phrase and a following comma or colon are removed, the bubble opens, and the rest is asked immediately. Submitting "Hey OmaBot check the VM" from the field does the same thing.
+
+Desktop-wide routing is opt-in. The companion does not watch the clipboard on its own.
+
+Voxtype types the transcript unless a post-process filter removes it first. `fallback_on_empty` has to be false, because Voxtype otherwise types the original line when a filter prints nothing:
+
+```toml
+[output.post_process]
+command = "python3 bin/grokbot-dictation-route --filter"
+fallback_on_empty = false
+timeout_ms = 5000
+```
+
+`bin/grokbot-voice-watch --print-voxtype-hook` prints that block with the installed script path. `bin/grokbot-voice-watch --enable --install-voxtype-hook` appends it only when Voxtype does not already have a post-process command. A wake phrase is sent to the companion and is not typed. Every other transcript is returned unchanged for Voxtype to type, including through wtype. `bin/grokbot-dictation-route --wtype` is the same rule as a wtype wrapper: a wake phrase is routed, other text is typed.
+
+Superwhisper (`superwhisper.service`, transcripts under `~/.local/share/superwhisper`, `~/.config/superwhisper`, and `~/superwhisper/recordings`) and Voxtype (`voxtype.service`) use the same watcher:
+
+```bash
+bin/grokbot-voice-watch --enable
+```
+
+It routes a new transcript that starts with a wake phrase. It reads the clipboard only during the three seconds after a recording finishes, and only when that text starts with a wake phrase. A copy you make at any other time is left alone. The same line is not routed twice in ten seconds.
 
 ## Dispatch
 

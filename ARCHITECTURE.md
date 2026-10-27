@@ -21,6 +21,10 @@ Both helpers are started with a cleared environment.
 
 `bin/grokbot-sync` is not a shell child. Run it when a local agents directory should replace `~/.config/omarchy/grokbot-bots.json`. The service watches that file and falls back to `data/bots.json`.
 
+The waveform button launches `bin/grokbot-dictate`, which execs `omarchy dictation toggle` when `omarchy` is on `PATH`. That command follows `~/.config/omarchy/defaults/dictation` (`superwhisper` or `voxtype`). Without `omarchy`, the helper execs `superwhisper record` or `voxtype record toggle`. It does not take the transcript as an argument.
+
+`qml/dictation.js` and `bin/grokbot-dictation-route` share the wake-phrase rules. `dictate` IPC and a prompt that starts with "Hey <name>" both use the QML copy. Voxtype's `[output.post_process]` filter and `bin/grokbot-dictation-route --wtype` use the Python copy so a wake phrase is not typed into the focused window. `bin/grokbot-voice-watch --enable` is the opt-in Superwhisper and Voxtype watcher. It is not started by the shell service. `bin/grokbot-desktop-ctl` forwards one IPC call to `omarchy-shell`.
+
 ## Settings ownership
 
 Position, the active bot, sync, custom shape and colour, size, dodge, and idle motion are written through `shell.updateEntryInline` onto this plugin's own `plugins[]` entry, merged with keys already there. Dispatch URL and command are read from that entry or from `~/.config/omarchy/grokbot-desktop.json` and are not rewritten by the service.
