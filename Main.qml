@@ -205,6 +205,33 @@ Item {
 
   readonly property bool surfacesOpen: root.bubbleOpen || root.menuOpen
 
+  // Mark placement in output coordinates, and the compact window around it.
+  readonly property int screenW: win.screen ? win.screen.width : 0
+  readonly property int screenH: win.screen ? win.screen.height : 0
+  readonly property real stageW: root.shownSize + 24
+  readonly property real stageH: root.shownSize + 28
+  readonly property real stageScreenX: {
+    var edge = root.anchorFromRight ? root.screenW - root.stageW - root.posRight : root.posRight
+    return Math.max(0, Math.min(root.screenW - root.stageW, edge))
+  }
+  readonly property real stageScreenY: {
+    var edge = root.anchorFromBottom ? root.screenH - root.stageH - root.posBottom : root.posBottom
+    return Math.max(0, Math.min(root.screenH - root.stageH, edge))
+  }
+  // Room around the mark for hops, orbit, lean, and the name tag.
+  readonly property int compactPadX: 28
+  readonly property int compactPadY: 64
+  readonly property int compactX0: Math.max(0, Math.floor(root.stageScreenX - root.compactPadX))
+  readonly property int compactX1: Math.min(root.screenW, Math.ceil(root.stageScreenX + root.stageW + root.compactPadX))
+  readonly property int compactY0: Math.max(0, Math.floor(root.stageScreenY - root.compactPadY))
+  readonly property int compactY1: Math.min(root.screenH, Math.ceil(root.stageScreenY + root.stageH + root.compactPadY))
+  readonly property bool expanded: root.bubbleOpen || root.menuOpen || bubblePanel.opacity > 0.01 || menuCard.opacity > 0.01 || root.dragging || cornerAnim.running
+  // Placement follows the size the compositor has actually given the
+  // window, so the mark stays put while a resize is in flight.
+  readonly property bool fullWindow: win.width >= root.screenW - 0.5 && win.height >= root.screenH - 0.5
+  readonly property real originX: root.fullWindow ? 0 : root.compactX0
+  readonly property real originY: root.fullWindow ? 0 : root.compactY0
+
   function tomlColor(text, key) {
     var lines = String(text || "").split("\n")
     var i
@@ -1008,8 +1035,8 @@ Item {
   function updateGazeTarget() {
     if (!root.cursorKnown || !win.screen) return
     var local = mark.mapToItem(win.contentItem, mark.width / 2, mark.height / 2)
-    var dx = root.cursorX - (win.screen.x + local.x)
-    var dy = root.cursorY - (win.screen.y + local.y)
+    var dx = root.cursorX - (win.screen.x + root.originX + local.x)
+    var dy = root.cursorY - (win.screen.y + root.originY + local.y)
     var dist = Math.sqrt(dx * dx + dy * dy)
     if (dist < 1) {
       root.gazeTargetX = 0
@@ -1071,8 +1098,8 @@ Item {
     if (!win.screen) return null
     var point = stage.mapToItem(win.contentItem, 0, 0)
     return {
-      x: win.screen.x + point.x,
-      y: win.screen.y + point.y,
+      x: win.screen.x + root.originX + point.x,
+      y: win.screen.y + root.originY + point.y,
       w: stage.width,
       h: stage.height
     }
@@ -1311,8 +1338,8 @@ Item {
 
   function dragMove(px, py) {
     if (!win.screen) return
-    var maxRight = Math.max(0, win.width - stage.width)
-    var maxBottom = Math.max(0, win.height - stage.height)
+    var maxRight = Math.max(0, root.screenW - root.stageW)
+    var maxBottom = Math.max(0, root.screenH - root.stageH)
     var dx = px - root.dragCursorX
     var dy = py - root.dragCursorY
     var nextX = root.anchorFromRight ? root.dragRight - dx : root.dragRight + dx
@@ -1419,7 +1446,24 @@ Item {
     id: win
     screen: root.targetScreen
     visible: root.present && root.targetScreen !== null
-    anchors { top: true; bottom: true; left: true; right: true }
+    // Idle, the window is a small box around the mark in its corner, so
+    // breathing and bobbing redraw a few hundred pixels instead of the whole
+    // output. It covers the output while the card or menu is showing, during
+    // a drag, and while the mark changes corners.
+    anchors {
+      top: root.expanded || !root.anchorFromBottom
+      bottom: root.expanded || root.anchorFromBottom
+      left: root.expanded || !root.anchorFromRight
+      right: root.expanded || root.anchorFromRight
+    }
+    margins {
+      top: root.expanded ? 0 : root.compactY0
+      bottom: root.expanded ? 0 : root.screenH - root.compactY1
+      left: root.expanded ? 0 : root.compactX0
+      right: root.expanded ? 0 : root.screenW - root.compactX1
+    }
+    implicitWidth: Math.max(1, root.compactX1 - root.compactX0)
+    implicitHeight: Math.max(1, root.compactY1 - root.compactY0)
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.namespace: "grokbot-desktop"
@@ -1463,7 +1507,7 @@ Item {
       app: root
       readonly property bool shown: root.bubbleOpen
       growsUp: y < stage.y
-      visible: opacity > 0.01
+      visible: opacity > 0.01 && root.fullWindow
       opacity: shown ? 1 : 0
       scale: shown ? 1 : 0.94
       transformOrigin: {
@@ -1494,7 +1538,7 @@ Item {
 
     Rectangle {
       id: menuCard
-      visible: opacity > 0.01
+      visible: opacity > 0.01 && root.fullWindow
       opacity: root.menuOpen ? 1 : 0
       scale: root.menuOpen ? 1 : 0.92
       transformOrigin: x < stage.x ? (root.anchorFromBottom ? Item.BottomRight : Item.TopRight) : (root.anchorFromBottom ? Item.BottomLeft : Item.TopLeft)
@@ -1561,16 +1605,10 @@ Item {
     Item {
       id: stage
       opacity: root.cornerFade
-      width: root.shownSize + 24
-      height: root.shownSize + 28
-      x: {
-        var edge = root.anchorFromRight ? win.width - width - root.posRight : root.posRight
-        return Math.max(0, Math.min(win.width - width, edge))
-      }
-      y: {
-        var edge = root.anchorFromBottom ? win.height - height - root.posBottom : root.posBottom
-        return Math.max(0, Math.min(win.height - height, edge))
-      }
+      width: root.stageW
+      height: root.stageH
+      x: root.stageScreenX - root.originX
+      y: root.stageScreenY - root.originY
 
       // Soft contact shadow. It shrinks and fades as the mark lifts off the
       // floor, so bobbing and hopping read as height rather than sliding.
@@ -1715,7 +1753,12 @@ Item {
         cursorShape: root.dragging ? Qt.ClosedHandCursor : Qt.PointingHandCursor
         property point pressAt: Qt.point(0, 0)
         property bool moved: false
-        function windowPoint(mouse) { return mapToItem(win.contentItem, mouse.x, mouse.y) }
+        // Output coordinates, which stay stable while the window grows from
+        // its compact box to the full output at the start of a drag.
+        function windowPoint(mouse) {
+          var p = mapToItem(win.contentItem, mouse.x, mouse.y)
+          return Qt.point(p.x + root.originX, p.y + root.originY)
+        }
         onPressed: function (mouse) {
           pressAt = windowPoint(mouse)
           moved = false

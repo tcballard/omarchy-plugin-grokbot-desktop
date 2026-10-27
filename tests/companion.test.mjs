@@ -781,7 +781,7 @@ test('the card, menu, and roster animate in and out', () => {
 
 test('size eases and corner changes pop out and back in', () => {
   assert.match(main, /Behavior on shownSize/)
-  assert.match(main, /width: root\.shownSize \+ 24/)
+  assert.match(main, /readonly property real stageW: root\.shownSize \+ 24/)
   const corner = qmlFunction(main, 'setAnchor')
   assert.match(corner, /cornerAnim\.restart\(\)/)
   assert.doesNotMatch(corner, /root\.anchorName = name/)
@@ -865,4 +865,14 @@ test('every control gives hover, cursor, keyboard, and accessible feedback', () 
   }
   assert.match(qmlFunction(main, 'stepBack'), /menuOpen = false[\s\S]*closeSettings\(\)[\s\S]*closeBubble\(\)/)
   assert.match(main, /sequence: "Escape"/)
+})
+
+test('the idle window is a compact box around the mark', () => {
+  assert.match(main, /readonly property bool expanded: root\.bubbleOpen \|\| root\.menuOpen/)
+  assert.match(main, /top: root\.expanded \|\| !root\.anchorFromBottom/)
+  assert.match(main, /implicitWidth: Math\.max\(1, root\.compactX1 - root\.compactX0\)/)
+  assert.match(main, /readonly property bool fullWindow: win\.width >= root\.screenW/)
+  assert.match(qmlFunction(main, 'stageRect'), /root\.originX/)
+  assert.match(qmlFunction(main, 'updateGazeTarget'), /root\.originX/)
+  assert.doesNotMatch(main, /anchors \{ top: true; bottom: true; left: true; right: true \}/)
 })
