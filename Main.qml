@@ -357,11 +357,14 @@ Item {
     return bot ? String(bot.description || "") : ""
   }
 
+  // Every bot shows its role: the first clause of its description. The
+  // header elides it to fit, so it is never cut mid-word.
   function botTag() {
     var bot = root.currentBot()
-    if (!bot || bot.isPrimary) return "Main"
-    var role = root.plainLine(bot.description || "", 22)
-    return role !== "" ? role : "Bot"
+    var role = root.plainLine(bot ? bot.description : "", 120)
+    role = role.split(/[.;:,](\s|$)/)[0].trim()
+    if (role !== "") return role
+    return bot && bot.isPrimary ? "Main" : "Bot"
   }
 
   function paletteFill(name) {

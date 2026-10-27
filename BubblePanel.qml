@@ -209,6 +209,9 @@ Rectangle {
           x: 8
           spacing: 6
           height: parent.height
+          // Name, mark, chevron, padding, and spacing come out of the pill's
+          // widest size; the role takes what is left and elides.
+          readonly property real roleRoom: header.width - 80 - 22 - 8 - 22 - 12 - 6 * 3 - nameText.implicitWidth
           CompanionMark {
             width: 22
             height: 22
@@ -228,6 +231,7 @@ Rectangle {
             eyeOpen: 1
           }
           Text {
+            id: nameText
             y: 9
             text: app.botLabel()
             color: "#F4F4F5"
@@ -237,15 +241,19 @@ Rectangle {
           }
           Text {
             y: 11
+            width: Math.max(0, Math.min(implicitWidth, headerRow.roleRoom))
             text: "· " + app.botTag()
             color: "#A1A1AA"
             font.pixelSize: 12
+            elide: Text.ElideRight
             textFormat: Text.PlainText
           }
           Canvas {
             width: 12
             height: 12
             y: 12
+            rotation: app.rosterExpanded ? 180 : 0
+            Behavior on rotation { NumberAnimation { duration: bubble.ms(200); easing.type: Easing.OutCubic } }
             onPaint: {
               var ctx = getContext("2d")
               ctx.reset()
@@ -338,7 +346,7 @@ Rectangle {
           Text {
             id: extraLabel
             anchors.centerIn: parent
-            text: "+" + bubble.extraBots.length
+            text: app.rosterExpanded ? "Less" : "+" + bubble.extraBots.length
             color: "#A1A1AA"
             font.pixelSize: 11
             font.bold: true

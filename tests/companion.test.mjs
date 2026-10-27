@@ -808,3 +808,13 @@ test('selection rings stay visible on every colour', () => {
   assert.match(read('BubblePanel.qml'), /app\.ringColor\(app\.paletteFill\(modelData\.color\)\)/)
   assert.match(read('SettingsPanel.qml'), /tone: app\.ringColor\(/)
 })
+
+test('the header names every bot by role and elides instead of cutting words', () => {
+  const tag = qmlFunction(main, 'botTag')
+  assert.doesNotMatch(tag, /, 22\)/)
+  assert.doesNotMatch(tag, /isPrimary\) return "Main"/)
+  const bubble = read('BubblePanel.qml')
+  assert.match(bubble, /elide: Text\.ElideRight/)
+  assert.match(bubble, /rotation: app\.rosterExpanded \? 180 : 0/)
+  assert.match(bubble, /app\.rosterExpanded \? "Less" : "\+" \+ bubble\.extraBots\.length/)
+})
