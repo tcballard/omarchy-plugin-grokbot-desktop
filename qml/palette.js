@@ -1,8 +1,11 @@
 .pragma library
 
-// Grok Bot avatar colours. Eyes are flat cutouts: dark capsules on every
-// colour except black, which cuts light capsules out of the dark fill.
-// "omarchy" is resolved by the shell from the active theme accent.
+// Grok Bot avatar colours, in the app's order. The fills are the app's own
+// values: the colour names and hex values Grok Bot stores for each bot,
+// which match its avatar picker. Eyes are cut through the shape, so a
+// surface that cannot show what is behind paints them in its own colour
+// (CUTOUT); black uses a light cut-out so its face still reads on the dark
+// chrome. "omarchy" is resolved by the shell from the active theme accent.
 
 var NAMES = [
   "black", "brown", "red", "orange", "yellow", "green",
@@ -15,21 +18,31 @@ var CUTOUT = "#141416"
 var CUTOUT_ON_BLACK = "#F4F4F5"
 
 var COLORS = {
-  black:   { fill: "#3F3F46", highlight: "#3F3F46", eye: CUTOUT_ON_BLACK, outline: "#141416", pupil: "#FFFFFF" },
-  brown:   { fill: "#A16237", highlight: "#A16237", eye: CUTOUT, outline: "#141416", pupil: "#09090B" },
-  red:     { fill: "#F05252", highlight: "#F05252", eye: CUTOUT, outline: "#141416", pupil: "#09090B" },
-  orange:  { fill: "#F28B30", highlight: "#F28B30", eye: CUTOUT, outline: "#141416", pupil: "#09090B" },
-  yellow:  { fill: "#F0B429", highlight: "#F0B429", eye: CUTOUT, outline: "#141416", pupil: "#09090B" },
-  green:   { fill: "#5BC67A", highlight: "#5BC67A", eye: CUTOUT, outline: "#141416", pupil: "#09090B" },
-  cyan:    { fill: "#22B8CF", highlight: "#22B8CF", eye: CUTOUT, outline: "#141416", pupil: "#09090B" },
-  blue:    { fill: "#4E8CFF", highlight: "#4E8CFF", eye: CUTOUT, outline: "#141416", pupil: "#09090B" },
-  violet:  { fill: "#A864FD", highlight: "#A864FD", eye: CUTOUT, outline: "#141416", pupil: "#09090B" },
-  magenta: { fill: "#EC5399", highlight: "#EC5399", eye: CUTOUT, outline: "#141416", pupil: "#09090B" },
-  gray:    { fill: "#71717A", highlight: "#71717A", eye: CUTOUT, outline: "#141416", pupil: "#09090B" }
+  black:   { fill: "#000000", eye: CUTOUT_ON_BLACK },
+  brown:   { fill: "#936439", eye: CUTOUT },
+  red:     { fill: "#FF263C", eye: CUTOUT },
+  orange:  { fill: "#FF6700", eye: CUTOUT },
+  yellow:  { fill: "#FF9800", eye: CUTOUT },
+  green:   { fill: "#00C972", eye: CUTOUT },
+  cyan:    { fill: "#00BCA6", eye: CUTOUT },
+  blue:    { fill: "#1084FE", eye: CUTOUT },
+  violet:  { fill: "#9159FE", eye: CUTOUT },
+  magenta: { fill: "#FF309B", eye: CUTOUT },
+  gray:    { fill: "#777777", eye: CUTOUT }
+}
+
+// The app's own alternate names for two of these.
+var ALIASES = { purple: "violet", grey: "gray", teal: "cyan", pink: "magenta", amber: "yellow" }
+
+function canonical(name) {
+  var key = String(name || "")
+  if (Object.prototype.hasOwnProperty.call(COLORS, key)) return key
+  if (Object.prototype.hasOwnProperty.call(ALIASES, key)) return ALIASES[key]
+  return ""
 }
 
 function known(name) {
-  return Object.prototype.hasOwnProperty.call(COLORS, String(name || ""))
+  return canonical(name) !== ""
 }
 
 function accepts(name) {
@@ -37,7 +50,8 @@ function accepts(name) {
 }
 
 function get(name) {
-  return known(name) ? COLORS[name] : COLORS.orange
+  var key = canonical(name)
+  return key !== "" ? COLORS[key] : COLORS.orange
 }
 
 // Colour blending for morphs. Mixing sRGB channels sends near-complementary

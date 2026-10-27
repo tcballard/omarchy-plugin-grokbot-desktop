@@ -31,7 +31,7 @@ Item {
   property real attention: 1
   property bool reduceMotion: false
   property bool mixFromColors: false
-  property color fillFrom: "#F28B30"
+  property color fillFrom: "#FF6700"
   property color eyeFrom: "#141416"
 
   readonly property var blended: face ? ({ points: face }) : Shapes.blend(shapeFrom, shapeTo, morph)

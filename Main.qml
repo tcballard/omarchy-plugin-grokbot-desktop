@@ -88,7 +88,7 @@ Item {
   // previous target.
   property var morphFromPoints: null
   property var morphToPoints: null
-  property color fillFrom: "#F28B30"
+  property color fillFrom: "#FF6700"
   property color eyeFrom: "#141416"
   readonly property var shownFace: root.morphFromPoints ? Shapes.mix(root.morphFromPoints, root.morphToPoints, root.morphProgress) : null
   property string expression: "idle"

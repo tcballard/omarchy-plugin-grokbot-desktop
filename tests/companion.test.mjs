@@ -117,16 +117,22 @@ test('palette eyes stay readable on each fill', () => {
   ])
   assert.equal(palette.OMARCHY, 'omarchy')
   assert.equal(palette.accepts('omarchy'), true)
-  assert.equal(palette.accepts('pink'), false)
+  assert.equal(palette.accepts('pink'), true)
+  assert.equal(palette.accepts('chartreuse'), false)
+  // The app's own values, as Grok Bot stores them and its picker shows them.
+  const app = {
+    black: '#000000', brown: '#936439', red: '#ff263c', orange: '#ff6700', yellow: '#ff9800', green: '#00c972',
+    cyan: '#00bca6', blue: '#1084fe', violet: '#9159fe', magenta: '#ff309b', gray: '#777777'
+  }
   for (const name of palette.NAMES) {
     const tone = palette.COLORS[name]
+    assert.equal(tone.fill.toLowerCase(), app[name], name)
     assert.ok(contrast(tone.eye, tone.fill) >= 3, `${name} eye/fill contrast`)
-    assert.notEqual(tone.pupil.toLowerCase(), tone.eye.toLowerCase())
     if (name === 'black') assert.equal(tone.eye.toLowerCase(), '#f4f4f5')
     else assert.equal(tone.eye.toLowerCase(), '#141416')
   }
-  assert.equal(palette.COLORS.green.fill.toLowerCase(), '#5bc67a')
-  assert.equal(palette.COLORS.orange.fill.toLowerCase(), '#f28b30')
+  assert.equal(palette.canonical('purple'), 'violet')
+  assert.equal(palette.canonical('grey'), 'gray')
 })
 
 test('bundled roster is the fifteen live bots, with Bob first', () => {
