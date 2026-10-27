@@ -39,8 +39,10 @@ The companion sits in a corner. Clicks outside the mark pass through, and they k
 | Action | Result |
 | --- | --- |
 | Click, `summon`, or `toggle` | Opens the speech bubble |
-| Enter, or the waveform button with text | Sends the prompt. A leading "Hey <Bot>" selects that bot first |
+| Enter, or the send arrow (the waveform button turns into it once you type) | Sends the prompt. A leading "Hey <Bot>" selects that bot first |
 | Waveform button on an empty field | Focuses the field and toggles Superwhisper or Voxtype |
+| Stop button while asking | Cancels the ask in flight |
+| `+` | Starts a new conversation |
 | Escape | Closes the bubble |
 | Switch Bot | Morphs into that Bot's shape and colour when sync is on, and routes the next ask there |
 | Pointer nearby, dodge on | Fades and lets clicks through until you rest on the mark |
@@ -77,7 +79,7 @@ bin/grokbot-desktop-ctl dictate "Hey Bob, what's on my calendar?"
 
 ## Dictation
 
-The waveform button does two jobs. With text in the field, it sends that prompt. With an empty field, it focuses the field, lights the waveform, and runs `omarchy dictation toggle`.
+The composer's right-hand button changes with the field. With an empty field it shows the waveform: it focuses the field, lights the waveform, and runs `omarchy dictation toggle`. Once you type it becomes a send arrow, and while an ask runs it becomes Stop.
 
 Omarchy reads `~/.config/omarchy/defaults/dictation` and toggles whichever backend you picked, Superwhisper or Voxtype. Superwhisper's own toggle is Alt+Space (`superwhisper record`). Voxtype's is `voxtype record toggle`, also bound to Super+Ctrl+X. If `omarchy` is not on `PATH`, the button calls that backend command directly. Both backends share one wake-phrase router.
 

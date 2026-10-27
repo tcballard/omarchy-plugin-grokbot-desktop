@@ -460,14 +460,20 @@ Rectangle {
       width: parent.width
       height: 42
 
+      // The left button starts a new conversation. The right button is
+      // dictation while the field is empty, send while it has text, and
+      // stop while an ask is running; its icons crossfade between modes.
       Rectangle {
         id: plusButton
+        readonly property bool usable: app ? !app.asking && (app.askedText !== "" || app.bubbleBody !== "" || app.noticeLinks.length > 0) : false
         width: 42
         height: 42
         radius: 21
         color: "#1C1C1F"
         border.width: 1
         border.color: "#2C2C30"
+        opacity: usable ? 1 : 0.45
+        Behavior on opacity { NumberAnimation { duration: 140 } }
         Rectangle {
           width: 14
           height: 1.6
@@ -484,7 +490,8 @@ Rectangle {
         }
         MouseArea {
           anchors.fill: parent
-          onClicked: bubble.focusPrompt()
+          enabled: plusButton.usable
+          onClicked: app.newConversation()
         }
       }
 
@@ -493,27 +500,27 @@ Rectangle {
         property bool dictating: false
         property real wave: 0
         property string ink: dictating ? "#F28B30" : "#F4F4F5"
+        readonly property bool asking: app ? app.asking : false
+        readonly property string mode: asking ? "stop" : (promptField.text.trim() !== "" ? "send" : "voice")
         width: 42
         height: 42
         radius: 21
         anchors.right: parent.right
-        color: "#232327"
-        border.width: dictating ? 1.5 : 1
-        border.color: dictating ? (app ? app.accent : "#F28B30") : "#3F3F46"
+        color: mode === "send" ? "#F4F4F5" : "#232327"
+        border.width: dictating && mode === "voice" ? 1.5 : 1
+        border.color: mode === "send" ? "#F4F4F5" : (dictating ? (app ? app.accent : "#F28B30") : "#3F3F46")
+        Behavior on color { ColorAnimation { duration: 120 } }
 
         Canvas {
           id: waveCanvas
           anchors.fill: parent
+          opacity: voiceButton.mode === "voice" ? 1 : 0
+          scale: voiceButton.mode === "voice" ? 1 : 0.6
+          Behavior on opacity { NumberAnimation { duration: 120 } }
+          Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
           onPaint: {
             var ctx = getContext("2d")
             ctx.reset()
-            if (app && app.asking) {
-              ctx.fillStyle = "#F4F4F5"
-              ctx.beginPath()
-              ctx.roundedRect(width / 2 - 6, height / 2 - 6, 12, 12, 3, 3)
-              ctx.fill()
-              return
-            }
             ctx.strokeStyle = voiceButton.ink
             ctx.lineCap = "round"
             ctx.lineWidth = 1.7
@@ -534,8 +541,42 @@ Rectangle {
           onVisibleChanged: requestPaint()
         }
 
-        readonly property bool asking: app ? app.asking : false
-        onAskingChanged: waveCanvas.requestPaint()
+        Canvas {
+          id: sendIcon
+          anchors.fill: parent
+          opacity: voiceButton.mode === "send" ? 1 : 0
+          scale: voiceButton.mode === "send" ? 1 : 0.6
+          Behavior on opacity { NumberAnimation { duration: 120 } }
+          Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+          onPaint: {
+            var ctx = getContext("2d")
+            ctx.reset()
+            ctx.strokeStyle = "#141416"
+            ctx.lineWidth = 2
+            ctx.lineCap = "round"
+            ctx.lineJoin = "round"
+            ctx.beginPath()
+            ctx.moveTo(width / 2, height / 2 + 7)
+            ctx.lineTo(width / 2, height / 2 - 7)
+            ctx.moveTo(width / 2 - 6, height / 2 - 1)
+            ctx.lineTo(width / 2, height / 2 - 7)
+            ctx.lineTo(width / 2 + 6, height / 2 - 1)
+            ctx.stroke()
+          }
+        }
+
+        Rectangle {
+          anchors.centerIn: parent
+          width: 12
+          height: 12
+          radius: 3
+          color: "#F4F4F5"
+          opacity: voiceButton.mode === "stop" ? 1 : 0
+          scale: voiceButton.mode === "stop" ? 1 : 0.6
+          Behavior on opacity { NumberAnimation { duration: 120 } }
+          Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+        }
+
         onDictatingChanged: waveCanvas.requestPaint()
         onWaveChanged: waveCanvas.requestPaint()
         onInkChanged: waveCanvas.requestPaint()
@@ -575,7 +616,7 @@ Rectangle {
           id: promptField
           anchors.fill: parent
           anchors.leftMargin: 16
-          anchors.rightMargin: 36
+          anchors.rightMargin: 16
           topPadding: 0
           bottomPadding: 0
           verticalAlignment: TextInput.AlignVCenter
@@ -589,38 +630,6 @@ Rectangle {
           onAccepted: app.submitPrompt(text)
           Keys.onEscapePressed: app.closeBubble()
           background: Item {}
-        }
-
-        Canvas {
-          id: micIcon
-          width: 16
-          height: 16
-          anchors.right: parent.right
-          anchors.rightMargin: 14
-          anchors.verticalCenter: parent.verticalCenter
-          onPaint: {
-            var ctx = getContext("2d")
-            ctx.reset()
-            ctx.strokeStyle = "#A1A1AA"
-            ctx.lineWidth = 1.4
-            ctx.lineCap = "round"
-            ctx.beginPath()
-            ctx.arc(8, 4.6, 2.6, Math.PI, 0, false)
-            ctx.arc(8, 7.2, 2.6, 0, Math.PI, false)
-            ctx.closePath()
-            ctx.stroke()
-            ctx.beginPath()
-            ctx.arc(8, 8.4, 4.4, 0.15 * Math.PI, 0.85 * Math.PI, false)
-            ctx.stroke()
-            ctx.beginPath()
-            ctx.moveTo(8, 12.6)
-            ctx.lineTo(8, 14.8)
-            ctx.stroke()
-          }
-          MouseArea {
-            anchors.fill: parent
-            onClicked: bubble.focusPrompt()
-          }
         }
       }
     }

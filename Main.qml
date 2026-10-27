@@ -659,6 +659,15 @@ Item {
 
   // While an ask is running the field stays editable for the next prompt,
   // and Enter leaves the draft alone instead of throwing it away.
+  function newConversation() {
+    if (root.asking) return
+    root.askedText = ""
+    root.bubbleBody = ""
+    root.noticeLinks = []
+    root.promptDraft = ""
+    Qt.callLater(function () { if (bubblePanel) bubblePanel.focusPrompt() })
+  }
+
   function submitPrompt(value) {
     var prompt = root.plainLine(value, 4000)
     if (prompt === "" || root.asking) return
