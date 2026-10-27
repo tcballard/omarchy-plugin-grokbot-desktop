@@ -1190,19 +1190,28 @@ Item {
     WlrLayershell.layer: WlrLayer.Top
     WlrLayershell.keyboardFocus: root.bubbleOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
+    // Only the mark and the open card take the pointer, so the desktop stays
+    // usable while a reply is on screen. The right-click menu is the one
+    // modal surface: while it is open a click anywhere closes it.
     mask: Region {
-      x: root.surfacesOpen ? 0 : (root.ghost ? 0 : stage.x)
-      y: root.surfacesOpen ? 0 : (root.ghost ? 0 : stage.y)
-      width: root.surfacesOpen ? win.width : (root.ghost || !root.present ? 0 : stage.width)
-      height: root.surfacesOpen ? win.height : (root.ghost || !root.present ? 0 : stage.height)
+      x: root.menuOpen ? 0 : stage.x
+      y: root.menuOpen ? 0 : stage.y
+      width: root.menuOpen ? win.width : (root.ghost || !root.present ? 0 : stage.width)
+      height: root.menuOpen ? win.height : (root.ghost || !root.present ? 0 : stage.height)
+      Region {
+        x: bubblePanel.x
+        y: bubblePanel.y
+        width: root.bubbleOpen ? bubblePanel.width : 0
+        height: root.bubbleOpen ? bubblePanel.height : 0
+      }
     }
 
     MouseArea {
       anchors.fill: parent
-      visible: root.surfacesOpen
+      visible: root.menuOpen
       z: -1
       acceptedButtons: Qt.LeftButton | Qt.RightButton
-      onClicked: root.dismissSurfaces()
+      onClicked: root.menuOpen = false
     }
 
     BubblePanel {

@@ -34,7 +34,7 @@ o.bind("SUPER + W", "Close window / Grok Bot", "grokbot-desktop-close")
 
 ## Use
 
-The companion sits in a corner. Clicks outside the mark pass through. Drag it, or hold Super and drag, and the corner margins are written back to its own `plugins[]` entry. Right-click, the sliders button in the bubble, or `settings` slides the bubble over to its appearance page. The back chevron returns to the chat.
+The companion sits in a corner. Clicks outside the mark pass through, and they keep passing through while the bubble is open, so you can work beside a reply. Close the bubble with its minimize button, Esc, or a click on the mark. Drag it, or hold Super and drag, and the corner margins are written back to its own `plugins[]` entry. Right-click, the sliders button in the bubble, or `settings` slides the bubble over to its appearance page. The back chevron returns to the chat.
 
 | Action | Result |
 | --- | --- |
