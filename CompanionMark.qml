@@ -1,11 +1,13 @@
 import QtQuick
 import QtQuick.Shapes
+import QtQuick.Effects
 import "qml/shapes.js" as Shapes
 import "qml/palette.js" as Palette
 import "qml/face.js" as Face
 
-// Flat Grok Bot silhouette. No outline, no highlight, no sclera.
-// The face is two angled cut-outs: capsules open, lid lines closed.
+// Flat Grok Bot silhouette. No outline, no highlight, no sclera. The face is
+// two capsules cut through the shape, placed, sized, and tilted per shape the
+// way Grok Bot draws them; they flatten into lid lines to blink or sleep.
 Item {
   id: mark
   property string shapeFrom: "teardrop"
@@ -26,6 +28,12 @@ Item {
   // A contour supplied by the caller replaces the named blend. The main
   // mark uses it to morph from whatever was on screen.
   property var face: null
+  // Resting eyes supplied by the caller, alongside `face`.
+  property var eyeSet: null
+  // Punch the eyes through the shape so whatever is behind shows, as Grok
+  // Bot does. Off, they are painted in eyeColor, which callers set to the
+  // surface behind the mark.
+  property bool cutout: false
   // Eye opening multiplier for attention, such as the pointer resting on
   // the mark.
   property real attention: 1
@@ -34,7 +42,9 @@ Item {
   property color fillFrom: "#FF6700"
   property color eyeFrom: "#141416"
 
-  readonly property var blended: face ? ({ points: face }) : Shapes.blend(shapeFrom, shapeTo, morph)
+  readonly property var named: Shapes.blend(shapeFrom, shapeTo, morph)
+  readonly property var blended: face ? ({ points: face, eyes: eyeSet || named.eyes }) : named
+  readonly property var restEyes: mark.blended.eyes
   readonly property real accentLuma: accent.r * 0.2126 + accent.g * 0.7152 + accent.b * 0.0722
   readonly property color fillColor: mark.fillHex !== "" ? mark.parseHex(mark.fillHex) : mixToken("fill")
   readonly property color eyeColor: mark.cutoutHex !== "" ? mark.parseHex(mark.cutoutHex) : mixToken("eye")
@@ -80,32 +90,16 @@ Item {
   readonly property real cx: width / 2
   readonly property real cy: height / 2
   readonly property string outline: Shapes.svgPath(mark.blended ? mark.blended.points : null, mark.rad, mark.cx, mark.cy)
-  readonly property real eyeTilt: mark.poseTilt + (mark.expression === "think" ? Math.sin(mark.thinkAngle) * 2 : 0)
-  readonly property var eyeGeo: Face.eye(mark.rad, Math.min(mark.eyeOpen, mark.poseOpen),
-    mark.poseHeight * mark.attention * (1 - Math.min(0.2, Math.abs(mark.gazeY) * 0.12)))
-  readonly property real gazeCx: mark.cx + mark.gazeX * mark.rad * 0.16
-  readonly property real gazeCy: mark.cy + mark.gazeY * mark.rad * 0.1 + mark.sleepDrift * 0.12
+  readonly property real eyeTiltDelta: mark.poseTilt + (mark.expression === "think" ? Math.sin(mark.thinkAngle) * 2 : 0)
+  readonly property real eyeOpenNow: Math.min(mark.eyeOpen, mark.poseOpen)
+  readonly property real eyeSquint: mark.poseHeight * mark.attention * (1 - Math.min(0.2, Math.abs(mark.gazeY) * 0.12))
+  readonly property real gazeDx: mark.gazeX * mark.rad * 0.16
+  readonly property real gazeDy: mark.gazeY * mark.rad * 0.1 + mark.sleepDrift * 0.12
   readonly property bool showImage: mark.imageSource.length > 6 && avatar.status === Image.Ready
 
-  // The silhouette is a GPU-drawn path, so it stays crisp at any scale.
-  Shape {
-    id: body
-    anchors.fill: parent
-    visible: !mark.showImage
-    Component.onCompleted: {
-      try {
-        body.preferredRendererType = Shape.CurveRenderer
-      } catch (e) {
-        // Older Qt draws with the default renderer.
-      }
-    }
-    ShapePath {
-      strokeWidth: -1
-      strokeColor: "transparent"
-      fillColor: mark.fillColor
-      PathSvg { path: mark.outline }
-    }
-  }
+  // Supersample the cut-out layers so the mark stays crisp while breathing,
+  // hopping, and squashing scale it up.
+  readonly property size layerSize: Qt.size(Math.ceil(width * Screen.devicePixelRatio * 2), Math.ceil(height * Screen.devicePixelRatio * 2))
 
   Image {
     id: avatar
@@ -117,48 +111,96 @@ Item {
     source: mark.imageSource.length > 6 ? mark.imageSource : ""
   }
 
-  // A bot photo is clipped to the silhouette. Few bots have one, so this
-  // painter only loads when one is shown.
-  Loader {
+  Item {
+    id: art
     anchors.fill: parent
-    active: mark.showImage
-    sourceComponent: Canvas {
-      id: photo
-      Connections {
-        target: mark
-        function onOutlineChanged() { photo.requestPaint() }
+    visible: !mark.cutout
+    layer.enabled: mark.cutout
+    layer.textureSize: mark.layerSize
+    layer.smooth: true
+    layer.mipmap: true
+
+    // The silhouette is a GPU-drawn path, so it stays crisp at any scale.
+    Shape {
+      id: body
+      anchors.fill: parent
+      visible: !mark.showImage
+      Component.onCompleted: {
+        try {
+          body.preferredRendererType = Shape.CurveRenderer
+        } catch (e) {
+          // Older Qt draws with the default renderer.
+        }
       }
-      onPaint: {
-        var ctx = getContext("2d")
-        ctx.reset()
-        ctx.path = mark.outline
-        ctx.save()
-        ctx.clip()
-        ctx.drawImage(avatar, 0, 0, width, height)
-        ctx.restore()
+      ShapePath {
+        strokeWidth: -1
+        strokeColor: "transparent"
+        fillColor: mark.fillColor
+        PathSvg { path: mark.outline }
+      }
+    }
+
+    // A bot photo is clipped to the silhouette. Few bots have one, so this
+    // painter only loads when one is shown.
+    Loader {
+      anchors.fill: parent
+      active: mark.showImage
+      sourceComponent: Canvas {
+        id: photo
+        Connections {
+          target: mark
+          function onOutlineChanged() { photo.requestPaint() }
+        }
+        onPaint: {
+          var ctx = getContext("2d")
+          ctx.reset()
+          ctx.path = mark.outline
+          ctx.save()
+          ctx.clip()
+          ctx.drawImage(avatar, 0, 0, width, height)
+          ctx.restore()
+        }
+      }
+    }
+
+    Repeater {
+      model: mark.cutout ? 0 : 2
+      delegate: MarkEye {
+        required property int index
+        host: mark
+        spec: mark.restEyes[index]
+        color: mark.eyeColor
       }
     }
   }
 
-  Rectangle {
-    width: mark.eyeGeo.w
-    height: mark.eyeGeo.h
-    radius: mark.eyeGeo.r
-    x: mark.gazeCx - mark.rad * 0.15 - width / 2
-    y: mark.gazeCy + mark.rad * 0.035 - height / 2
-    rotation: mark.eyeTilt
-    color: mark.eyeColor
-    antialiasing: true
+  Item {
+    id: eyeMask
+    anchors.fill: parent
+    visible: false
+    layer.enabled: mark.cutout
+    layer.textureSize: mark.layerSize
+    layer.smooth: true
+    layer.mipmap: true
+    Repeater {
+      model: mark.cutout ? 2 : 0
+      delegate: MarkEye {
+        required property int index
+        host: mark
+        spec: mark.restEyes[index]
+        color: "#FFFFFF"
+      }
+    }
   }
 
-  Rectangle {
-    width: mark.eyeGeo.w
-    height: mark.eyeGeo.h
-    radius: mark.eyeGeo.r
-    x: mark.gazeCx + mark.rad * 0.15 - width / 2
-    y: mark.gazeCy - mark.rad * 0.035 - height / 2
-    rotation: mark.eyeTilt
-    color: mark.eyeColor
-    antialiasing: true
+  MultiEffect {
+    anchors.fill: parent
+    visible: mark.cutout
+    source: art
+    maskEnabled: true
+    maskSource: eyeMask
+    maskInverted: true
+    maskThresholdMin: 0.5
+    maskSpreadAtMin: 1.0
   }
 }

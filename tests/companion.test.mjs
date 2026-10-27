@@ -682,15 +682,20 @@ test('the reply pulse and idle breathing animate separate properties', () => {
 })
 
 test('a closing eye flattens into a lid instead of shrinking to a dot', () => {
-  const rad = 128 * 0.46
-  const open = face.eye(rad, 1, 1)
-  const blink = face.eye(rad, 0.08, 1)
-  const shut = face.eye(rad, 0, 1)
+  const rad = 128 * 0.43
+  const spec = shapes.SHAPES.teardrop.eyes[0]
+  const open = face.eye(spec, rad, 1, 1)
+  const blink = face.eye(spec, rad, 0.08, 1)
+  const shut = face.eye(spec, rad, 0, 1)
+  assert.ok(Math.abs(open.h - spec.length * rad) < 1e-9, 'open eye is the measured capsule')
   assert.ok(open.h > open.w * 2, 'open eye is a tall capsule')
   assert.ok(blink.h < 3.5, `blink is a line, got ${blink.h}px`)
   assert.ok(shut.w > open.w, 'a shut lid reads wider than the open slit')
   assert.ok(shut.h <= shut.w / 4)
   assert.equal(shut.r, shut.h / 2)
+  // Grok Bot's eyes lean with the top to the left: rotate an upright
+  // rectangle anticlockwise.
+  assert.ok(face.rotation(spec, 0) < 0)
   assert.doesNotMatch(read('CompanionMark.qml'), /paintCapsule/)
 })
 
@@ -900,10 +905,23 @@ test('the mark is a GPU path with rectangle eyes', () => {
   assert.match(mark, /import QtQuick\.Shapes/)
   assert.match(mark, /PathSvg \{ path: mark\.outline \}/)
   assert.match(mark, /active: mark\.showImage/, 'the canvas only loads for a photo')
-  assert.equal((mark.match(/radius: mark\.eyeGeo\.r/g) || []).length, 2)
+  assert.equal((mark.match(/delegate: MarkEye/g) || []).length, 2)
+  assert.match(read('MarkEye.qml'), /radius: eye\.geo\.r/)
   const path = shapes.svgPath(shapes.SHAPES.circle.points, 50, 64, 64)
   assert.match(path, /^M [\d.]+ [\d.]+ Q /)
   assert.match(path, / Z$/)
   assert.equal((path.match(/ Q /g) || []).length, shapes.POINT_COUNT)
   assert.equal(shapes.svgPath([], 50, 0, 0), '')
+})
+
+test('the desktop mark cuts its eyes through the shape, as Grok Bot does', () => {
+  const mark = read('CompanionMark.qml')
+  assert.match(mark, /maskInverted: true/)
+  assert.match(mark, /source: art/)
+  assert.match(mark, /layer\.mipmap: true/)
+  const corner = main.slice(main.indexOf('id: mark'), main.indexOf('id: mark') + 900)
+  assert.match(corner, /cutout: true/)
+  assert.match(corner, /eyeSet: root\.shownEyes/)
+  const start = qmlFunction(main, 'startMorph')
+  assert.ok(start.indexOf('var eyesNow = mark.restEyes') < start.indexOf('morphToEyes ='))
 })

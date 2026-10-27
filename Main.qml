@@ -88,9 +88,12 @@ Item {
   // previous target.
   property var morphFromPoints: null
   property var morphToPoints: null
+  property var morphFromEyes: null
+  property var morphToEyes: null
   property color fillFrom: "#FF6700"
   property color eyeFrom: "#141416"
   readonly property var shownFace: root.morphFromPoints ? Shapes.mix(root.morphFromPoints, root.morphToPoints, root.morphProgress) : null
+  readonly property var shownEyes: root.morphFromEyes ? Shapes.mixEyes(root.morphFromEyes, root.morphToEyes, root.morphProgress) : null
   property string expression: "idle"
   property bool sleepHold: false
   property real eyeOpen: 1
@@ -478,6 +481,7 @@ Item {
     if (!animate) {
       morphAnim.stop()
       root.morphFromPoints = null
+      root.morphFromEyes = null
       root.shapeFrom = nextShape
       root.shapeTo = nextShape
       root.colorFrom = nextColor
@@ -490,6 +494,9 @@ Item {
 
   function startMorph(nextShape, nextColor) {
     var face = mark.blended.points
+    var eyesNow = mark.restEyes
+    root.morphToEyes = Shapes.eyes(nextShape)
+    root.morphFromEyes = eyesNow
     root.fillFrom = mark.fillColor
     root.eyeFrom = mark.eyeColor
     root.morphToPoints = Shapes.align(face, Shapes.get(nextShape).points)
@@ -1693,6 +1700,8 @@ Item {
         shapeTo: root.shapeTo
         morph: root.morphProgress
         face: root.shownFace
+        eyeSet: root.shownEyes
+        cutout: true
         colorFromName: root.colorFrom
         colorName: root.colorTo
         mixFromColors: root.morphFromPoints !== null

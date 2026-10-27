@@ -224,6 +224,7 @@ Rectangle {
             shapeTo: app.shapeTo
             morph: app.morphProgress
             face: app.shownFace
+            eyeSet: app.shownEyes
             colorFromName: app.colorFrom
             colorName: app.colorTo
             mixFromColors: app.morphFromPoints !== null
