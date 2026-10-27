@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Shapes
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
@@ -1348,15 +1349,45 @@ Item {
         return Math.max(0, Math.min(win.height - height, edge))
       }
 
-      Rectangle {
+      // Soft contact shadow. It shrinks and fades as the mark lifts off the
+      // floor, so bobbing and hopping read as height rather than sliding.
+      Shape {
+        id: floorShadow
+        readonly property real lift: Math.max(0, -(root.idleY + root.hopY + Math.sin(root.orbit * Math.PI / 180) * 5 * root.orbitAmp))
+        readonly property real flat: Math.max(10, root.markSize * 0.12) / width
+        property real rest: root.ghost ? 0.08 : 0.34
+        Behavior on rest { NumberAnimation { duration: 160 } }
+        // Drawn as a circle and squashed, so the radial fade stays soft all
+        // the way round the ellipse.
+        width: root.markSize * 0.62
+        height: width
         anchors.horizontalCenter: parent.horizontalCenter
-        y: parent.height - 14
-        width: root.markSize * 0.46
-        height: 10
-        radius: 5
-        color: "#000000"
-        opacity: root.ghost ? 0.05 : 0.18
-        Behavior on opacity { NumberAnimation { duration: 160 } }
+        y: parent.height - 6 - root.markSize * 0.07 - height / 2
+        scale: Math.max(0.55, 1 - lift / 70)
+        opacity: rest * Math.max(0.3, 1 - lift / 45)
+        transform: Scale { origin.x: floorShadow.width / 2; origin.y: floorShadow.height / 2; yScale: floorShadow.flat }
+        ShapePath {
+          strokeWidth: -1
+          strokeColor: "transparent"
+          fillGradient: RadialGradient {
+            centerX: floorShadow.width / 2
+            centerY: floorShadow.height / 2
+            focalX: floorShadow.width / 2
+            focalY: floorShadow.height / 2
+            centerRadius: floorShadow.width / 2
+            GradientStop { position: 0; color: "#FF000000" }
+            GradientStop { position: 0.5; color: "#8C000000" }
+            GradientStop { position: 1; color: "#00000000" }
+          }
+          PathAngleArc {
+            centerX: floorShadow.width / 2
+            centerY: floorShadow.height / 2
+            radiusX: floorShadow.width / 2
+            radiusY: floorShadow.height / 2
+            startAngle: 0
+            sweepAngle: 360
+          }
+        }
       }
 
       CompanionMark {
@@ -1389,6 +1420,7 @@ Item {
         }
         opacity: root.ghost ? 0.28 : 1
         scale: root.breathe * root.talkScale
+        transformOrigin: Item.Bottom
         transform: [
           Translate {
             x: Math.cos(root.orbit * Math.PI / 180) * 6 * root.orbitAmp

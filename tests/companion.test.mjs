@@ -699,3 +699,12 @@ test('each blink draws a new gap', () => {
   const blink = main.slice(main.indexOf('id: blinkTimer'), main.indexOf('id: blinkTimer') + 500)
   assert.match(blink, /onTriggered:[\s\S]*blinkTimer\.interval = 2800 \+ Math\.random\(\) \* 2400/)
 })
+
+test('the mark is grounded by a shadow that answers its height', () => {
+  const shadow = main.slice(main.indexOf('id: floorShadow'), main.indexOf('id: floorShadow') + 1600)
+  assert.match(shadow, /readonly property real lift:/)
+  assert.match(shadow, /scale: Math\.max\(0\.55, 1 - lift/)
+  assert.match(shadow, /RadialGradient/)
+  const mark = main.slice(main.indexOf('id: mark'), main.indexOf('id: mark') + 2000)
+  assert.match(mark, /transformOrigin: Item\.Bottom/)
+})
