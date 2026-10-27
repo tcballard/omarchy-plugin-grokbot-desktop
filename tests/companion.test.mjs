@@ -563,10 +563,13 @@ test('Superwhisper and Voxtype wake lines route instead of being typed', () => {
   const click = bubble.slice(bubble.indexOf('id: voiceButton'))
   const submitAt = click.indexOf('app.submitPrompt(promptField.text)')
   const focusAt = click.indexOf('promptField.forceActiveFocus()')
-  const toggleAt = click.indexOf('voiceButton.dictating = !voiceButton.dictating')
+  const toggleAt = click.indexOf('app.dictating = !app.dictating')
   const commandAt = click.indexOf('app.toggleDictation()')
   assert.match(click, /promptField\.text\.trim\(\) !== ""/)
   assert.ok(submitAt > 0 && submitAt < focusAt && focusAt < toggleAt && toggleAt < commandAt)
+  assert.match(qmlFunction(source, 'closeBubble'), /dictating = false/)
+  assert.match(qmlFunction(source, 'dictateText'), /dictating = false/)
+  assert.match(source, /id: dictationWatchdog/)
 })
 
 test('readme credits both companions and records the live Try Omarchy capture', () => {

@@ -497,7 +497,7 @@ Rectangle {
 
       Rectangle {
         id: voiceButton
-        property bool dictating: false
+        readonly property bool dictating: app ? app.dictating : false
         property real wave: 0
         property string ink: dictating ? "#F28B30" : "#F4F4F5"
         readonly property bool asking: app ? app.asking : false
@@ -590,12 +590,12 @@ Rectangle {
               return
             }
             if (promptField.text.trim() !== "") {
-              voiceButton.dictating = false
+              app.dictating = false
               app.submitPrompt(promptField.text)
               return
             }
             promptField.forceActiveFocus()
-            voiceButton.dictating = !voiceButton.dictating
+            app.dictating = !app.dictating
             app.toggleDictation()
           }
         }
@@ -626,7 +626,11 @@ Rectangle {
           color: "#F4F4F5"
           font.pixelSize: 14
           selectByMouse: true
-          onTextChanged: if (text !== app.promptDraft) app.promptDraft = text
+          onTextChanged: {
+            if (text !== app.promptDraft) app.promptDraft = text
+            // Superwhisper and Voxtype type the transcript when recording ends.
+            if (app.dictating && text.trim() !== "") app.dictating = false
+          }
           onAccepted: app.submitPrompt(text)
           Keys.onEscapePressed: app.closeBubble()
           background: Item {}

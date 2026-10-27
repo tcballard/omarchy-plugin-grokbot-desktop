@@ -50,6 +50,9 @@ Item {
   property bool menuOpen: false
   property bool switcherOpen: false
   property bool asking: false
+  // Lit while a dictation toggle is believed to be recording. Neither
+  // backend reports its state here, so every exit path clears it.
+  property bool dictating: false
   property bool replyUnread: false
   property bool dragging: false
   property bool ghost: false
@@ -541,6 +544,7 @@ Item {
 
   function closeBubble() {
     root.bubbleOpen = false
+    root.dictating = false
     root.switcherOpen = false
     root.rosterExpanded = false
   }
@@ -688,6 +692,7 @@ Item {
   }
 
   function dictateText(text) {
+    root.dictating = false
     var raw = root.plainLine(text, 4000)
     if (raw === "") return "empty"
     var route = Dictation.route(raw, root.bots, root.defaultBotId)
@@ -700,6 +705,14 @@ Item {
     root.openBubble()
     if (!route.prompt) return "opened"
     return root.launchAsk(route.prompt)
+  }
+
+  onDictatingChanged: if (root.dictating) dictationWatchdog.restart(); else dictationWatchdog.stop()
+
+  Timer {
+    id: dictationWatchdog
+    interval: 120000
+    onTriggered: root.dictating = false
   }
 
   function toggleDictation() {
