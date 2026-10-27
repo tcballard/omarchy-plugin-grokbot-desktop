@@ -46,7 +46,7 @@ The companion sits in a corner. Clicks outside the mark pass through, and they k
 | Escape | Closes the bubble |
 | Switch Bot | Morphs into that Bot's shape and colour when sync is on, and routes the next ask there |
 | Pointer nearby, dodge on | Fades and lets clicks through until you rest on the mark |
-| Pointer idle for 2 minutes | The capsule eyes compress into thin slits |
+| Pointer idle for 2 minutes | The capsule eyes close into lid lines |
 
 Bob (`e0195a7d-f804-4688-9191-e2cf3574a6d1`, teardrop, orange) is the default. Asking Bob sends Bob's id, so a Grok Bot routine named for the Omarchy desktop companion can delegate to the other bots. This plugin only delivers the payload.
 

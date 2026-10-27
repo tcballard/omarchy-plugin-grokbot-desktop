@@ -1,6 +1,7 @@
 import QtQuick
 import "qml/shapes.js" as Shapes
 import "qml/palette.js" as Palette
+import "qml/face.js" as Face
 
 // Flat Grok Bot silhouette. No outline, no highlight, no sclera.
 // The face is two angled capsule cutouts.
@@ -78,29 +79,15 @@ Item {
     ctx.closePath()
   }
 
-  function paintCapsule(ctx, x, y, capsuleW, capsuleH, angleDeg, fill) {
-    var hw = capsuleW / 2
-    var straight = Math.max(0, capsuleH / 2 - hw)
-    var ang = angleDeg * Math.PI / 180
-    var ca = Math.cos(ang)
-    var sa = Math.sin(ang)
-    var steps = 28
+  function paintEye(ctx, x, y, geo, angleDeg, fill) {
+    ctx.save()
+    ctx.translate(x, y)
+    ctx.rotate(angleDeg * Math.PI / 180)
     ctx.beginPath()
-    var i
-    for (i = 0; i < steps; i++) {
-      var t = (Math.PI * 2 * i) / steps
-      var px = Math.cos(t) * hw
-      var py = Math.sin(t) * hw
-      if (py >= 0) py += straight
-      else py -= straight
-      var rx = px * ca - py * sa
-      var ry = px * sa + py * ca
-      if (i === 0) ctx.moveTo(x + rx, y + ry)
-      else ctx.lineTo(x + rx, y + ry)
-    }
-    ctx.closePath()
+    ctx.roundedRect(-geo.w / 2, -geo.h / 2, geo.w, geo.h, geo.r, geo.r)
     ctx.fillStyle = fill
     ctx.fill()
+    ctx.restore()
   }
 
   onBlendedChanged: canvas.requestPaint()
@@ -157,8 +144,7 @@ Item {
       var tilt = 11
       var heightScale = 1
       if (mark.expression === "sleep") {
-        open = Math.min(open, 0.16)
-        heightScale = 0.42
+        open = Math.min(open, 0.04)
       } else if (mark.expression === "think") {
         open = Math.min(open, 0.45)
         tilt = 18 + Math.sin(mark.thinkAngle) * 2
@@ -175,10 +161,9 @@ Item {
       var gx = cx + mark.gazeX * rad * 0.16
       var gy = cy + mark.gazeY * rad * 0.1 + mark.sleepDrift * 0.12
       var sep = rad * 0.3
-      var eyeW = Math.max(1.6, rad * 0.165)
-      var eyeH = Math.max(eyeW * 0.34, rad * 0.43 * Math.max(0.08, open) * heightScale)
-      mark.paintCapsule(ctx, gx - sep * 0.5, gy + rad * 0.035, eyeW, eyeH, tilt, mark.eyeColor)
-      mark.paintCapsule(ctx, gx + sep * 0.5, gy - rad * 0.035, eyeW, eyeH, tilt, mark.eyeColor)
+      var geo = Face.eye(rad, open, heightScale)
+      mark.paintEye(ctx, gx - sep * 0.5, gy + rad * 0.035, geo, tilt, mark.eyeColor)
+      mark.paintEye(ctx, gx + sep * 0.5, gy - rad * 0.035, geo, tilt, mark.eyeColor)
     }
   }
 }

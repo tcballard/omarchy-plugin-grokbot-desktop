@@ -20,6 +20,7 @@ function loadLibrary(file) {
 
 const shapes = loadLibrary('qml/shapes.js')
 const palette = loadLibrary('qml/palette.js')
+const face = loadLibrary('qml/face.js')
 const bots = readJSON(path.join(root, 'data/bots.json')).bots
 const main = read('Main.qml')
 const manifest = readJSON(path.join(root, 'manifest.json'))
@@ -660,4 +661,17 @@ test('the reply pulse and idle breathing animate separate properties', () => {
   assert.match(pulse, /property: "talkScale"/)
   assert.doesNotMatch(pulse, /property: "breathe"/)
   assert.match(main, /scale: root\.breathe \* root\.talkScale/)
+})
+
+test('a closing eye flattens into a lid instead of shrinking to a dot', () => {
+  const rad = 128 * 0.46
+  const open = face.eye(rad, 1, 1)
+  const blink = face.eye(rad, 0.08, 1)
+  const shut = face.eye(rad, 0, 1)
+  assert.ok(open.h > open.w * 2, 'open eye is a tall capsule')
+  assert.ok(blink.h < 3.5, `blink is a line, got ${blink.h}px`)
+  assert.ok(shut.w > open.w, 'a shut lid reads wider than the open slit')
+  assert.ok(shut.h <= shut.w / 4)
+  assert.equal(shut.r, shut.h / 2)
+  assert.doesNotMatch(read('CompanionMark.qml'), /paintCapsule/)
 })
