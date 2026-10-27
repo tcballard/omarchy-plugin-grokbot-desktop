@@ -75,11 +75,22 @@ test('service manifest replaces the bar-widget starter', () => {
 
 test('every official shape morphs through the same contour length', () => {
   assert.deepEqual([...shapes.NAMES], [
-    'blob', 'pebble', 'bean', 'egg', 'squircle', 'tablet', 'capsule', 'cylinder',
-    'hex', 'gem', 'crystal', 'wedge', 'shield', 'dome', 'arch', 'cloud',
-    'teardrop', 'leaf', 'square', 'sparkle', 'clover', 'flower', 'heart',
-    'house', 'star'
+    'circle', 'square', 'triangle', 'diamond', 'pentagon',
+    'hexagon', 'octagon', 'heptagon', 'pill', 'cloud',
+    'heart', 'crescent', 'star', 'spark', 'burst',
+    'flower', 'clover', 'sprout', 'drop', 'bean',
+    'peanut', 'pebble', 'shield', 'ghost', 'bolt'
   ])
+  assert.equal(shapes.resolve('teardrop'), 'drop')
+  assert.equal(shapes.resolve('blob'), 'bean')
+  assert.equal(shapes.resolve('hex'), 'hexagon')
+  assert.equal(shapes.resolve('tablet'), 'pill')
+  assert.equal(shapes.resolve('wedge'), 'bolt')
+  assert.equal(shapes.resolve('squircle'), 'square')
+  assert.equal(shapes.resolve('sparkle'), 'spark')
+  assert.equal(shapes.resolve('leaf'), 'sprout')
+  assert.equal(shapes.known('teardrop'), true)
+  assert.notDeepEqual([...shapes.SHAPES.square.points[0]], [...shapes.SHAPES.diamond.points[0]])
   for (const name of shapes.NAMES) {
     const shape = shapes.SHAPES[name]
     assert.equal(shape.points.length, shapes.POINT_COUNT, name)
@@ -109,7 +120,11 @@ test('palette eyes stay readable on each fill', () => {
     const tone = palette.COLORS[name]
     assert.ok(contrast(tone.eye, tone.fill) >= 3, `${name} eye/fill contrast`)
     assert.notEqual(tone.pupil.toLowerCase(), tone.eye.toLowerCase())
+    if (name === 'black') assert.equal(tone.eye.toLowerCase(), '#f4f4f5')
+    else assert.equal(tone.eye.toLowerCase(), '#141416')
   }
+  assert.equal(palette.COLORS.green.fill.toLowerCase(), '#5bc67a')
+  assert.equal(palette.COLORS.orange.fill.toLowerCase(), '#f28b30')
 })
 
 test('bundled roster is the fifteen live bots, with Bob first', () => {
@@ -127,7 +142,7 @@ test('bundled roster is the fifteen live bots, with Bob first', () => {
     assert.equal(bot.avatarShape, expected[1])
     assert.equal(bot.avatarColor, expected[2])
     assert.equal(bot.isPrimary, expected[3])
-    assert.equal(shapes.NAMES.includes(bot.avatarShape), true)
+    assert.equal(shapes.known(bot.avatarShape), true)
     assert.equal(palette.NAMES.includes(bot.avatarColor), true)
     assert.doesNotMatch(bot.description, /@|googlemail|\/home\/|\/Users\//)
   }

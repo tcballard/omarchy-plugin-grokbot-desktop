@@ -2,7 +2,8 @@ import QtQuick
 import "qml/shapes.js" as Shapes
 import "qml/palette.js" as Palette
 
-// One Grok Bot mark: a morphed contour, a highlight, and a face.
+// Flat Grok Bot silhouette. No outline, no highlight, no sclera.
+// The face is two angled capsule cutouts.
 Item {
   id: mark
   property string shapeFrom: "teardrop"
@@ -10,9 +11,9 @@ Item {
   property real morph: 1
   property string colorName: "orange"
   property string colorFromName: ""
-  property color accent: "#7aa2f7"
-  property color themeForeground: "#e8e6e3"
-  property color themeBackground: "#1a1b26"
+  property color accent: "#5BC67A"
+  property string fillHex: ""
+  property string cutoutHex: ""
   property real gazeX: 0
   property real gazeY: 0
   property real eyeOpen: 1
@@ -22,17 +23,14 @@ Item {
   property string imageSource: ""
 
   readonly property var blended: Shapes.blend(shapeFrom, shapeTo, morph)
-  readonly property bool darkAccent: (accent.r * 0.2126 + accent.g * 0.7152 + accent.b * 0.0722) > 0.45
-  readonly property color fillColor: mixToken("fill")
-  readonly property color highlightColor: mixToken("highlight")
-  readonly property color eyeColor: mixToken("eye")
-  readonly property color outlineColor: mixToken("outline")
-  readonly property color pupilColor: mixToken("pupil")
+  readonly property real accentLuma: accent.r * 0.2126 + accent.g * 0.7152 + accent.b * 0.0722
+  readonly property color fillColor: mark.fillHex !== "" ? mark.parseHex(mark.fillHex) : mixToken("fill")
+  readonly property color eyeColor: mark.cutoutHex !== "" ? mark.parseHex(mark.cutoutHex) : mixToken("eye")
 
   function parseHex(hex) {
     var text = String(hex || "").replace("#", "")
     var n = parseInt(text, 16)
-    if (!isFinite(n)) return Qt.rgba(0.9, 0.4, 0.1, 1)
+    if (!isFinite(n) || text.length < 6) return Qt.rgba(0.95, 0.55, 0.19, 1)
     return Qt.rgba(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255, 1)
   }
 
@@ -40,10 +38,8 @@ Item {
     var chosen = name !== "" ? name : "orange"
     if (chosen === Palette.OMARCHY) {
       if (key === "fill") return mark.accent
-      if (key === "highlight") return Qt.lighter(mark.accent, 1.4)
-      if (key === "outline") return Qt.darker(mark.accent, 1.7)
-      if (key === "eye") return mark.parseHex(mark.darkAccent ? "#241c10" : "#f7f4ee")
-      return mark.parseHex(mark.darkAccent ? "#fff6df" : "#16130f")
+      if (key === "eye") return mark.parseHex(mark.accentLuma < 0.16 ? "#F4F4F5" : "#141416")
+      return mark.parseHex(mark.accentLuma < 0.16 ? "#FFFFFF" : "#09090B")
     }
     return mark.parseHex(Palette.get(chosen)[key])
   }
@@ -61,12 +57,49 @@ Item {
     )
   }
 
+  function tracePath(ctx, pts, rad, cx, cy) {
+    var n = pts.length
+    function px(point) { return cx + point[0] * rad }
+    function py(point) { return cy + point[1] * rad }
+    ctx.beginPath()
+    ctx.moveTo(px(pts[0]), py(pts[0]))
+    var i
+    for (i = 0; i < n; i++) {
+      var a = pts[i]
+      var b = pts[(i + 1) % n]
+      ctx.quadraticCurveTo(px(a), py(a), px([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]), py([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]))
+    }
+    ctx.closePath()
+  }
+
+  function paintCapsule(ctx, x, y, capsuleW, capsuleH, angleDeg, fill) {
+    var hw = capsuleW / 2
+    var straight = Math.max(0, capsuleH / 2 - hw)
+    var ang = angleDeg * Math.PI / 180
+    var ca = Math.cos(ang)
+    var sa = Math.sin(ang)
+    var steps = 28
+    ctx.beginPath()
+    var i
+    for (i = 0; i < steps; i++) {
+      var t = (Math.PI * 2 * i) / steps
+      var px = Math.cos(t) * hw
+      var py = Math.sin(t) * hw
+      if (py >= 0) py += straight
+      else py -= straight
+      var rx = px * ca - py * sa
+      var ry = px * sa + py * ca
+      if (i === 0) ctx.moveTo(x + rx, y + ry)
+      else ctx.lineTo(x + rx, y + ry)
+    }
+    ctx.closePath()
+    ctx.fillStyle = fill
+    ctx.fill()
+  }
+
   onBlendedChanged: canvas.requestPaint()
   onFillColorChanged: canvas.requestPaint()
-  onHighlightColorChanged: canvas.requestPaint()
   onEyeColorChanged: canvas.requestPaint()
-  onOutlineColorChanged: canvas.requestPaint()
-  onPupilColorChanged: canvas.requestPaint()
   onGazeXChanged: canvas.requestPaint()
   onGazeYChanged: canvas.requestPaint()
   onEyeOpenChanged: canvas.requestPaint()
@@ -103,13 +136,7 @@ Item {
       var cx = w / 2
       var cy = h / 2
       var rad = Math.min(w, h) * 0.46
-      function px(point) { return cx + point[0] * rad }
-      function py(point) { return cy + point[1] * rad }
-      ctx.beginPath()
-      ctx.moveTo(px(pts[0]), py(pts[0]))
-      var i
-      for (i = 1; i < pts.length; i++) ctx.lineTo(px(pts[i]), py(pts[i]))
-      ctx.closePath()
+      mark.tracePath(ctx, pts, rad, cx, cy)
       if (avatar.status === Image.Ready && mark.imageSource.length > 6) {
         ctx.save()
         ctx.clip()
@@ -118,87 +145,34 @@ Item {
       } else {
         ctx.fillStyle = mark.fillColor
         ctx.fill()
-        ctx.save()
-        ctx.clip()
-        var hx = cx - mark.gazeX * rad * 0.18
-        var hy = cy - rad * 0.32 - mark.gazeY * rad * 0.1
-        var gradient = ctx.createRadialGradient(hx, hy, rad * 0.04, cx, cy, rad * 0.95)
-        gradient.addColorStop(0, mark.highlightColor)
-        gradient.addColorStop(1, "rgba(255,255,255,0)")
-        ctx.globalAlpha = 0.55
-        ctx.fillStyle = gradient
-        ctx.fillRect(0, 0, w, h)
-        ctx.restore()
       }
-      ctx.lineWidth = Math.max(1.25, w * 0.028)
-      ctx.strokeStyle = mark.outlineColor
-      ctx.lineJoin = "round"
-      ctx.stroke()
 
-      var eyeY = cy + face.eyeY * rad + mark.gazeY * rad * 0.05
-      var spread = face.spread * rad
-      var eyeR = Math.max(2.2, w * 0.07)
-      if (mark.expression === "alert") eyeR *= 1.28
-      var shift = mark.gazeX * rad * 0.045
-      mark.paintEye(ctx, cx - spread + shift, eyeY, eyeR)
-      mark.paintEye(ctx, cx + spread + shift, eyeY, eyeR)
-      if (mark.expression === "think") mark.paintThink(ctx, cx, eyeY - eyeR * 1.8, eyeR)
-      if (mark.expression === "sleep") mark.paintSleep(ctx, cx + spread + eyeR, eyeY - eyeR)
-    }
-  }
+      var open = mark.eyeOpen
+      var tilt = 11
+      var heightScale = 1
+      if (mark.expression === "sleep") {
+        open = Math.min(open, 0.16)
+        heightScale = 0.42
+      } else if (mark.expression === "think") {
+        open = Math.min(open, 0.45)
+        tilt = 18 + Math.sin(mark.thinkAngle) * 2
+        heightScale = 0.62
+      } else if (mark.expression === "alert") {
+        tilt = 7
+        heightScale = 1.16
+      } else if (mark.expression === "happy" || mark.expression === "celebrate") {
+        tilt = 16
+        heightScale = 0.72
+      }
+      heightScale *= 1 - Math.min(0.2, Math.abs(mark.gazeY) * 0.12)
 
-  function paintEye(ctx, x, y, radius) {
-    var open = mark.eyeOpen
-    if (mark.expression === "sleep") open = 0.08
-    if (mark.expression === "think") open = Math.min(open, 0.38)
-    ctx.lineCap = "round"
-    ctx.strokeStyle = mark.outlineColor
-    ctx.fillStyle = mark.eyeColor
-    ctx.lineWidth = Math.max(1.2, radius * 0.18)
-    if (mark.expression === "happy" || mark.expression === "celebrate") {
-      ctx.beginPath()
-      ctx.arc(x, y + radius * 0.15, radius * 0.85, Math.PI * 1.15, Math.PI * 1.85, false)
-      ctx.stroke()
-      return
+      var gx = cx + mark.gazeX * rad * 0.16
+      var gy = cy + mark.gazeY * rad * 0.1 + mark.sleepDrift * 0.12
+      var sep = rad * 0.3
+      var eyeW = Math.max(1.6, rad * 0.165)
+      var eyeH = Math.max(eyeW * 0.34, rad * 0.43 * Math.max(0.08, open) * heightScale)
+      mark.paintCapsule(ctx, gx - sep * 0.5, gy + rad * 0.035, eyeW, eyeH, tilt, mark.eyeColor)
+      mark.paintCapsule(ctx, gx + sep * 0.5, gy - rad * 0.035, eyeW, eyeH, tilt, mark.eyeColor)
     }
-    if (open < 0.22) {
-      ctx.beginPath()
-      ctx.moveTo(x - radius, y)
-      ctx.lineTo(x + radius, y)
-      ctx.stroke()
-      return
-    }
-    ctx.beginPath()
-    ctx.ellipse(x, y, radius, Math.max(1.2, radius * open), 0, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.stroke()
-    var pupil = radius * (mark.expression === "alert" ? 0.28 : 0.42)
-    ctx.beginPath()
-    ctx.fillStyle = mark.pupilColor
-    ctx.ellipse(x + mark.gazeX * radius * 0.35, y + mark.gazeY * radius * 0.28, pupil, pupil * open, 0, 0, Math.PI * 2)
-    ctx.fill()
-  }
-
-  function paintThink(ctx, x, y, radius) {
-    var i
-    ctx.fillStyle = mark.eyeColor
-    for (i = 0; i < 3; i++) {
-      var angle = mark.thinkAngle + i * (Math.PI * 2 / 3)
-      var dx = Math.cos(angle) * radius * 1.3
-      var dy = Math.sin(angle) * radius * 0.55
-      ctx.beginPath()
-      ctx.arc(x + dx, y + dy, Math.max(1.3, radius * 0.16), 0, Math.PI * 2)
-      ctx.fill()
-    }
-  }
-
-  function paintSleep(ctx, x, y) {
-    ctx.fillStyle = mark.eyeColor
-    ctx.font = Math.max(10, width * 0.12) + "px sans-serif"
-    ctx.globalAlpha = 0.85
-    ctx.fillText("z", x, y + mark.sleepDrift)
-    ctx.globalAlpha = 0.55
-    ctx.fillText("z", x + width * 0.08, y - width * 0.08 + mark.sleepDrift * 0.6)
-    ctx.globalAlpha = 1
   }
 }

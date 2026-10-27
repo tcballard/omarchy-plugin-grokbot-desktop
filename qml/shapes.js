@@ -1,17 +1,51 @@
 .pragma library
 
-// Normalized closed contours for the Grok Bot avatar marks.
-// Every shape is resampled to POINT_COUNT so morphing is point-to-point.
-// Coordinates are centered, y grows downward, and each contour fits in [-1, 1].
+// Closed Grok Bot contours. Every mark is resampled to POINT_COUNT so morphs
+// stay point-to-point. Coordinates are centered, y grows downward, and each
+// contour fits in [-1, 1].
+//
+// Square, triangle, diamond, pentagon, hexagon, heptagon, and octagon blend
+// 70% of the polygon radius with 30% of a circle. Diamond is that rounded
+// square turned onto a point. Bean is the asymmetric organic contour.
+// Official avatarShape strings resolve through ALIASES.
 
 var POINT_COUNT = 80
 
 var NAMES = [
-  "blob", "pebble", "bean", "egg", "squircle", "tablet", "capsule", "cylinder",
-  "hex", "gem", "crystal", "wedge", "shield", "dome", "arch", "cloud",
-  "teardrop", "leaf", "square", "sparkle", "clover", "flower", "heart",
-  "house", "star"
+  "circle", "square", "triangle", "diamond", "pentagon",
+  "hexagon", "octagon", "heptagon", "pill", "cloud",
+  "heart", "crescent", "star", "spark", "burst",
+  "flower", "clover", "sprout", "drop", "bean",
+  "peanut", "pebble", "shield", "ghost", "bolt"
 ]
+
+var ALIASES = {
+  blob: "bean",
+  teardrop: "drop",
+  hex: "hexagon",
+  tablet: "pill",
+  wedge: "bolt",
+  squircle: "square",
+  sparkle: "spark",
+  leaf: "sprout",
+  egg: "drop",
+  capsule: "pill",
+  cylinder: "pill",
+  gem: "diamond",
+  crystal: "diamond",
+  dome: "circle",
+  arch: "ghost",
+  house: "shield"
+}
+
+var SIDES = {
+  triangle: 3,
+  diamond: 4,
+  pentagon: 5,
+  hexagon: 6,
+  heptagon: 7,
+  octagon: 8
+}
 
 function hypot(dx, dy) {
   return Math.sqrt(dx * dx + dy * dy)
@@ -94,312 +128,147 @@ function finish(raw, eyeY, spread) {
   }
 }
 
-function superellipse(n, rx, ry) {
+function signedPow(value, exp) {
+  return (value < 0 ? -1 : 1) * Math.pow(Math.abs(value), exp)
+}
+
+function contour(kind) {
   var pts = []
   var count = 180
+  var s = String(kind || "")
   var i
   for (i = 0; i < count; i++) {
     var t = (Math.PI * 2 * i) / count
     var c = Math.cos(t)
-    var s = Math.sin(t)
-    var x = (c < 0 ? -1 : 1) * Math.pow(Math.abs(c), 2 / n) * rx
-    var y = (s < 0 ? -1 : 1) * Math.pow(Math.abs(s), 2 / n) * ry
-    pts.push([x, y])
-  }
-  return pts
-}
-
-function roundedRect(hw, hh, radius) {
-  var r = Math.min(radius, hw, hh)
-  var pts = []
-  function corner(cx, cy, a0, a1) {
-    var steps = 14
-    var i
-    for (i = 0; i <= steps; i++) {
-      var a = a0 + (a1 - a0) * (i / steps)
-      pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r])
+    var sn = Math.sin(t)
+    var x
+    var y
+    if (s === "circle") {
+      x = c * 0.94
+      y = sn * 0.94
+    } else if (s === "pill") {
+      var pill = 2 / 3.6
+      x = signedPow(c, pill) * 0.98
+      y = signedPow(sn, pill) * 0.76
+    } else if (s === "bean") {
+      var bean = 0.88 + 0.1 * Math.sin(t - 0.5) + 0.08 * Math.cos(2 * t - 0.7) - 0.06 * Math.sin(3 * t + 0.4)
+      x = c * bean * 1.02
+      y = sn * bean * 0.95
+    } else if (s === "cloud") {
+      var cloud = 0.84 + 0.13 * Math.cos(5 * t - 0.3) + 0.04 * Math.sin(2 * t)
+      x = c * cloud
+      y = sn * cloud * 0.92
+    } else if (s === "flower") {
+      var flower = 0.82 + 0.16 * Math.cos(6 * t)
+      x = c * flower
+      y = sn * flower
+    } else if (s === "clover") {
+      var clover = 0.81 + 0.18 * Math.cos(4 * t)
+      x = c * clover
+      y = sn * clover
+    } else if (s === "star") {
+      var star = 0.79 + 0.2 * Math.cos(5 * t - Math.PI / 2)
+      x = c * star
+      y = sn * star
+    } else if (s === "spark") {
+      var spark = 0.77 + 0.22 * Math.cos(4 * t)
+      x = c * spark
+      y = sn * spark
+    } else if (s === "burst") {
+      var burst = 0.83 + 0.15 * Math.cos(8 * t)
+      x = c * burst
+      y = sn * burst
+    } else if (s === "peanut") {
+      var peanut = 0.84 + 0.16 * Math.cos(2 * t - 0.4)
+      x = c * peanut * 1.02
+      y = sn * peanut * 0.94
+    } else if (s === "pebble") {
+      var pebble = 0.89 + 0.08 * Math.cos(2 * t + 0.6) + 0.04 * Math.sin(3 * t)
+      x = c * pebble * 1.03
+      y = sn * pebble * 0.91
+    } else if (s === "drop") {
+      x = c * (0.84 + 0.2 * sn) * 0.94
+      y = sn * 0.95
+    } else if (s === "heart") {
+      x = 0.88 * Math.pow(Math.sin(t), 3)
+      y = -0.88 * (0.8125 * Math.cos(t) - 0.3125 * Math.cos(2 * t) - 0.125 * Math.cos(3 * t) - 0.0625 * Math.cos(4 * t)) - 0.04
+    } else if (s === "ghost") {
+      if (sn > 0.35) {
+        x = c * 0.86
+        y = sn * 0.91 + 0.07 * Math.cos(6 * t)
+      } else {
+        x = c * 0.88
+        y = sn * 0.93
+      }
+    } else if (s === "shield") {
+      var shield = 0.9 - 0.07 * Math.cos(4 * t) + 0.05 * sn
+      x = c * shield * 0.91
+      y = sn * shield * 0.95
+    } else if (s === "crescent") {
+      var crescent = 0.88 + 0.1 * Math.cos(t + 0.6)
+      x = c * crescent
+      y = sn * crescent
+    } else if (s === "sprout") {
+      var sprout = 0.85 + 0.12 * Math.sin(2 * t + 0.5) + 0.07 * Math.cos(3 * t)
+      x = c * sprout
+      y = sn * sprout
+    } else if (s === "bolt") {
+      var bolt = 0.85 + 0.14 * Math.cos(3 * t - 0.8)
+      x = c * bolt * 0.92
+      y = sn * bolt
+    } else {
+      var sides = s === "square" ? 4 : (SIDES[s] || 6)
+      var phase = s === "diamond" ? Math.PI / 4 : 0
+      var ang = t + Math.PI / 2 + phase
+      var sector = (Math.PI * 2) / sides
+      var wrapped = (ang + sector / 2) % sector
+      if (wrapped < 0) wrapped += sector
+      var local = wrapped - sector / 2
+      var poly = Math.cos(sector / 2) / Math.cos(local)
+      var rad = (0.7 * poly + 0.3) * 0.92
+      x = c * rad
+      y = sn * rad
     }
-  }
-  corner(hw - r, -hh + r, -Math.PI / 2, 0)
-  corner(hw - r, hh - r, 0, Math.PI / 2)
-  corner(-hw + r, hh - r, Math.PI / 2, Math.PI)
-  corner(-hw + r, -hh + r, Math.PI, Math.PI * 1.5)
-  return pts
-}
-
-function regular(sides, radius, rotation) {
-  var pts = []
-  var i
-  for (i = 0; i < sides; i++) {
-    var a = rotation + (Math.PI * 2 * i) / sides
-    pts.push([Math.cos(a) * radius, Math.sin(a) * radius])
-  }
-  return pts
-}
-
-function star(points, outer, inner, rotation) {
-  var pts = []
-  var i
-  for (i = 0; i < points * 2; i++) {
-    var a = rotation + (Math.PI * i) / points
-    var r = i % 2 === 0 ? outer : inner
-    pts.push([Math.cos(a) * r, Math.sin(a) * r])
-  }
-  return pts
-}
-
-function polar(fn, count) {
-  var pts = []
-  var n = count || 200
-  var i
-  for (i = 0; i < n; i++) {
-    var t = (Math.PI * 2 * i) / n
-    var r = fn(t)
-    pts.push([Math.cos(t) * r, Math.sin(t) * r])
-  }
-  return pts
-}
-
-function blob() {
-  return polar(function (t) {
-    return 0.8 + 0.09 * Math.sin(3 * t) + 0.05 * Math.cos(5 * t + 0.5) + 0.03 * Math.sin(2 * t + 1.1)
-  })
-}
-
-function pebble() {
-  var pts = []
-  var n = 180
-  var i
-  for (i = 0; i < n; i++) {
-    var t = (Math.PI * 2 * i) / n
-    var r = 0.9 + 0.045 * Math.sin(2 * t + 0.4) + 0.03 * Math.cos(3 * t)
-    pts.push([Math.cos(t) * r * 1.08, Math.sin(t) * r * 0.7])
-  }
-  return pts
-}
-
-function bean() {
-  var pts = []
-  var n = 220
-  var i
-  for (i = 0; i < n; i++) {
-    var t = (Math.PI * 2 * i) / n
-    var dent = Math.pow(Math.max(0, Math.cos(t - 0.55)), 8)
-    var r = 0.86 * (1 - 0.36 * dent)
-    pts.push([Math.cos(t) * r * 0.7 + 0.04, Math.sin(t) * r])
-  }
-  return pts
-}
-
-function egg() {
-  var pts = []
-  var n = 180
-  var i
-  for (i = 0; i < n; i++) {
-    var t = (Math.PI * 2 * i) / n
-    var widen = 0.62 + 0.28 * (1 + Math.sin(t)) / 2
-    pts.push([Math.cos(t) * 0.66, Math.sin(t) * widen])
-  }
-  return pts
-}
-
-function cloud() {
-  var pts = []
-  var n = 240
-  var i
-  for (i = 0; i < n; i++) {
-    var t = (Math.PI * 2 * i) / n
-    var r = 0.58
-      + 0.2 * Math.pow(Math.max(0, Math.cos(t * 3 - 0.3)), 1.15)
-      + 0.12 * Math.pow(Math.max(0, Math.cos(t * 2 + 1.1)), 1.3)
-      + 0.05 * Math.cos(t + 0.4)
-    pts.push([Math.cos(t) * r * 1.2, Math.sin(t) * r * 0.7])
-  }
-  return pts
-}
-
-function dome() {
-  var pts = []
-  var steps = 48
-  var i
-  for (i = 0; i <= steps; i++) {
-    var a = Math.PI + (Math.PI * i) / steps
-    pts.push([Math.cos(a) * 0.9, Math.sin(a) * 0.72 + 0.12])
-  }
-  pts.push([0.9, 0.8])
-  pts.push([-0.9, 0.8])
-  return pts
-}
-
-function arch() {
-  var pts = []
-  var steps = 40
-  var i
-  pts.push([-0.58, 0.92])
-  pts.push([-0.58, 0.02])
-  for (i = 0; i <= steps; i++) {
-    var a = Math.PI + (Math.PI * i) / steps
-    pts.push([Math.cos(a) * 0.58, Math.sin(a) * 0.82 + 0.02])
-  }
-  pts.push([0.58, 0.92])
-  return pts
-}
-
-function teardrop() {
-  var pts = []
-  var steps = 42
-  var i
-  for (i = 0; i <= steps; i++) {
-    var a = Math.PI + (Math.PI * i) / steps
-    pts.push([Math.cos(a) * 0.72, Math.sin(a) * 0.58 - 0.22])
-  }
-  pts.push([0, 0.98])
-  return pts
-}
-
-function leaf() {
-  var pts = []
-  var n = 180
-  var i
-  for (i = 0; i < n; i++) {
-    var t = (Math.PI * 2 * i) / n
-    var x = Math.sin(t) * 0.38 * (0.45 + 0.55 * Math.cos(t) * Math.cos(t))
-    var y = -Math.cos(t) * 0.92
-    var c = Math.cos(0.55)
-    var s = Math.sin(0.55)
-    pts.push([x * c - y * s, x * s + y * c])
-  }
-  return pts
-}
-
-function heart() {
-  var pts = []
-  var n = 220
-  var i
-  for (i = 0; i < n; i++) {
-    var t = (Math.PI * 2 * i) / n
-    var x = 16 * Math.pow(Math.sin(t), 3)
-    var y = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t))
     pts.push([x, y])
   }
   return pts
 }
 
-function shield() {
-  var pts = []
-  var i
-  pts.push([-0.78, -0.72])
-  pts.push([0.78, -0.72])
-  for (i = 0; i <= 28; i++) {
-    var t = i / 28
-    pts.push([0.78 * (1 - Math.pow(t, 1.45)), -0.72 + t * 1.66])
-  }
-  for (i = 1; i <= 28; i++) {
-    var u = i / 28
-    pts.push([-0.78 * Math.pow(u, 1.45), 0.94 - u * 1.66])
-  }
-  return pts
-}
-
-function crystal() {
-  return [
-    [0, -1],
-    [0.42, -0.28],
-    [0.55, 0.42],
-    [0.18, 0.96],
-    [-0.18, 0.96],
-    [-0.55, 0.42],
-    [-0.42, -0.28]
-  ]
-}
-
-function gem() {
-  return [
-    [0, -0.98],
-    [0.62, -0.42],
-    [0.78, 0.18],
-    [0.28, 0.92],
-    [-0.28, 0.92],
-    [-0.78, 0.18],
-    [-0.62, -0.42]
-  ]
-}
-
-function wedge() {
-  var pts = []
-  var n = 24
-  var i
-  pts.push([-0.82, -0.62])
-  for (i = 0; i <= n; i++) {
-    var t = i / n
-    var y = -0.62 + t * 1.24
-    var bulge = Math.sin(t * Math.PI) * 0.08
-    pts.push([-0.82 - bulge, y])
-  }
-  pts.push([0.98, 0])
-  return pts
-}
-
-function house() {
-  return [
-    [-0.78, 0.82],
-    [0.78, 0.82],
-    [0.78, -0.02],
-    [0, -0.9],
-    [-0.78, -0.02]
-  ]
-}
-
-function clover() {
-  return polar(function (t) {
-    return 0.28 + 0.62 * Math.pow((Math.cos(2 * t) + 1) / 2, 1.35)
-  }, 240)
-}
-
-function flower() {
-  return polar(function (t) {
-    return 0.32 + 0.58 * Math.pow(Math.max(0, Math.cos(3 * t)), 0.55)
-  }, 240)
-}
-
-var BUILDERS = {
-  blob: function () { return finish(blob(), -0.08, 0.34) },
-  pebble: function () { return finish(pebble(), -0.02, 0.32) },
-  bean: function () { return finish(bean(), -0.08, 0.28) },
-  egg: function () { return finish(egg(), -0.18, 0.28) },
-  squircle: function () { return finish(superellipse(4, 0.9, 0.9), -0.06, 0.32) },
-  tablet: function () { return finish(roundedRect(0.96, 0.64, 0.24), -0.04, 0.4) },
-  capsule: function () { return finish(roundedRect(0.98, 0.5, 0.5), 0.0, 0.42) },
-  cylinder: function () { return finish(roundedRect(0.5, 0.96, 0.2), -0.12, 0.26) },
-  hex: function () { return finish(regular(6, 0.92, -Math.PI / 2), -0.04, 0.3) },
-  gem: function () { return finish(gem(), -0.1, 0.26) },
-  crystal: function () { return finish(crystal(), -0.2, 0.24) },
-  wedge: function () { return finish(wedge(), 0.0, 0.26) },
-  shield: function () { return finish(shield(), -0.16, 0.3) },
-  dome: function () { return finish(dome(), -0.22, 0.34) },
-  arch: function () { return finish(arch(), -0.28, 0.26) },
-  cloud: function () { return finish(cloud(), -0.06, 0.36) },
-  teardrop: function () { return finish(teardrop(), -0.32, 0.28) },
-  leaf: function () { return finish(leaf(), -0.08, 0.2) },
-  square: function () { return finish(superellipse(18, 0.86, 0.86), -0.04, 0.32) },
-  sparkle: function () { return finish(star(4, 0.98, 0.18, -Math.PI / 2), 0.0, 0.16) },
-  clover: function () { return finish(clover(), 0.0, 0.18) },
-  flower: function () { return finish(flower(), 0.0, 0.16) },
-  heart: function () { return finish(heart(), 0.05, 0.26) },
-  house: function () { return finish(house(), 0.12, 0.3) },
-  star: function () { return finish(star(5, 0.98, 0.4, -Math.PI / 2), -0.02, 0.18) }
+function build(name) {
+  var eyeY = -0.04
+  var spread = 0.3
+  if (name === "bean" || name === "drop" || name === "heart") eyeY = -0.1
+  if (name === "star" || name === "spark" || name === "burst" || name === "flower") spread = 0.18
+  return finish(contour(name), eyeY, spread)
 }
 
 var SHAPES = {}
-var i
-for (i = 0; i < NAMES.length; i++) SHAPES[NAMES[i]] = BUILDERS[NAMES[i]]()
+var nameIndex
+for (nameIndex = 0; nameIndex < NAMES.length; nameIndex++) SHAPES[NAMES[nameIndex]] = build(NAMES[nameIndex])
+
+var aliasName
+for (aliasName in ALIASES) {
+  if (Object.prototype.hasOwnProperty.call(ALIASES, aliasName)) SHAPES[aliasName] = SHAPES[ALIASES[aliasName]]
+}
+
+function canonical(name) {
+  var key = String(name || "")
+  if (NAMES.indexOf(key) >= 0) return key
+  if (Object.prototype.hasOwnProperty.call(ALIASES, key)) return ALIASES[key]
+  return ""
+}
 
 function known(name) {
-  return Object.prototype.hasOwnProperty.call(SHAPES, String(name || ""))
+  return canonical(name) !== ""
+}
+
+function resolve(name) {
+  var key = canonical(name)
+  return key !== "" ? key : "bean"
 }
 
 function get(name) {
-  return known(name) ? SHAPES[name] : SHAPES.blob
+  return SHAPES[resolve(name)]
 }
 
 function blend(nameA, nameB, t) {

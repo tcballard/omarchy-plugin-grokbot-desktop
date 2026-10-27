@@ -31,7 +31,7 @@
   "results": [],
   "limitations": [
     "No live Omarchy desktop acceptance recorded.",
-    "preview.png is an architectural preview rendered from repository data, not an on-device capture.",
+    "preview.png is an architectural composite rendered from repository data, not an on-device capture.",
     "Portable checks do not establish live desktop compatibility."
   ]
 }

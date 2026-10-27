@@ -53,6 +53,10 @@ Item {
   property bool pointerNear: false
   property bool dodgeOn: true
   property bool idleOn: true
+  property string motionName: "playful"
+  property string anchorName: "br"
+  property bool rosterExpanded: false
+  property string askedText: ""
   property bool syncOn: true
   property string chosenBotId: root.defaultBotId
   property string customShape: "teardrop"
@@ -85,6 +89,7 @@ Item {
   property real hopY: 0
   property real spinAngle: 0
   property real waveAngle: 0
+  property real orbit: 0
   property var bots: []
   property string bubbleBody: ""
   property string promptDraft: ""
@@ -115,6 +120,9 @@ Item {
   }
   readonly property string shownShape: root.shapeTo
   readonly property string shownColor: root.colorTo
+  readonly property string canonicalShape: Shapes.resolve(root.shownShape)
+  readonly property bool anchorFromRight: root.anchorName === "br" || root.anchorName === "tr"
+  readonly property bool anchorFromBottom: root.anchorName === "br" || root.anchorName === "bl"
   readonly property bool surfacesOpen: root.bubbleOpen || root.settingsOpen || root.menuOpen
 
   function tomlColor(text, key) {
@@ -286,6 +294,13 @@ Item {
     return bot ? String(bot.description || "") : ""
   }
 
+  function botTag() {
+    var bot = root.currentBot()
+    if (!bot || bot.isPrimary) return "Main"
+    var role = root.plainLine(bot.description || "", 22)
+    return role !== "" ? role : "Bot"
+  }
+
   function paletteFill(name) {
     return Palette.known(name) ? Palette.get(name).fill : root.accent
   }
@@ -353,7 +368,13 @@ Item {
     root.customShape = String(root.setting("shape", "teardrop"))
     root.customColor = String(root.setting("color", "orange"))
     root.dodgeOn = root.setting("dodge", true) !== false
-    root.idleOn = root.setting("idleMotion", true) !== false
+    var motion = String(root.setting("motion", ""))
+    if (motion !== "calm" && motion !== "playful" && motion !== "hyper")
+      motion = root.setting("idleMotion", true) !== false ? "playful" : "calm"
+    root.motionName = motion
+    root.idleOn = motion !== "calm"
+    var anchor = String(root.setting("anchor", "br"))
+    root.anchorName = anchor === "bl" || anchor === "tr" || anchor === "tl" ? anchor : "br"
     root.sizeName = String(root.setting("size", "medium"))
     root.sizePx = root.settingInt("sizePx", 128, 48, 320)
     root.posRight = root.settingInt("marginX", 24, 0, 4000)
@@ -389,7 +410,9 @@ Item {
     settings.size = root.sizeName
     settings.sizePx = root.sizePx
     settings.dodge = root.dodgeOn
-    settings.idleMotion = root.idleOn
+    settings.motion = root.motionName
+    settings.anchor = root.anchorName
+    settings.idleMotion = root.motionName !== "calm"
     root.shell.updateEntryInline(root.pluginId, settings)
   }
 
@@ -403,6 +426,7 @@ Item {
     if (!root.findBot(id)) return "unknown bot"
     root.chosenBotId = id
     root.switcherOpen = false
+    root.rosterExpanded = false
     root.retargetAppearance(true)
     root.scheduleSave()
     root.hop()
@@ -445,13 +469,25 @@ Item {
     root.scheduleSave()
   }
 
-  function setIdle(value) {
-    root.idleOn = value === true
-    if (!root.idleOn) {
-      root.breathe = 1
+  function setMotion(name) {
+    if (name !== "calm" && name !== "playful" && name !== "hyper") return
+    root.motionName = name
+    root.idleOn = name !== "calm"
+    if (name === "calm") {
       root.idleY = 0
+      root.orbit = 0
     }
     root.scheduleSave()
+  }
+
+  function setAnchor(name) {
+    if (name !== "br" && name !== "bl" && name !== "tr" && name !== "tl") return
+    root.anchorName = name
+    root.scheduleSave()
+  }
+
+  function setIdle(value) {
+    root.setMotion(value === true ? "playful" : "calm")
   }
 
   function plainLine(value, max) {
@@ -500,6 +536,7 @@ Item {
   function closeBubble() {
     root.bubbleOpen = false
     root.switcherOpen = false
+    root.rosterExpanded = false
   }
 
   function openSettings() {
@@ -573,7 +610,8 @@ Item {
     if (key === "spin") { spinAnim.restart(); return "ok" }
     if (key === "morph") {
       var current = root.shapeTo
-      var index = Shapes.NAMES.indexOf(current)
+      var index = Shapes.NAMES.indexOf(Shapes.resolve(current))
+      if (index < 0) index = 0
       var next = Shapes.NAMES[(index + 1) % Shapes.NAMES.length]
       root.shapeFrom = current
       root.shapeTo = next
@@ -602,6 +640,7 @@ Item {
     var body = root.plainLine(text, 300)
     if (body === "") return "empty text"
     root.summon()
+    root.askedText = ""
     root.noticeLinks = links || []
     var who = root.plainLine(title, 80)
     root.bubbleBody = (who !== "" ? who + "\n" : "") + body
@@ -660,6 +699,7 @@ Item {
   function launchAsk(prompt) {
     if (askProc.running) return "busy"
     root.openBubble()
+    root.askedText = String(prompt || "")
     root.noticeLinks = []
     root.bubbleBody = ""
     if (!root.trustedBin("/usr/bin/setpriv") || !root.trustedBin("/usr/bin/python3")) {
@@ -911,17 +951,34 @@ Item {
   }
 
   SequentialAnimation {
-    running: root.idleOn && root.present && !root.dragging
+    running: root.present && !root.dragging
     loops: Animation.Infinite
     NumberAnimation { target: root; property: "breathe"; to: 1.035; duration: 1700; easing.type: Easing.InOutSine }
     NumberAnimation { target: root; property: "breathe"; to: 0.985; duration: 1700; easing.type: Easing.InOutSine }
   }
 
   SequentialAnimation {
-    running: root.idleOn && root.present && !root.dragging
+    running: root.motionName === "playful" && root.present && !root.dragging
     loops: Animation.Infinite
     NumberAnimation { target: root; property: "idleY"; to: -7; duration: 1800; easing.type: Easing.InOutSine }
     NumberAnimation { target: root; property: "idleY"; to: 0; duration: 1800; easing.type: Easing.InOutSine }
+  }
+
+  NumberAnimation {
+    running: root.motionName === "hyper" && root.present && !root.dragging
+    loops: Animation.Infinite
+    target: root
+    property: "orbit"
+    from: 0
+    to: 360
+    duration: 2800
+  }
+
+  Timer {
+    interval: 2600
+    repeat: true
+    running: root.motionName === "hyper" && root.present && !root.dragging && !root.asking
+    onTriggered: root.hop()
   }
 
   SequentialAnimation {
@@ -985,8 +1042,12 @@ Item {
     if (!win.screen) return
     var maxRight = Math.max(0, win.width - stage.width)
     var maxBottom = Math.max(0, win.height - stage.height)
-    root.posRight = Math.max(0, Math.min(maxRight, Math.round(root.dragRight - (root.cursorX - root.dragCursorX))))
-    root.posBottom = Math.max(0, Math.min(maxBottom, Math.round(root.dragBottom - (root.cursorY - root.dragCursorY))))
+    var dx = root.cursorX - root.dragCursorX
+    var dy = root.cursorY - root.dragCursorY
+    var nextX = root.anchorFromRight ? root.dragRight - dx : root.dragRight + dx
+    var nextY = root.anchorFromBottom ? root.dragBottom - dy : root.dragBottom + dy
+    root.posRight = Math.max(0, Math.min(maxRight, Math.round(nextX)))
+    root.posBottom = Math.max(0, Math.min(maxBottom, Math.round(nextY)))
   }
 
   function endDrag() {
@@ -1091,9 +1152,14 @@ Item {
     SettingsPanel {
       app: root
       visible: root.settingsOpen
-      width: 300
-      height: Math.min(540, Math.max(240, win.height - 48))
-      x: Math.max(8, stage.x - width - 16)
+      width: Math.min(420, Math.max(280, win.width - 24))
+      height: Math.min(660, Math.max(280, win.height - 32))
+      x: {
+        var beside = root.anchorFromRight ? stage.x - width - 16 : stage.x + stage.width + 16
+        if (beside < 8) beside = stage.x + stage.width + 16
+        if (beside + width > win.width - 8) beside = stage.x - width - 16
+        return Math.max(8, Math.min(beside, win.width - width - 8))
+      }
       y: Math.max(8, Math.min(stage.y, win.height - height - 8))
     }
 
@@ -1101,9 +1167,16 @@ Item {
       id: bubblePanel
       app: root
       visible: root.bubbleOpen
-      width: 340
+      width: Math.min(464, Math.max(320, win.width - 24))
       x: Math.max(8, Math.min(stage.x + stage.width - width, win.width - width - 8))
-      y: Math.max(8, stage.y - height - 12)
+      y: {
+        var above = stage.y - height - 12
+        var below = stage.y + stage.height + 12
+        var place = root.anchorFromBottom ? above : below
+        if (place < 8) place = below
+        if (place + height > win.height - 8) place = above
+        return Math.max(8, Math.min(place, win.height - height - 8))
+      }
     }
 
     Rectangle {
@@ -1112,8 +1185,9 @@ Item {
       width: 188
       height: menuColumn.implicitHeight + 16
       radius: 12
-      color: Qt.rgba(root.paperR, root.paperG, root.paperB, 0.96)
-      border.color: Qt.rgba(1, 1, 1, 0.14)
+      color: "#141416"
+      border.width: 1
+      border.color: "#27272A"
       x: Math.max(8, stage.x - width - 8)
       y: Math.max(8, stage.y)
       Column {
@@ -1137,7 +1211,7 @@ Item {
               anchors.verticalCenter: parent.verticalCenter
               x: 8
               text: modelData.label
-              color: root.ink
+              color: "#F4F4F5"
               font.pixelSize: 13
               textFormat: Text.PlainText
             }
@@ -1159,17 +1233,24 @@ Item {
       id: stage
       width: root.markSize + 24
       height: root.markSize + 28
-      x: Math.max(0, Math.min(win.width - width, win.width - width - root.posRight))
-      y: Math.max(0, Math.min(win.height - height, win.height - height - root.posBottom))
+      x: {
+        var edge = root.anchorFromRight ? win.width - width - root.posRight : root.posRight
+        return Math.max(0, Math.min(win.width - width, edge))
+      }
+      y: {
+        var edge = root.anchorFromBottom ? win.height - height - root.posBottom : root.posBottom
+        return Math.max(0, Math.min(win.height - height, edge))
+      }
 
       Rectangle {
-        anchors.horizontalCenter: parent.horizontalCenter
-        y: parent.height - 14
-        width: root.markSize * 0.46
-        height: 10
-        radius: 5
-        color: "#000000"
-        opacity: root.ghost ? 0.05 : 0.18
+        anchors.centerIn: mark
+        width: root.markSize * 0.92
+        height: root.markSize * 0.92
+        radius: width / 2
+        color: "#141416"
+        border.width: 1
+        border.color: "#2E2E32"
+        opacity: root.ghost ? 0.2 : 0.72
       }
 
       CompanionMark {
@@ -1199,7 +1280,10 @@ Item {
         opacity: root.ghost ? 0.28 : 1
         scale: root.breathe
         transform: [
-          Translate { y: root.idleY + root.hopY },
+          Translate {
+            x: root.motionName === "hyper" ? Math.cos(root.orbit * Math.PI / 180) * 6 : 0
+            y: root.idleY + root.hopY + (root.motionName === "hyper" ? Math.sin(root.orbit * Math.PI / 180) * 5 : 0)
+          },
           Rotation { origin.x: mark.width / 2; origin.y: mark.height / 2; angle: root.spinAngle + root.waveAngle }
         ]
         Behavior on opacity { NumberAnimation { duration: 160 } }

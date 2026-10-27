@@ -6,9 +6,9 @@
 
 **Inspired by [Clippy for Omarchy](https://github.com/jankeesvw/omarchy-clippy) and [Clanky](https://github.com/rdoupe/omarchy-clanky).** The layer-shell window, click-through mask, dodge behaviour, cursor helper, and speech-bubble IPC follow those companions. Plugin conventions come from [Build Omarchy Plugins](https://github.com/tcballard/build-omarchy-plugins).
 
-<img src="preview.png" width="800" alt="Architectural preview of the Grok Bot companion in the corner of an Omarchy-style desktop, with the speech bubble, Bob's teardrop, and the shape and colour grid.">
+<img src="preview.png" width="800" alt="Architectural preview of the Grok Bot companion: monochrome speech bubble, appearance drawer, and a flat mark in the corner of a desktop.">
 
-**Preview:** `preview.png` is an architectural preview rendered from this repository's shape and palette data. It is not a live on-device capture. No desktop acceptance is claimed.
+**Preview:** `preview.png` is an architectural preview rendered by `tools/render-preview.py`. It is not a live on-device capture. No desktop acceptance is claimed.
 
 ## Install
 
@@ -34,7 +34,7 @@ o.bind("SUPER + W", "Close window / Grok Bot", "grokbot-desktop-close")
 
 ## Use
 
-The companion sits in a corner. Clicks outside the mark pass through. Drag it, or hold Super and drag, and the corner margins are written back to its own `plugins[]` entry. Right-click, the gear in the bubble, or `settings` opens the appearance drawer.
+The companion sits in a corner. Clicks outside the mark pass through. Drag it, or hold Super and drag, and the corner margins are written back to its own `plugins[]` entry. Right-click, the sliders button in the bubble, or `settings` opens the appearance drawer.
 
 | Action | Result |
 | --- | --- |
@@ -43,7 +43,7 @@ The companion sits in a corner. Clicks outside the mark pass through. Drag it, o
 | Escape | Closes the bubble |
 | Switch Bot | Morphs into that Bot's shape and colour when sync is on, and routes the next ask there |
 | Pointer nearby, dodge on | Fades and lets clicks through until you rest on the mark |
-| Pointer idle for 2 minutes | Eyes half-close and a couple of z's drift up |
+| Pointer idle for 2 minutes | The capsule eyes compress into thin slits |
 
 Bob (`e0195a7d-f804-4688-9191-e2cf3574a6d1`, teardrop, orange) is the default. Asking Bob sends Bob's id, so a Grok Bot routine named for the Omarchy desktop companion can delegate to the other bots. This plugin only delivers the payload.
 
@@ -97,13 +97,15 @@ Agent mode is the fallback. It reads `~/.config/omarchy/defaults/agent` and can 
   "syncAppearance": true,
   "dodge": true,
   "idleMotion": true,
+  "motion": "playful",
+  "anchor": "br",
   "size": "medium",
   "marginX": 24,
   "marginY": 24
 }
 ```
 
-`size` may be `small`, `medium`, `large`, or `custom` with `sizePx` from 48 to 320. `idleMotion: false` stops the idle float so a resting companion is not repainting every frame. `syncAppearance: false` keeps a custom shape and colour while asks still go to the selected Bot.
+`size` may be `small`, `medium`, `large`, or `custom` with `sizePx` from 48 to 320. `motion` is `calm` (breathing), `playful` (float and gaze), or `hyper` (orbit and hop). `idleMotion: false` is the older switch for Calm. `anchor` is `br`, `bl`, `tr`, or `tl`, and `marginX` / `marginY` are the insets from that corner. `syncAppearance: false` keeps a custom shape and colour while asks still go to the selected Bot.
 
 ## Roster
 

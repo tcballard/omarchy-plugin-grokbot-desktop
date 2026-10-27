@@ -8,7 +8,7 @@ The project is already initialized as `io.github.tcballard.grokbot-desktop`. Run
 
 On a target Omarchy machine, run `omarchy plugin validate .` and record `omarchy-version` in `docs/ACCEPTANCE.json`. Portable checks cover the service manifest, the 25-shape morph, the palette, the bundled roster, and the ask, sync, and cursor helpers. The installed host's validator is authoritative. Passing `./tests/run` does not mean the layer shell, Hyprland socket, or webhook was exercised on a desktop.
 
-`preview.png` is produced by `tools/render-preview.py` from `qml/shapes.js` and `qml/palette.js`. Regenerate it when those marks change. It is an architectural preview, not an on-device capture, and acceptance stays `not-run` until someone records a live session.
+`preview.png` is produced by `tools/render-preview.py`, a 3× supersampled drawing of the monochrome chrome and flat marks. When the design backdrop is present the composite uses it; otherwise the script paints a flat field. Regenerate the preview when the marks or chrome change. It is an architectural composite, not an on-device capture, and acceptance stays `not-run` until someone records a live session.
 
 Use the current Omarchy plugin linking workflow or Plugin Workbench after inspecting its current commands. `.omarchy-workbench.json` proposes `./tests/run`. It does not grant trust or execute that command by itself.
 
