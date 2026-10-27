@@ -81,7 +81,7 @@ Item {
       text: "Appearance"
       color: Theme.text
       font.pixelSize: 15
-      font.bold: true
+      font.weight: Font.DemiBold
       font.family: app.fontFamily
       textFormat: Text.PlainText
     }
@@ -110,7 +110,7 @@ Item {
         text: app.syncOn ? "Synced · " + app.botLabel() : "Custom"
         color: app.syncOn ? Theme.ok : Theme.textMuted
         font.pixelSize: 11
-        font.bold: true
+        font.weight: Font.DemiBold
         font.family: app.fontFamily
         textFormat: Text.PlainText
       }
@@ -307,8 +307,8 @@ Item {
         text: "IDLE MOTION & RIG"
         color: Theme.textFaint
         font.pixelSize: 10
-        font.bold: true
-        font.family: "monospace"
+        font.weight: Font.DemiBold
+        font.family: app.fontFamily
         textFormat: Text.PlainText
       }
 
@@ -338,7 +338,7 @@ Item {
               text: modelData.label
               color: active ? Theme.text : Theme.textMuted
               font.pixelSize: 12
-              font.bold: active
+              font.weight: active ? Font.DemiBold : Font.Normal
               font.family: app.fontFamily
               textFormat: Text.PlainText
             }
@@ -361,8 +361,8 @@ Item {
         text: "PLACEMENT  ·  " + corners[app.anchorName]
         color: Theme.textFaint
         font.pixelSize: 10
-        font.bold: true
-        font.family: "monospace"
+        font.weight: Font.DemiBold
+        font.family: app.fontFamily
         textFormat: Text.PlainText
       }
 
@@ -432,7 +432,7 @@ Item {
                 text: drawer.title(modelData)
                 color: active ? Theme.text : Theme.textMuted
                 font.pixelSize: 11
-                font.bold: active
+                font.weight: active ? Font.DemiBold : Font.Normal
                 font.family: app.fontFamily
                 textFormat: Text.PlainText
               }
@@ -465,7 +465,7 @@ Item {
             text: "Dodge"
             color: app.dodgeOn ? Theme.text : Theme.textMuted
             font.pixelSize: 11
-            font.bold: app.dodgeOn
+            font.weight: app.dodgeOn ? Font.DemiBold : Font.Normal
             font.family: app.fontFamily
             textFormat: Text.PlainText
           }

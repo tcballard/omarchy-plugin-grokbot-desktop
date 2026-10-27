@@ -941,7 +941,7 @@ test('the prompt bubble fits short prompts', () => {
   assert.match(read('BubblePanel.qml'), /width: Math\.min\(implicitWidth, bubble\.width - 120\)/)
 })
 
-test('chrome colours come from one token file and text follows the shell font', () => {
+test('chrome colours come from one token file and text is set like Grok Bot\'s app', () => {
   for (const file of ['BubblePanel.qml', 'SettingsPanel.qml']) {
     const source = read(file)
     assert.doesNotMatch(source, /"#[0-9A-Fa-f]{6,8}"/, `${file} uses qml/theme.js`)
@@ -951,7 +951,24 @@ test('chrome colours come from one token file and text follows the shell font', 
       assert.match(before.slice(start), /font\.family:/, `${file} text without a family`)
     }
   }
+  // SF Pro where installed, else the bundled Inter, else the shell's font.
+  assert.match(main, /readonly property var appleFamilies: \["SF Pro Text", "SF Pro"\]/)
+  assert.match(main, /source: Qt\.resolvedUrl\("assets\/fonts\/Inter-Regular\.ttf"\)/)
+  assert.match(main, /source: Qt\.resolvedUrl\("assets\/fonts\/Inter-SemiBold\.ttf"\)/)
+  assert.match(qmlFunction(main, 'pickFontFamily'), /root\.styleFontFamily\(\)/)
   assert.match(main, /Commons\.Style\.font\.family/)
+  for (const font of ['Inter-Regular.ttf', 'Inter-SemiBold.ttf']) {
+    const data = fs.readFileSync(path.join(root, 'assets/fonts', font))
+    assert.equal(data.readUInt32BE(0), 0x00010000, `${font} is a TrueType font`)
+    assert.ok(data.length < 200 * 1024, `${font} stays subset`)
+  }
+  assert.match(read('assets/fonts/OFL-Inter.txt'), /SIL Open Font License, Version 1\.1/)
+  for (const file of ['Main.qml', 'BubblePanel.qml', 'SettingsPanel.qml']) {
+    const source = read(file)
+    // Bold would make Qt embolden the SemiBold face; the app uses semibold.
+    assert.doesNotMatch(source, /font\.bold:/, `${file} asks for a weight`)
+    assert.doesNotMatch(source, /font\.family: "monospace"/, `${file} uses the app font`)
+  }
   const theme = loadLibrary('qml/theme.js')
   assert.equal(theme.surface, '#141416')
   // Measured from Grok Bot's dark-mode picker.

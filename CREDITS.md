@@ -10,4 +10,6 @@ Project author: Tom Ballard.
 
 The mark contours in `qml/shapes.js`, the palette in `qml/palette.js`, and `assets/grokbot-desktop.svg` are original to this repository. `preview.png` and `assets/grokbot-companion-demo.mp4` are a screen capture of this plugin running on Try Omarchy (`Virtual-1`, 1280×800) on 2026-10-27. The rocket-launch wallpaper belongs to that desktop session. It is not a separate asset of this plugin. `tools/render-preview.py` can redraw the chrome offline and is not the source of `preview.png`.
 
+`assets/fonts/Inter-Regular.ttf` and `assets/fonts/Inter-SemiBold.ttf` are [Inter](https://github.com/rsms/inter) 4.1 by Rasmus Andersson and the Inter Project Authors, under the SIL Open Font License 1.1 (`assets/fonts/OFL-Inter.txt`), subset to Latin, Greek, and Cyrillic. They stand in for Apple's SF Pro, which Grok Bot's app uses and which may only be used on Apple platforms.
+
 The bundled roster in `data/bots.json` uses ids, names, shapes, and colours from Tom Ballard's Grok Bot export. Descriptions in the repository are shortened public role lines, not the bots' private instructions. Crediting an inspiration does not grant permission to copy its code or artwork.

@@ -39,7 +39,7 @@ Before a public release, document the exact verified install command and the ins
 
 Also leave Hyprland bindings, `~/.local/share/applications/grokbot-desktop.desktop`, and `~/.local/bin/grokbot-desktop-close` unless those copies were part of the removal the owner requested.
 
-Installed runtime files are the manifest, QML, `qml/*.js`, `data/bots.json`, `bin/*`, the licence, and the optional desktop, icon, and close helper. Authoring files (blueprint, workflows, tests, and `tools/`) are not part of that runtime set.
+Installed runtime files are the manifest, QML, `qml/*.js`, `data/bots.json`, `bin/*`, `assets/fonts/*` (Inter and its OFL licence), the licence, and the optional desktop, icon, and close helper. Authoring files (blueprint, workflows, tests, and `tools/`) are not part of that runtime set.
 
 ## Re-measuring Grok Bot's shapes
 

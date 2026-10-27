@@ -242,7 +242,7 @@ Rectangle {
             text: app.botLabel()
             color: Theme.text
             font.pixelSize: 14
-            font.bold: true
+            font.weight: Font.DemiBold
             font.family: app.fontFamily
             textFormat: Text.PlainText
           }
@@ -335,7 +335,7 @@ Rectangle {
               text: modelData.label
               color: active ? Theme.text : Theme.textMuted
               font.pixelSize: 11
-              font.bold: active
+              font.weight: active ? Font.DemiBold : Font.Normal
               font.family: app.fontFamily
               textFormat: Text.PlainText
             }
@@ -360,7 +360,7 @@ Rectangle {
             text: app.rosterExpanded ? "Less" : "+" + bubble.extraBots.length
             color: Theme.textMuted
             font.pixelSize: 11
-            font.bold: true
+            font.weight: Font.DemiBold
             font.family: app.fontFamily
             textFormat: Text.PlainText
           }
@@ -411,7 +411,7 @@ Rectangle {
               text: modelData.label
               color: active ? Theme.text : Theme.textMuted
               font.pixelSize: 11
-              font.bold: active
+              font.weight: active ? Font.DemiBold : Font.Normal
               font.family: app.fontFamily
               textFormat: Text.PlainText
             }

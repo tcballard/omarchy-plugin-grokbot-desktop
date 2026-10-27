@@ -191,9 +191,31 @@ Item {
 
   function ms(value) { return root.reduceMotion ? 0 : value }
 
-  // Text follows the shell's font (the fontconfig alias `omarchy font set`
-  // writes) where the shell exposes it; otherwise Qt's default.
-  readonly property string fontFamily: root.styleFontFamily()
+  // Text is set like Grok Bot's app, which uses Apple's SF Pro. SF Pro may
+  // only be used on Apple platforms, so it is used where it is installed and
+  // otherwise the bundled Inter (SIL OFL 1.1), the closest open match, in
+  // Regular and SemiBold, subset to Latin, Greek and Cyrillic; fontconfig
+  // fills in other scripts. Without either, the shell's font.
+  FontLoader {
+    id: interRegular
+    source: Qt.resolvedUrl("assets/fonts/Inter-Regular.ttf")
+  }
+  FontLoader {
+    id: interSemiBold
+    source: Qt.resolvedUrl("assets/fonts/Inter-SemiBold.ttf")
+  }
+  readonly property var appleFamilies: ["SF Pro Text", "SF Pro"]
+  readonly property string fontFamily: root.pickFontFamily()
+
+  function pickFontFamily() {
+    var installed = Qt.fontFamilies()
+    var i
+    for (i = 0; i < root.appleFamilies.length; i++) {
+      if (installed.indexOf(root.appleFamilies[i]) >= 0) return root.appleFamilies[i]
+    }
+    if (interRegular.status === FontLoader.Ready && interSemiBold.status === FontLoader.Ready) return interRegular.font.family
+    return root.styleFontFamily()
+  }
 
   function styleFontFamily() {
     try {
@@ -1738,7 +1760,7 @@ Item {
           text: nameTag.label
           color: Theme.text
           font.pixelSize: 12
-          font.bold: true
+          font.weight: Font.DemiBold
           font.family: root.fontFamily
           textFormat: Text.PlainText
         }
