@@ -853,3 +853,16 @@ test('chrome colours come from one token file and text follows the shell font', 
   const theme = loadLibrary('qml/theme.js')
   assert.equal(theme.surface, '#141416')
 })
+
+test('every control gives hover, cursor, keyboard, and accessible feedback', () => {
+  const area = read('HoverArea.qml')
+  assert.match(area, /cursorShape: enabled \? Qt\.PointingHandCursor/)
+  assert.match(area, /activeFocusOnTab: enabled/)
+  assert.match(area, /Keys\.onSpacePressed: area\.activated\(\)/)
+  assert.match(area, /Accessible\.name: area\.label/)
+  for (const file of ['BubblePanel.qml', 'SettingsPanel.qml']) {
+    assert.doesNotMatch(read(file), /MouseArea \{/, `${file} uses HoverArea`)
+  }
+  assert.match(qmlFunction(main, 'stepBack'), /menuOpen = false[\s\S]*closeSettings\(\)[\s\S]*closeBubble\(\)/)
+  assert.match(main, /sequence: "Escape"/)
+})

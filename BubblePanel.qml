@@ -162,9 +162,9 @@ Rectangle {
           }
           onWidthChanged: requestPaint()
         }
-        MouseArea {
-          anchors.fill: parent
-          onClicked: app.settingsOpen ? app.closeSettings() : app.openSettings()
+        HoverArea {
+          label: "Appearance"
+          onActivated: app.settingsOpen ? app.closeSettings() : app.openSettings()
         }
       }
 
@@ -192,9 +192,9 @@ Rectangle {
             ctx.stroke()
           }
         }
-        MouseArea {
-          anchors.fill: parent
-          onClicked: app.closeBubble()
+        HoverArea {
+          label: "Close"
+          onActivated: app.closeBubble()
         }
       }
 
@@ -276,9 +276,9 @@ Rectangle {
           }
         }
 
-        MouseArea {
-          anchors.fill: parent
-          onClicked: app.rosterExpanded = !app.rosterExpanded
+        HoverArea {
+          label: app.rosterExpanded ? "Show fewer bots" : "Show all bots"
+          onActivated: app.rosterExpanded = !app.rosterExpanded
         }
       }
     }
@@ -337,9 +337,9 @@ Rectangle {
               font.family: app.fontFamily
               textFormat: Text.PlainText
             }
-            MouseArea {
-              anchors.fill: parent
-              onClicked: app.selectBot(modelData.id)
+            HoverArea {
+              label: modelData.label
+              onActivated: app.selectBot(modelData.id)
             }
           }
         }
@@ -362,9 +362,9 @@ Rectangle {
             font.family: app.fontFamily
             textFormat: Text.PlainText
           }
-          MouseArea {
-            anchors.fill: parent
-            onClicked: app.rosterExpanded = !app.rosterExpanded
+          HoverArea {
+            label: app.rosterExpanded ? "Show fewer bots" : "Show all bots"
+            onActivated: app.rosterExpanded = !app.rosterExpanded
           }
         }
       }
@@ -413,9 +413,9 @@ Rectangle {
               font.family: app.fontFamily
               textFormat: Text.PlainText
             }
-            MouseArea {
-              anchors.fill: parent
-              onClicked: app.selectBot(modelData.id)
+            HoverArea {
+              label: modelData.label
+              onActivated: app.selectBot(modelData.id)
             }
           }
         }
@@ -569,9 +569,9 @@ Rectangle {
             font.family: app.fontFamily
             textFormat: Text.PlainText
           }
-          MouseArea {
-            anchors.fill: parent
-            onClicked: app.openLink(modelData.url)
+          HoverArea {
+            label: modelData.label
+            onActivated: app.openLink(modelData.url)
           }
         }
       }
@@ -610,10 +610,10 @@ Rectangle {
           anchors.centerIn: parent
           color: Theme.iconSoft
         }
-        MouseArea {
-          anchors.fill: parent
+        HoverArea {
           enabled: plusButton.usable
-          onClicked: app.newConversation()
+          label: "New conversation"
+          onActivated: app.newConversation()
         }
       }
 
@@ -703,9 +703,10 @@ Rectangle {
         onWaveChanged: waveCanvas.requestPaint()
         onInkChanged: waveCanvas.requestPaint()
 
-        MouseArea {
-          anchors.fill: parent
-          onClicked: {
+        HoverArea {
+          label: voiceButton.mode === "stop" ? "Stop" : (voiceButton.mode === "send" ? "Send" : "Dictate")
+          tint: voiceButton.mode !== "send"
+          onActivated: {
             if (!app) return
             if (app.asking) {
               app.stopAsk()
@@ -755,7 +756,7 @@ Rectangle {
             if (app.dictating && text.trim() !== "") app.dictating = false
           }
           onAccepted: app.submitPrompt(text)
-          Keys.onEscapePressed: app.closeBubble()
+          Keys.onEscapePressed: app.stepBack()
           background: Item {}
         }
       }

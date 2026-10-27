@@ -692,6 +692,14 @@ Item {
 
   function closeSettings() { root.cardPage = "chat" }
 
+  // Esc steps back one level: the menu, then the appearance page, then the
+  // bubble.
+  function stepBack() {
+    if (root.menuOpen) root.menuOpen = false
+    else if (root.settingsOpen) root.closeSettings()
+    else root.closeBubble()
+  }
+
   function toggleBubble() {
     if (!root.present) root.summon()
     else if (root.bubbleOpen) root.closeBubble()
@@ -1416,7 +1424,13 @@ Item {
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.namespace: "grokbot-desktop"
     WlrLayershell.layer: WlrLayer.Top
-    WlrLayershell.keyboardFocus: root.bubbleOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+    WlrLayershell.keyboardFocus: root.surfacesOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+
+    Shortcut {
+      sequence: "Escape"
+      enabled: root.surfacesOpen
+      onActivated: root.stepBack()
+    }
 
     // Only the mark and the open card take the pointer, so the desktop stays
     // usable while a reply is on screen. The right-click menu is the one
@@ -1530,11 +1544,11 @@ Item {
               font.family: root.fontFamily
               textFormat: Text.PlainText
             }
-            MouseArea {
+            HoverArea {
               id: menuArea
-              anchors.fill: parent
-              hoverEnabled: true
-              onClicked: {
+              label: modelData.label
+              tint: false
+              onActivated: {
                 if (modelData.action === "settings") root.openSettings()
                 else root.hideCompanion()
               }

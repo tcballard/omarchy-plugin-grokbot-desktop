@@ -59,7 +59,7 @@ Item {
           ctx.stroke()
         }
       }
-      MouseArea { anchors.fill: parent; onClicked: app.closeSettings() }
+      HoverArea { label: "Back to chat"; onActivated: app.closeSettings() }
     }
 
     Text {
@@ -102,7 +102,7 @@ Item {
         font.family: app.fontFamily
         textFormat: Text.PlainText
       }
-      MouseArea { anchors.fill: parent; onClicked: app.setSync(!app.syncOn) }
+      HoverArea { label: app.syncOn ? "Stop syncing appearance with the bot" : "Sync appearance with the bot"; onActivated: app.setSync(!app.syncOn) }
     }
   }
 
@@ -169,11 +169,10 @@ Item {
               cutoutHex: active && app.shownColor === "black" ? Theme.text : Theme.field
               eyeOpen: 1
             }
-            MouseArea {
-              anchors.fill: parent
-              hoverEnabled: true
+            HoverArea {
+              label: drawer.title(modelData)
               onContainsMouseChanged: drawer.hoverShape = containsMouse ? modelData : (drawer.hoverShape === modelData ? "" : drawer.hoverShape)
-              onClicked: app.selectShape(modelData)
+              onActivated: app.selectShape(modelData)
             }
           }
         }
@@ -215,11 +214,11 @@ Item {
               border.width: 1
               border.color: Theme.lifted
             }
-            MouseArea {
-              anchors.fill: parent
-              hoverEnabled: true
+            HoverArea {
+              label: drawer.title(modelData)
+              tint: false
               onContainsMouseChanged: drawer.hoverColor = containsMouse ? drawer.title(modelData) : ""
-              onClicked: app.selectColor(modelData)
+              onActivated: app.selectColor(modelData)
             }
           }
         }
@@ -252,11 +251,11 @@ Item {
               color: Theme.surface
             }
           }
-          MouseArea {
-            anchors.fill: parent
-            hoverEnabled: true
+          HoverArea {
+            label: "Theme accent"
+            tint: false
             onContainsMouseChanged: drawer.hoverColor = containsMouse ? "Theme accent" : ""
-            onClicked: app.selectColor("omarchy")
+            onActivated: app.selectColor("omarchy")
           }
         }
       }
@@ -309,7 +308,7 @@ Item {
               font.family: app.fontFamily
               textFormat: Text.PlainText
             }
-            MouseArea { anchors.fill: parent; onClicked: app.setMotion(modelData.id) }
+            HoverArea { label: modelData.label; onActivated: app.setMotion(modelData.id) }
           }
         }
       }
@@ -356,11 +355,11 @@ Item {
                 color: active ? drawer.tone : (cornerArea.containsMouse ? Theme.textMuted : Theme.dim)
                 Behavior on width { NumberAnimation { duration: app && app.reduceMotion ? 0 : 140; easing.type: Easing.OutCubic } }
               }
-              MouseArea {
+              HoverArea {
                 id: cornerArea
-                anchors.fill: parent
-                hoverEnabled: true
-                onClicked: app.setAnchor(modelData)
+                label: ({ br: "Bottom right", bl: "Bottom left", tr: "Top right", tl: "Top left" })[modelData]
+                tint: false
+                onActivated: app.setAnchor(modelData)
               }
             }
           }
@@ -394,7 +393,7 @@ Item {
                 font.family: app.fontFamily
                 textFormat: Text.PlainText
               }
-              MouseArea { anchors.fill: parent; onClicked: app.setSize(modelData) }
+              HoverArea { label: drawer.title(modelData); onActivated: app.setSize(modelData) }
             }
           }
         }
@@ -427,7 +426,7 @@ Item {
             font.family: app.fontFamily
             textFormat: Text.PlainText
           }
-          MouseArea { anchors.fill: parent; onClicked: app.setDodge(!app.dodgeOn) }
+          HoverArea { label: "Dodge"; onActivated: app.setDodge(!app.dodgeOn) }
         }
       }
     }

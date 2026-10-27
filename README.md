@@ -43,7 +43,8 @@ The companion sits in a corner. Clicks outside the mark pass through, and they k
 | Waveform button on an empty field | Focuses the field and toggles Superwhisper or Voxtype |
 | Stop button while asking | Cancels the ask in flight |
 | `+` | Starts a new conversation |
-| Escape | Closes the bubble |
+| Escape | Steps back: closes the menu, then leaves the appearance page, then closes the bubble |
+| Tab, then Enter or Space | Moves between the bubble's controls and presses the focused one |
 | Switch Bot | Morphs into that Bot's shape and colour when sync is on, and routes the next ask there |
 | Pointer nearby, dodge on | Fades the closer the pointer gets (down to 28%) and lets clicks through. Rest on the mark and it fades back in over about 0.4s, then takes clicks |
 | Pointer idle for 2 minutes | The capsule eyes close into lid lines |
