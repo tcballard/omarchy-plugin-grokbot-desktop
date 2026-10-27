@@ -858,11 +858,11 @@ Item {
     }
   }
 
-  Timer {
-    interval: 40
-    repeat: true
+  // Continuous motion runs on the frame clock, so it is as smooth as the
+  // display refresh instead of stepping at a fixed timer rate.
+  FrameAnimation {
     running: root.expression === "think" || root.asking
-    onTriggered: root.thinkAngle += 0.18
+    onTriggered: root.thinkAngle += frameTime * 4.5
   }
 
   function cursorLine(line) {
@@ -874,19 +874,18 @@ Item {
     root.lastMoveAt = Date.now()
     if (root.sleepHold || root.expression === "sleep") root.wake()
     root.updateGazeTarget()
-    if (root.idleOn) gazeTimer.running = true
+    if (root.idleOn) gazeFrames.running = true
     else {
       root.gazeX = root.gazeTargetX
       root.gazeY = root.gazeTargetY
     }
-    if (root.dragging) root.dragMove()
     root.pointerNear = root.pointerIsNear()
     root.updateDodge()
   }
 
   function updateGazeTarget() {
     if (!root.cursorKnown || !win.screen) return
-    var local = mark.mapToItem(null, mark.width / 2, mark.height / 2)
+    var local = mark.mapToItem(win.contentItem, mark.width / 2, mark.height / 2)
     var dx = root.cursorX - (win.screen.x + local.x)
     var dy = root.cursorY - (win.screen.y + local.y)
     var dist = Math.sqrt(dx * dx + dy * dy)
@@ -900,13 +899,12 @@ Item {
     root.gazeTargetY = Math.max(-1, Math.min(1, dy / dist * reach))
   }
 
-  Timer {
-    id: gazeTimer
-    interval: 32
-    repeat: true
+  FrameAnimation {
+    id: gazeFrames
     onTriggered: {
-      root.gazeX += (root.gazeTargetX - root.gazeX) * 0.22
-      root.gazeY += (root.gazeTargetY - root.gazeY) * 0.22
+      var k = 1 - Math.exp(-frameTime * 8)
+      root.gazeX += (root.gazeTargetX - root.gazeX) * k
+      root.gazeY += (root.gazeTargetY - root.gazeY) * k
       var error = Math.abs(root.gazeTargetX - root.gazeX) + Math.abs(root.gazeTargetY - root.gazeY)
       if (error < 0.02) running = false
     }
@@ -949,7 +947,7 @@ Item {
 
   function stageRect() {
     if (!win.screen) return null
-    var point = stage.mapToItem(null, 0, 0)
+    var point = stage.mapToItem(win.contentItem, 0, 0)
     return {
       x: win.screen.x + point.x,
       y: win.screen.y + point.y,
@@ -1118,21 +1116,23 @@ Item {
     easing.type: Easing.InOutCubic
   }
 
-  function beginDrag() {
+  // Drag follows the mark's own pointer events in window coordinates, so it
+  // tracks at the input rate rather than the cursor helper's 30Hz polls.
+  function beginDrag(px, py) {
     root.dragging = true
     root.ghost = false
-    root.dragCursorX = root.cursorX
-    root.dragCursorY = root.cursorY
+    root.dragCursorX = px
+    root.dragCursorY = py
     root.dragRight = root.posRight
     root.dragBottom = root.posBottom
   }
 
-  function dragMove() {
+  function dragMove(px, py) {
     if (!win.screen) return
     var maxRight = Math.max(0, win.width - stage.width)
     var maxBottom = Math.max(0, win.height - stage.height)
-    var dx = root.cursorX - root.dragCursorX
-    var dy = root.cursorY - root.dragCursorY
+    var dx = px - root.dragCursorX
+    var dy = py - root.dragCursorY
     var nextX = root.anchorFromRight ? root.dragRight - dx : root.dragRight + dx
     var nextY = root.anchorFromBottom ? root.dragBottom - dy : root.dragBottom + dy
     root.posRight = Math.max(0, Math.min(maxRight, Math.round(nextX)))
@@ -1405,22 +1405,25 @@ Item {
         preventStealing: true
         property point pressAt: Qt.point(0, 0)
         property bool moved: false
+        function windowPoint(mouse) { return mapToItem(win.contentItem, mouse.x, mouse.y) }
         onPressed: function (mouse) {
-          pressAt = Qt.point(mouse.x, mouse.y)
+          pressAt = windowPoint(mouse)
           moved = false
           if (mouse.button === Qt.RightButton) {
             root.menuOpen = !root.menuOpen
             mouse.accepted = true
             return
           }
-          if (mouse.modifiers & Qt.MetaModifier) root.beginDrag()
+          if (mouse.modifiers & Qt.MetaModifier) root.beginDrag(pressAt.x, pressAt.y)
         }
         onPositionChanged: function (mouse) {
           if (!(mouse.buttons & Qt.LeftButton)) return
-          var dx = mouse.x - pressAt.x
-          var dy = mouse.y - pressAt.y
+          var p = windowPoint(mouse)
+          var dx = p.x - pressAt.x
+          var dy = p.y - pressAt.y
           if (!root.dragging && (Math.abs(dx) > 6 || Math.abs(dy) > 6 || (mouse.modifiers & Qt.MetaModifier)))
-            root.beginDrag()
+            root.beginDrag(pressAt.x, pressAt.y)
+          if (root.dragging) root.dragMove(p.x, p.y)
         }
         onReleased: function (mouse) {
           if (root.dragging) {

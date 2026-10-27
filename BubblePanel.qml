@@ -79,12 +79,9 @@ Rectangle {
     return app && id === app.chosenBotId
   }
 
-  Timer {
-    id: waveTimer
-    interval: 70
-    repeat: true
+  FrameAnimation {
     running: voiceButton.dictating && bubble.visible
-    onTriggered: voiceButton.wave = (voiceButton.wave + 0.45) % 6.28318
+    onTriggered: voiceButton.wave = (voiceButton.wave + frameTime * 6.4) % 6.28318
   }
 
   SettingsPanel {

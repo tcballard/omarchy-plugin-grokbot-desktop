@@ -683,3 +683,14 @@ test('expressions ease between eye poses', () => {
   assert.ok(face.pose('sleep').open < 0.1)
   assert.ok(face.pose('think').height < face.pose('idle').height)
 })
+
+test('continuous motion and drag run at the display and input rate', () => {
+  const bubble = read('BubblePanel.qml')
+  assert.match(main, /id: gazeFrames/)
+  assert.match(main, /1 - Math\.exp\(-frameTime/)
+  assert.doesNotMatch(main, /interval: 32\b/)
+  assert.doesNotMatch(main, /thinkAngle \+= 0\.18/)
+  assert.doesNotMatch(bubble, /id: waveTimer/)
+  assert.match(qmlFunction(main, 'dragMove'), /function dragMove\(px, py\)/)
+  assert.doesNotMatch(qmlFunction(main, 'cursorLine'), /dragMove/)
+})
