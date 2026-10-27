@@ -1370,10 +1370,24 @@ Item {
       onClicked: root.menuOpen = false
     }
 
+    // The card and the menu grow out of the mark's side and fade, and leave
+    // the same way. Each stays visible until its exit has finished.
     BubblePanel {
       id: bubblePanel
       app: root
-      visible: root.bubbleOpen
+      readonly property bool shown: root.bubbleOpen
+      growsUp: y < stage.y
+      visible: opacity > 0.01
+      opacity: shown ? 1 : 0
+      scale: shown ? 1 : 0.94
+      transformOrigin: {
+        var above = y < stage.y
+        var right = stage.x + stage.width / 2 > x + width / 2
+        if (above) return right ? Item.BottomRight : Item.BottomLeft
+        return right ? Item.TopRight : Item.TopLeft
+      }
+      Behavior on opacity { NumberAnimation { duration: root.ms(bubblePanel.shown ? 180 : 120); easing.type: bubblePanel.shown ? Easing.OutCubic : Easing.InCubic } }
+      Behavior on scale { NumberAnimation { duration: root.ms(bubblePanel.shown ? 240 : 120); easing.type: bubblePanel.shown ? Easing.OutBack : Easing.InCubic; easing.overshoot: 1.2 } }
       width: Math.min(464, Math.max(320, win.width - 24))
       maxHeight: {
         var above = stage.y - 20
@@ -1394,7 +1408,12 @@ Item {
 
     Rectangle {
       id: menuCard
-      visible: root.menuOpen
+      visible: opacity > 0.01
+      opacity: root.menuOpen ? 1 : 0
+      scale: root.menuOpen ? 1 : 0.92
+      transformOrigin: x < stage.x ? Item.TopRight : Item.TopLeft
+      Behavior on opacity { NumberAnimation { duration: root.ms(root.menuOpen ? 140 : 100); easing.type: Easing.OutCubic } }
+      Behavior on scale { NumberAnimation { duration: root.ms(root.menuOpen ? 180 : 100); easing.type: Easing.OutCubic } }
       width: 188
       height: menuColumn.implicitHeight + 16
       radius: 12

@@ -12,6 +12,18 @@ Rectangle {
   readonly property real pageHeight: appearancePage ? settingsPage.implicitHeight : column.implicitHeight
   implicitWidth: 464
   implicitHeight: Math.min(maxHeight, pageHeight + 28)
+  // Height eases so a reply, an error, or a page change grows the card.
+  height: shownHeight
+  property real shownHeight: implicitHeight
+  // Above the mark the card grows upward, so its content stays pinned to the
+  // bottom edge and the header is what slides into view.
+  property bool growsUp: true
+  readonly property real growOffset: growsUp ? Math.min(0, height - implicitHeight) : 0
+  Behavior on shownHeight {
+    // The roster unfold already eases the height; chasing it would lag.
+    enabled: rosterBlock.expand <= 0 || rosterBlock.expand >= 1
+    NumberAnimation { duration: bubble.ms(200); easing.type: Easing.OutCubic }
+  }
   radius: 22
   color: "#141416"
   border.width: 1
@@ -100,7 +112,7 @@ Rectangle {
   Column {
     id: column
     x: bubble.appearancePage ? 16 - bubble.width : 16
-    y: 14
+    y: 14 + bubble.growOffset
     width: parent.width - 32
     spacing: 12
     visible: !bubble.appearancePage || x > -bubble.width + 16
@@ -257,121 +269,135 @@ Rectangle {
       }
     }
 
-    Flow {
-      id: pinRow
+    // The extra bots unfold below the pinned row; the block's height eases
+    // open so the card grows instead of jumping.
+    Item {
+      id: rosterBlock
+      property real expand: app.rosterExpanded && bubble.extraBots.length > 0 ? 1 : 0
+      Behavior on expand { NumberAnimation { duration: bubble.ms(220); easing.type: Easing.OutCubic } }
       width: parent.width
-      spacing: 6
+      height: pinRow.height + rosterBlock.expand * (6 + extraRow.implicitHeight)
+      clip: true
 
-      Repeater {
-        model: bubble.pinnedBots
-        delegate: Rectangle {
-          required property var modelData
-          readonly property bool active: bubble.activePin(modelData.id)
-          readonly property string plate: active ? "#232327" : "#1C1C1F"
-          readonly property string eyePlate: modelData.color === "black" ? "#F4F4F5" : plate
-          width: pinLabel.implicitWidth + 34
+      Flow {
+        id: pinRow
+        width: parent.width
+        spacing: 6
+
+        Repeater {
+          model: bubble.pinnedBots
+          delegate: Rectangle {
+            required property var modelData
+            readonly property bool active: bubble.activePin(modelData.id)
+            readonly property string plate: active ? "#232327" : "#1C1C1F"
+            readonly property string eyePlate: modelData.color === "black" ? "#F4F4F5" : plate
+            width: pinLabel.implicitWidth + 34
+            height: 28
+            radius: 14
+            color: plate
+            border.width: 1
+            border.color: active ? "#3F3F46" : "#2E2E32"
+            CompanionMark {
+              x: 8
+              y: 6
+              width: 16
+              height: 16
+              shapeFrom: modelData.shape
+              shapeTo: modelData.shape
+              morph: 1
+              colorName: modelData.color
+              accent: app.accent
+              cutoutHex: eyePlate
+              eyeOpen: 1
+            }
+            Text {
+              id: pinLabel
+              x: 28
+              y: 6
+              text: modelData.label
+              color: active ? "#F4F4F5" : "#A1A1AA"
+              font.pixelSize: 11
+              font.bold: active
+              textFormat: Text.PlainText
+            }
+            MouseArea {
+              anchors.fill: parent
+              onClicked: app.selectBot(modelData.id)
+            }
+          }
+        }
+
+        Rectangle {
+          visible: bubble.extraBots.length > 0
+          width: extraLabel.implicitWidth + 18
           height: 28
           radius: 14
-          color: plate
+          color: app.rosterExpanded ? "#232327" : "#1C1C1F"
           border.width: 1
-          border.color: active ? "#3F3F46" : "#2E2E32"
-          CompanionMark {
-            x: 8
-            y: 6
-            width: 16
-            height: 16
-            shapeFrom: modelData.shape
-            shapeTo: modelData.shape
-            morph: 1
-            colorName: modelData.color
-            accent: app.accent
-            cutoutHex: eyePlate
-            eyeOpen: 1
-          }
+          border.color: "#2E2E32"
           Text {
-            id: pinLabel
-            x: 28
-            y: 6
-            text: modelData.label
-            color: active ? "#F4F4F5" : "#A1A1AA"
+            id: extraLabel
+            anchors.centerIn: parent
+            text: "+" + bubble.extraBots.length
+            color: "#A1A1AA"
             font.pixelSize: 11
-            font.bold: active
+            font.bold: true
             textFormat: Text.PlainText
           }
           MouseArea {
             anchors.fill: parent
-            onClicked: app.selectBot(modelData.id)
+            onClicked: app.rosterExpanded = !app.rosterExpanded
           }
         }
       }
 
-      Rectangle {
-        visible: bubble.extraBots.length > 0
-        width: extraLabel.implicitWidth + 18
-        height: 28
-        radius: 14
-        color: app.rosterExpanded ? "#232327" : "#1C1C1F"
-        border.width: 1
-        border.color: "#2E2E32"
-        Text {
-          id: extraLabel
-          anchors.centerIn: parent
-          text: "+" + bubble.extraBots.length
-          color: "#A1A1AA"
-          font.pixelSize: 11
-          font.bold: true
-          textFormat: Text.PlainText
-        }
-        MouseArea {
-          anchors.fill: parent
-          onClicked: app.rosterExpanded = !app.rosterExpanded
-        }
-      }
-    }
-
-    Flow {
-      width: parent.width
-      spacing: 6
-      visible: app.rosterExpanded && bubble.extraBots.length > 0
-      Repeater {
-        model: bubble.extraBots
-        delegate: Rectangle {
-          required property var modelData
-          readonly property bool active: bubble.activePin(modelData.id)
-          readonly property string plate: active ? "#232327" : "#1C1C1F"
-          readonly property string eyePlate: modelData.color === "black" ? "#F4F4F5" : plate
-          width: extraName.implicitWidth + 34
-          height: 28
-          radius: 14
-          color: plate
-          border.width: 1
-          border.color: active ? "#3F3F46" : "#2E2E32"
-          CompanionMark {
-            x: 8
-            y: 6
-            width: 16
-            height: 16
-            shapeFrom: modelData.shape
-            shapeTo: modelData.shape
-            morph: 1
-            colorName: modelData.color
-            accent: app.accent
-            cutoutHex: eyePlate
-            eyeOpen: 1
-          }
-          Text {
-            id: extraName
-            x: 28
-            y: 6
-            text: modelData.label
-            color: active ? "#F4F4F5" : "#A1A1AA"
-            font.pixelSize: 11
-            font.bold: active
-            textFormat: Text.PlainText
-          }
-          MouseArea {
-            anchors.fill: parent
-            onClicked: app.selectBot(modelData.id)
+      Flow {
+        id: extraRow
+        y: pinRow.height + 6
+        width: parent.width
+        spacing: 6
+        opacity: rosterBlock.expand
+        enabled: rosterBlock.expand > 0.5
+        Repeater {
+          model: bubble.extraBots
+          delegate: Rectangle {
+            required property var modelData
+            readonly property bool active: bubble.activePin(modelData.id)
+            readonly property string plate: active ? "#232327" : "#1C1C1F"
+            readonly property string eyePlate: modelData.color === "black" ? "#F4F4F5" : plate
+            width: extraName.implicitWidth + 34
+            height: 28
+            radius: 14
+            color: plate
+            border.width: 1
+            border.color: active ? "#3F3F46" : "#2E2E32"
+            CompanionMark {
+              x: 8
+              y: 6
+              width: 16
+              height: 16
+              shapeFrom: modelData.shape
+              shapeTo: modelData.shape
+              morph: 1
+              colorName: modelData.color
+              accent: app.accent
+              cutoutHex: eyePlate
+              eyeOpen: 1
+            }
+            Text {
+              id: extraName
+              x: 28
+              y: 6
+              text: modelData.label
+              color: active ? "#F4F4F5" : "#A1A1AA"
+              font.pixelSize: 11
+              font.bold: active
+              textFormat: Text.PlainText
+            }
+            MouseArea {
+              anchors.fill: parent
+              onClicked: app.selectBot(modelData.id)
+            }
           }
         }
       }

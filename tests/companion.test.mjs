@@ -767,3 +767,14 @@ test('reduced motion stops loops and zeroes one-shot timing', () => {
   assert.match(main, /id: morphAnim[\s\S]{0,200}duration: root\.ms\(560\)/)
   assert.doesNotMatch(read('BubblePanel.qml'), /duration: \d/)
 })
+
+test('the card, menu, and roster animate in and out', () => {
+  const card = main.slice(main.indexOf('id: bubblePanel'), main.indexOf('id: bubblePanel') + 1400)
+  assert.match(card, /visible: opacity > 0\.01/)
+  assert.match(card, /transformOrigin:/)
+  const menu = main.slice(main.indexOf('id: menuCard'), main.indexOf('id: menuCard') + 600)
+  assert.match(menu, /visible: opacity > 0\.01/)
+  const bubble = read('BubblePanel.qml')
+  assert.match(bubble, /Behavior on shownHeight/)
+  assert.match(bubble, /Behavior on expand/)
+})
