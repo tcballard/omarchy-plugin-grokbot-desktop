@@ -786,3 +786,12 @@ test('size eases and corner changes pop out and back in', () => {
   assert.match(corner, /cornerAnim\.restart\(\)/)
   assert.doesNotMatch(corner, /root\.anchorName = name/)
 })
+
+test('the appearance page fits without scrolling on a 800px screen', () => {
+  const page = read('SettingsPanel.qml')
+  assert.doesNotMatch(page, /font\.pixelSize: 8\b/, 'no unreadable 8px labels')
+  assert.match(page, /"MARK SILHOUETTE  ·  " \+ drawer\.title/)
+  assert.match(page, /"PLACEMENT  ·  "/)
+  assert.match(page, /id: cornerPicker/)
+  assert.match(page, /ScrollBar\.vertical/)
+})

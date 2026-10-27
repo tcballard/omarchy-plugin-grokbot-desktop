@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 
 // Monochrome appearance page. It slides in inside the bubble card, so it has
 // no chrome of its own. Inactive marks stay muted; the active shape uses the
@@ -7,6 +8,14 @@ Item {
   id: drawer
   property var app: null
   implicitHeight: header.height + 14 + body.implicitHeight
+
+  // The section headers name what is chosen, or what the pointer is over.
+  property string hoverShape: ""
+  property string hoverColor: ""
+  function title(name) {
+    var text = String(name || "")
+    return text.charAt(0).toUpperCase() + text.slice(1)
+  }
 
   readonly property color tone: app.shownColor === "omarchy" ? app.accent : app.paletteFill(app.shownColor)
   readonly property var accentNames: {
@@ -102,6 +111,7 @@ Item {
     contentHeight: body.implicitHeight
     clip: true
     boundsBehavior: Flickable.StopAtBounds
+    ScrollBar.vertical: ScrollBar { policy: flick.contentHeight > flick.height ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff }
 
     Column {
       id: body
@@ -109,7 +119,7 @@ Item {
       spacing: 14
 
       Text {
-        text: "MARK SILHOUETTE  ·  25 SHAPES"
+        text: "MARK SILHOUETTE  ·  " + drawer.title(drawer.hoverShape !== "" ? drawer.hoverShape : app.canonicalShape)
         color: "#71717A"
         font.pixelSize: 10
         font.bold: true
@@ -130,7 +140,7 @@ Item {
             required property string modelData
             readonly property bool active: modelData === app.canonicalShape
             width: shapeGrid.cellW
-            height: 52
+            height: 44
             radius: 12
             color: "#19191C"
             border.width: active ? 1.5 : 1
@@ -142,10 +152,9 @@ Item {
               opacity: active ? 0.16 : 0
             }
             CompanionMark {
-              anchors.horizontalCenter: parent.horizontalCenter
-              y: 4
-              width: 26
-              height: 26
+              anchors.centerIn: parent
+              width: 28
+              height: 28
               shapeFrom: modelData
               shapeTo: modelData
               morph: 1
@@ -155,26 +164,18 @@ Item {
               cutoutHex: active && app.shownColor === "black" ? "#F4F4F5" : "#19191C"
               eyeOpen: 1
             }
-            Text {
-              anchors.horizontalCenter: parent.horizontalCenter
-              anchors.bottom: parent.bottom
-              anchors.bottomMargin: 3
-              width: parent.width - 4
-              horizontalAlignment: Text.AlignHCenter
-              text: modelData
-              color: active ? "#F4F4F5" : "#71717A"
-              font.pixelSize: 8
-              font.bold: active
-              elide: Text.ElideRight
-              textFormat: Text.PlainText
+            MouseArea {
+              anchors.fill: parent
+              hoverEnabled: true
+              onContainsMouseChanged: drawer.hoverShape = containsMouse ? modelData : (drawer.hoverShape === modelData ? "" : drawer.hoverShape)
+              onClicked: app.selectShape(modelData)
             }
-            MouseArea { anchors.fill: parent; onClicked: app.selectShape(modelData) }
           }
         }
       }
 
       Text {
-        text: "COLOUR  ·  11 ACCENTS"
+        text: "COLOUR  ·  " + (drawer.hoverColor !== "" ? drawer.hoverColor : (app.shownColor === "omarchy" ? "Theme accent" : drawer.title(app.shownColor)))
         color: "#71717A"
         font.pixelSize: 10
         font.bold: true
@@ -182,9 +183,9 @@ Item {
         textFormat: Text.PlainText
       }
 
-      Flow {
+      Row {
         width: parent.width
-        spacing: 6
+        spacing: Math.max(2, (width - 30 * (drawer.accentNames.length + 1)) / drawer.accentNames.length)
         Repeater {
           model: drawer.accentNames
           delegate: Item {
@@ -209,7 +210,12 @@ Item {
               border.width: 1
               border.color: "#27272A"
             }
-            MouseArea { anchors.fill: parent; onClicked: app.selectColor(modelData) }
+            MouseArea {
+              anchors.fill: parent
+              hoverEnabled: true
+              onContainsMouseChanged: drawer.hoverColor = containsMouse ? drawer.title(modelData) : ""
+              onClicked: app.selectColor(modelData)
+            }
           }
         }
         Item {
@@ -232,8 +238,21 @@ Item {
             color: app.accent
             border.width: 1
             border.color: "#27272A"
+            // A hole marks the swatch that follows the theme accent.
+            Rectangle {
+              anchors.centerIn: parent
+              width: 8
+              height: 8
+              radius: 4
+              color: "#141416"
+            }
           }
-          MouseArea { anchors.fill: parent; onClicked: app.selectColor("omarchy") }
+          MouseArea {
+            anchors.fill: parent
+            hoverEnabled: true
+            onContainsMouseChanged: drawer.hoverColor = containsMouse ? "Theme accent" : ""
+            onClicked: app.selectColor("omarchy")
+          }
         }
       }
 
@@ -289,7 +308,8 @@ Item {
       }
 
       Text {
-        text: "DESKTOP ANCHOR"
+        readonly property var corners: ({ br: "Bottom right", bl: "Bottom left", tr: "Top right", tl: "Top left" })
+        text: "PLACEMENT  ·  " + corners[app.anchorName]
         color: "#71717A"
         font.pixelSize: 10
         font.bold: true
@@ -297,84 +317,101 @@ Item {
         textFormat: Text.PlainText
       }
 
-      Row {
-        id: anchorRow
+      // Corner, size, and dodge share one row. The corner picker is a small
+      // screen with a dot in each corner.
+      Item {
         width: parent.width
-        spacing: 8
-        property real pillW: (width - spacing * 3) / 4
-        Repeater {
-          model: [
-            { "id": "br", "label": "Bottom R" },
-            { "id": "bl", "label": "Bottom L" },
-            { "id": "tr", "label": "Top R" },
-            { "id": "tl", "label": "Top L" }
-          ]
-          delegate: Rectangle {
-            required property var modelData
-            readonly property bool active: app.anchorName === modelData.id
-            width: anchorRow.pillW
-            height: 36
-            radius: 10
-            color: active ? "#232327" : "#19191C"
-            border.width: active ? 1.5 : 1
-            border.color: active ? drawer.tone : "#26262A"
-            Text {
-              anchors.centerIn: parent
-              text: modelData.label
-              color: active ? "#F4F4F5" : "#A1A1AA"
-              font.pixelSize: 11
-              font.bold: active
-              textFormat: Text.PlainText
-            }
-            MouseArea { anchors.fill: parent; onClicked: app.setAnchor(modelData.id) }
-          }
-        }
-      }
+        height: 44
 
-      Text {
-        text: "SIZE & DODGE"
-        color: "#71717A"
-        font.pixelSize: 10
-        font.bold: true
-        font.family: "monospace"
-        textFormat: Text.PlainText
-      }
-
-      Flow {
-        width: parent.width
-        spacing: 8
-        Repeater {
-          model: ["small", "medium", "large"]
-          delegate: Rectangle {
-            required property string modelData
-            width: sizeLabel.implicitWidth + 18
-            height: 28
-            radius: 10
-            color: app.sizeName === modelData ? "#232327" : "#19191C"
-            border.width: 1
-            border.color: app.sizeName === modelData ? drawer.tone : "#26262A"
-            Text {
-              id: sizeLabel
-              anchors.centerIn: parent
-              text: modelData.charAt(0).toUpperCase() + modelData.slice(1)
-              color: app.sizeName === modelData ? "#F4F4F5" : "#A1A1AA"
-              font.pixelSize: 11
-              font.bold: app.sizeName === modelData
-              textFormat: Text.PlainText
-            }
-            MouseArea { anchors.fill: parent; onClicked: app.setSize(modelData) }
-          }
-        }
         Rectangle {
-          width: dodgeLabel.implicitWidth + 18
-          height: 28
+          id: cornerPicker
+          width: 66
+          height: 44
+          radius: 9
+          color: "#19191C"
+          border.width: 1
+          border.color: "#26262A"
+          Repeater {
+            model: ["tl", "tr", "bl", "br"]
+            delegate: Item {
+              required property string modelData
+              readonly property bool active: app.anchorName === modelData
+              width: 26
+              height: 18
+              x: modelData.charAt(1) === "l" ? 4 : cornerPicker.width - width - 4
+              y: modelData.charAt(0) === "t" ? 4 : cornerPicker.height - height - 4
+              Rectangle {
+                width: active ? 12 : 8
+                height: width
+                radius: width / 2
+                anchors.centerIn: parent
+                anchors.horizontalCenterOffset: modelData.charAt(1) === "l" ? -4 : 4
+                color: active ? drawer.tone : (cornerArea.containsMouse ? "#A1A1AA" : "#52525B")
+                Behavior on width { NumberAnimation { duration: app && app.reduceMotion ? 0 : 140; easing.type: Easing.OutCubic } }
+              }
+              MouseArea {
+                id: cornerArea
+                anchors.fill: parent
+                hoverEnabled: true
+                onClicked: app.setAnchor(modelData)
+              }
+            }
+          }
+        }
+
+        Row {
+          id: sizeRow
+          anchors.left: cornerPicker.right
+          anchors.leftMargin: 10
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: 6
+          Repeater {
+            model: ["small", "medium", "large"]
+            delegate: Rectangle {
+              required property string modelData
+              required property int index
+              readonly property bool active: app.sizeName === modelData
+              width: 64
+              height: 32
+              radius: 10
+              color: active ? "#232327" : "#19191C"
+              border.width: active ? 1.5 : 1
+              border.color: active ? drawer.tone : "#26262A"
+              z: active ? 1 : 0
+              Text {
+                anchors.centerIn: parent
+                text: drawer.title(modelData)
+                color: active ? "#F4F4F5" : "#A1A1AA"
+                font.pixelSize: 11
+                font.bold: active
+                textFormat: Text.PlainText
+              }
+              MouseArea { anchors.fill: parent; onClicked: app.setSize(modelData) }
+            }
+          }
+        }
+
+        Rectangle {
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          width: dodgeLabel.implicitWidth + 40
+          height: 32
           radius: 10
           color: app.dodgeOn ? "#232327" : "#19191C"
-          border.width: 1
+          border.width: app.dodgeOn ? 1.5 : 1
           border.color: app.dodgeOn ? drawer.tone : "#26262A"
+          Rectangle {
+            x: 10
+            anchors.verticalCenter: parent.verticalCenter
+            width: 8
+            height: 8
+            radius: 4
+            color: app.dodgeOn ? drawer.tone : "#52525B"
+          }
           Text {
             id: dodgeLabel
-            anchors.centerIn: parent
+            x: 26
+            anchors.verticalCenter: parent.verticalCenter
             text: "Dodge"
             color: app.dodgeOn ? "#F4F4F5" : "#A1A1AA"
             font.pixelSize: 11
@@ -384,6 +421,18 @@ Item {
           MouseArea { anchors.fill: parent; onClicked: app.setDodge(!app.dodgeOn) }
         }
       }
+    }
+  }
+
+  Rectangle {
+    anchors.bottom: parent.bottom
+    width: parent.width
+    height: 22
+    opacity: flick.contentY + flick.height < flick.contentHeight - 1 ? 1 : 0
+    Behavior on opacity { NumberAnimation { duration: app && app.reduceMotion ? 0 : 120 } }
+    gradient: Gradient {
+      GradientStop { position: 0; color: "#00141416" }
+      GradientStop { position: 1; color: "#141416" }
     }
   }
 }
