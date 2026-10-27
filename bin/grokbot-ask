@@ -1,0 +1,557 @@
+#!/usr/bin/python3
+"""Dispatch one companion prompt.
+
+Webhook mode POSTs {"botId","botName","prompt","host"} to the configured
+Omarchy desktop companion URL. The bearer key is read from
+~/.config/omarchy/grokbot-webhook.key or GROKBOT_WEBHOOK_KEY. It is never
+taken from argv.
+
+Agent mode writes the prompt to the Omarchy default agent (or a configured
+command) on stdin, with a 64 KiB stdout ceiling. The shell launches this
+file as /usr/bin/python3 -I so site and user environment modules are ignored.
+
+Stdin is a JSON object: {"botId","botName","prompt","host"?}.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import select
+import signal
+import stat
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+
+STDOUT_CEILING = 64 * 1024
+STDERR_CEILING = 16 * 1024
+PROMPT_CEILING = 16 * 1024
+EXIT_OVERFLOW = 125
+WEBHOOK_TIMEOUT = 45
+AGENT_TIMEOUT = 180
+KEY_NAME = "GROKBOT_WEBHOOK_KEY"
+SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,80}$")
+SAFE_HOST = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+AGENT_NAME = re.compile(r"^[a-z0-9][a-z0-9._-]{0,31}$")
+CONTROLS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+TRUSTED_DIRS = ("/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin")
+FALLBACK_PATH = "/usr/bin:/bin"
+
+AGENT_ARGV = {
+    "opencode": ["opencode", "run"],
+    "codex": ["codex", "exec", "--skip-git-repo-check"],
+    "gemini": ["gemini"],
+    "copilot": ["copilot"],
+    "crush": ["crush", "run"],
+    "grok": ["grok"],
+    "pi": ["pi"],
+    "omp": ["omp"],
+    "claude": ["claude", "-p"],
+}
+
+AGENT_CREDENTIALS = {
+    "claude": ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"],
+    "codex": ["OPENAI_API_KEY", "OPENAI_BASE_URL"],
+    "gemini": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+    "copilot": ["GITHUB_TOKEN", "GH_TOKEN"],
+    "grok": ["XAI_API_KEY", "GROK_API_KEY"],
+    "opencode": [],
+    "crush": [],
+    "pi": [],
+    "omp": [],
+}
+
+
+def config_dir():
+    base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.environ.get("HOME", ""), ".config")
+    return os.path.join(base, "omarchy")
+
+
+def read_json(path, limit):
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return None
+    if stat.S_ISLNK(st.st_mode) or not stat.S_ISREG(st.st_mode) or st.st_size > limit:
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+
+
+def plugin_entry():
+    data = read_json(os.path.join(config_dir(), "shell.json"), 256 * 1024)
+    plugins = data.get("plugins") if isinstance(data, dict) else None
+    if not isinstance(plugins, list):
+        return {}
+    for entry in plugins:
+        if isinstance(entry, dict) and entry.get("id") == "io.github.tcballard.grokbot-desktop":
+            return entry
+    return {}
+
+
+def desktop_config():
+    data = read_json(os.path.join(config_dir(), "grokbot-desktop.json"), 64 * 1024)
+    return data if isinstance(data, dict) else {}
+
+
+def setting(entry, desktop, key):
+    if key in entry and entry[key] not in (None, ""):
+        return entry[key]
+    if key in desktop and desktop[key] not in (None, ""):
+        return desktop[key]
+    return None
+
+
+def plain(value, limit):
+    text = CONTROLS.sub(" ", str(value or ""))
+    text = text.replace("<", "").replace(">", "")
+    text = " ".join(text.split())
+    return text[:limit]
+
+
+def host_name(given):
+    raw = plain(given or os.uname().nodename, 64)
+    raw = raw.split(".")[0]
+    return raw if SAFE_HOST.fullmatch(raw) else "omarchy"
+
+
+def validate_webhook_url(url):
+    text = str(url or "").strip()
+    if not text or len(text) > 2048 or re.search(r"[\s\x00-\x1f\x7f<>\"'`\\]", text):
+        return ""
+    match = re.match(r"^(https?):\/\/([^\/?#]+)(\/[^?#]*)?$", text, flags=re.IGNORECASE)
+    if not match:
+        return ""
+    scheme = match.group(1).lower()
+    authority = match.group(2)
+    if "@" in authority:
+        return ""
+    host = authority
+    if host.startswith("["):
+        end = host.find("]")
+        if end < 0:
+            return ""
+        bare = host[1:end].lower()
+    else:
+        bare = host.split(":")[0].lower()
+    if scheme == "http" and bare not in ("localhost", "127.0.0.1", "::1"):
+        return ""
+    if scheme not in ("https", "http"):
+        return ""
+    return text
+
+
+def key_file_path(entry, desktop):
+    configured = setting(entry, desktop, "webhookKeyFile")
+    if isinstance(configured, str) and configured.startswith("/") and "/.." not in configured:
+        return configured
+    return os.path.join(config_dir(), "grokbot-webhook.key")
+
+
+def read_key(path):
+    env_key = os.environ.get(KEY_NAME, "")
+    if env_key:
+        token = env_key.strip()
+        if token and len(token) <= 512 and "\n" not in token and "\x00" not in token:
+            return token
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return ""
+    if stat.S_ISLNK(st.st_mode) or not stat.S_ISREG(st.st_mode) or st.st_size > 4096 or st.st_size == 0:
+        return ""
+    if st.st_mode & (stat.S_IRGRP | stat.S_IWGRP | stat.S_IROTH | stat.S_IWOTH):
+        return ""
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            token = handle.read().strip()
+    except (OSError, UnicodeError):
+        return ""
+    if not token or len(token) > 512 or "\n" in token or "\x00" in token:
+        return ""
+    return token
+
+
+def webhook_parts(url, key, payload):
+    body = json.dumps(
+        {
+            "botId": payload["botId"],
+            "botName": payload["botName"],
+            "prompt": payload["prompt"],
+            "host": payload["host"],
+        },
+        separators=(",", ":"),
+    ).encode("utf-8")
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/plain",
+        "Authorization": f"Bearer {key}",
+        "User-Agent": "grokbot-desktop/0.1.0",
+    }
+    return url, headers, body
+
+
+def extract_reply(raw):
+    text = raw.decode("utf-8", errors="replace")
+    text = text.replace("\x00", "")
+    if len(text) > STDOUT_CEILING:
+        text = text[:STDOUT_CEILING]
+    stripped = text.strip()
+    if not stripped:
+        return ""
+    if stripped[0] in "{[":
+        try:
+            data = json.loads(stripped)
+        except json.JSONDecodeError:
+            data = None
+        if isinstance(data, dict):
+            for key in ("reply", "text", "message", "output"):
+                value = data.get(key)
+                if isinstance(value, str) and value.strip():
+                    return plain(value, 4000)
+    return stripped[:4000]
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def post_webhook(url, key, payload):
+    target, headers, body = webhook_parts(url, key, payload)
+    request = urllib.request.Request(target, data=body, headers=headers, method="POST")
+    opener = urllib.request.build_opener(_NoRedirect)
+    try:
+        with opener.open(request, timeout=WEBHOOK_TIMEOUT) as response:
+            raw = response.read(STDOUT_CEILING + 1)
+    except urllib.error.HTTPError as exc:
+        detail = exc.read(240).decode("utf-8", errors="replace")
+        detail = plain(detail, 180)
+        print(f"webhook status {exc.code}" + (f": {detail}" if detail else ""), file=sys.stderr)
+        return 4
+    except urllib.error.URLError:
+        print("webhook unreachable", file=sys.stderr)
+        return 4
+    if len(raw) > STDOUT_CEILING:
+        print("webhook reply too long", file=sys.stderr)
+        return EXIT_OVERFLOW
+    reply = extract_reply(raw)
+    if not reply:
+        print("webhook returned an empty reply", file=sys.stderr)
+        return 4
+    sys.stdout.write(reply)
+    if not reply.endswith("\n"):
+        sys.stdout.write("\n")
+    return 0
+
+
+def default_agent_name():
+    path = os.path.join(config_dir(), "defaults", "agent")
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return ""
+    if stat.S_ISLNK(st.st_mode) or not stat.S_ISREG(st.st_mode) or st.st_size > 256:
+        return ""
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            name = handle.read().strip().lower()
+    except (OSError, UnicodeError):
+        return ""
+    return name if AGENT_NAME.fullmatch(name) else ""
+
+
+def safe_abs(path):
+    text = str(path or "")
+    if len(text) < 2 or not text.startswith("/") or "/./" in text or "/../" in text:
+        return False
+    return not text.endswith("/.") and not text.endswith("/..")
+
+
+def dir_ok(path):
+    try:
+        st = os.stat(path)
+    except OSError:
+        return False
+    if not stat.S_ISDIR(st.st_mode):
+        return False
+    if st.st_uid not in (os.geteuid(), 0):
+        return False
+    return not (st.st_mode & (stat.S_IWGRP | stat.S_IWOTH))
+
+
+def launcher_dirs():
+    dirs = []
+    seen = set()
+
+    def add(path):
+        text = str(path or "")
+        if text.endswith("/"):
+            text = text[:-1]
+        if not safe_abs(text) or text in seen:
+            return
+        seen.add(text)
+        dirs.append(text)
+
+    for trusted in TRUSTED_DIRS:
+        add(trusted)
+    add(os.environ.get("MISE_SHIMS_DIR", ""))
+    data = os.environ.get("MISE_DATA_DIR", "")
+    if safe_abs(data.rstrip("/")):
+        add(data.rstrip("/") + "/shims")
+    home = os.environ.get("HOME", "")
+    data_home = os.environ.get("XDG_DATA_HOME", "")
+    if not data_home and safe_abs(home.rstrip("/") if home else ""):
+        data_home = home.rstrip("/") + "/.local/share"
+    if data_home and safe_abs(data_home.rstrip("/")):
+        add(data_home.rstrip("/") + "/mise/shims")
+    if home and safe_abs(home.rstrip("/")):
+        add(home.rstrip("/") + "/.local/bin")
+    return [item for item in dirs if dir_ok(item)]
+
+
+def launcher_ok(path):
+    if not safe_abs(path):
+        return False
+    try:
+        st = os.stat(path)
+    except OSError:
+        return False
+    if not stat.S_ISREG(st.st_mode) or not os.access(path, os.X_OK):
+        return False
+    if st.st_uid not in (os.geteuid(), 0):
+        return False
+    if st.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+        return False
+    parent = os.path.dirname(path)
+    return dir_ok(parent)
+
+
+def resolve_launcher(name, dirs):
+    raw = str(name or "")
+    if raw.startswith("/"):
+        return raw if launcher_ok(raw) else ""
+    if not AGENT_NAME.fullmatch(raw):
+        return ""
+    for directory in dirs:
+        candidate = directory + "/" + raw
+        if launcher_ok(candidate):
+            return candidate
+    return ""
+
+
+def agent_command(entry, desktop):
+    custom = setting(entry, desktop, "command")
+    if isinstance(custom, list) and custom:
+        argv = [str(part) for part in custom if str(part)]
+        if not argv or len(argv) > 16:
+            return [], "", True
+        resolved = resolve_launcher(argv[0], launcher_dirs())
+        if not resolved:
+            return [], "", True
+        return [resolved, *argv[1:]], "", True
+    name = str(setting(entry, desktop, "agent") or default_agent_name() or "claude").lower()
+    if name not in AGENT_ARGV:
+        name = "claude"
+    argv = AGENT_ARGV[name][:]
+    resolved = resolve_launcher(argv[0], launcher_dirs())
+    if not resolved:
+        return [], name, False
+    return [resolved, *argv[1:]], name, False
+
+
+def persona(bot_name):
+    name = plain(bot_name, 80) or "Bob"
+    return (
+        f"You are answering in an Omarchy desktop speech bubble as the Grok Bot {name}. "
+        "Reply in a few short sentences of plain text. No headings, and no code fences "
+        "unless the user asked for a command."
+    )
+
+
+def agent_stdin(prompt, bot_name, custom):
+    if custom:
+        return f"Bot: {plain(bot_name, 80)}\n\n{prompt}"
+    return persona(bot_name) + "\n\n" + prompt
+
+
+def child_env(agent, custom):
+    env = {
+        "PATH": FALLBACK_PATH,
+        "PYTHONNOUSERSITE": "1",
+        "PYTHONSAFEPATH": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
+    allow = [
+        "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "TERM",
+        "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME",
+        "XDG_RUNTIME_DIR", "TMPDIR",
+        "SSL_CERT_FILE", "SSL_CERT_DIR",
+        "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy",
+        "MISE_DATA_DIR", "MISE_SHIMS_DIR",
+    ]
+    if not custom:
+        allow.extend(AGENT_CREDENTIALS.get(agent, AGENT_CREDENTIALS["claude"]))
+    for key in allow:
+        value = os.environ.get(key)
+        if value:
+            env[key] = value
+    return env
+
+
+def _kill_group(pgid):
+    if not pgid:
+        return
+    try:
+        os.killpg(pgid, signal.SIGTERM)
+    except OSError:
+        return
+    time.sleep(0.2)
+    try:
+        os.killpg(pgid, signal.SIGKILL)
+    except OSError:
+        return
+
+
+def run_agent(argv, stdin_text, env):
+    try:
+        proc = subprocess.Popen(
+            argv,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+            start_new_session=True,
+        )
+    except OSError:
+        print("could not start the agent", file=sys.stderr)
+        return 127
+    out_fd = proc.stdout.fileno()
+    err_fd = proc.stderr.fileno()
+    os.set_blocking(out_fd, False)
+    os.set_blocking(err_fd, False)
+    try:
+        proc.stdin.write(stdin_text.encode("utf-8"))
+        proc.stdin.close()
+    except OSError:
+        pass
+    buckets = {out_fd: bytearray(), err_fd: bytearray()}
+    ceilings = {out_fd: STDOUT_CEILING, err_fd: STDERR_CEILING}
+    open_fds = [out_fd, err_fd]
+    overflow = False
+    deadline = time.monotonic() + AGENT_TIMEOUT
+    while open_fds:
+        if time.monotonic() > deadline:
+            _kill_group(proc.pid)
+            print("agent timed out", file=sys.stderr)
+            return 124
+        readable, _, _ = select.select(open_fds, [], [], 0.2)
+        if not readable and proc.poll() is not None:
+            readable = list(open_fds)
+        for fd in readable:
+            try:
+                chunk = os.read(fd, 4096)
+            except BlockingIOError:
+                continue
+            if chunk == b"":
+                open_fds.remove(fd)
+                continue
+            bucket = buckets[fd]
+            room = ceilings[fd] - len(bucket)
+            if len(chunk) > room:
+                if room > 0:
+                    bucket.extend(chunk[:room])
+                overflow = True
+                _kill_group(proc.pid)
+                open_fds.clear()
+                break
+            bucket.extend(chunk)
+        if not open_fds:
+            break
+        if proc.poll() is not None and not readable:
+            break
+    try:
+        code = proc.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        _kill_group(proc.pid)
+        code = proc.wait()
+    if overflow:
+        print("agent reply exceeded the output ceiling", file=sys.stderr)
+        return EXIT_OVERFLOW
+    text = bytes(buckets[out_fd]).decode("utf-8", errors="replace").replace("\x00", "").strip()
+    if code == 0 and text:
+        sys.stdout.write(text[:STDOUT_CEILING])
+        if not text.endswith("\n"):
+            sys.stdout.write("\n")
+        return 0
+    detail = plain(bytes(buckets[err_fd]).decode("utf-8", errors="replace"), 300)
+    print(detail or f"agent exited {code}", file=sys.stderr)
+    return code if code else 1
+
+
+def parse_request(raw):
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    prompt = str(data.get("prompt") or "").replace("\x00", "").strip()
+    if not prompt or len(prompt) > PROMPT_CEILING:
+        return None
+    bot_id = str(data.get("botId") or "")
+    if not SAFE_ID.fullmatch(bot_id):
+        return None
+    return {
+        "botId": bot_id,
+        "botName": plain(data.get("botName"), 120) or "Bob",
+        "prompt": prompt,
+        "host": host_name(data.get("host")),
+    }
+
+
+def dispatch_mode(entry, desktop):
+    mode = str(setting(entry, desktop, "dispatch") or "").lower()
+    url = validate_webhook_url(setting(entry, desktop, "webhookUrl") or os.environ.get("GROKBOT_WEBHOOK_URL", ""))
+    if mode not in ("webhook", "agent"):
+        mode = "webhook" if url else "agent"
+    return mode, url
+
+
+def main(argv=None):
+    del argv
+    raw = sys.stdin.read(PROMPT_CEILING + 4096)
+    if len(raw) > PROMPT_CEILING + 2048:
+        print("prompt too long", file=sys.stderr)
+        return 2
+    payload = parse_request(raw)
+    if not payload:
+        print("expected a JSON prompt", file=sys.stderr)
+        return 2
+    entry = plugin_entry()
+    desktop = desktop_config()
+    mode, url = dispatch_mode(entry, desktop)
+    if mode == "webhook":
+        if not url:
+            print("webhook URL is missing or not https", file=sys.stderr)
+            return 2
+        key = read_key(key_file_path(entry, desktop))
+        if not key:
+            print("webhook key is missing or readable by other users", file=sys.stderr)
+            return 3
+        return post_webhook(url, key, payload)
+    argv, agent, custom = agent_command(entry, desktop)
+    if not argv:
+        print("agent launcher was not found", file=sys.stderr)
+        return 127
+    return run_agent(argv, agent_stdin(payload["prompt"], payload["botName"], custom), child_env(agent, custom))
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,195 @@
+#!/usr/bin/python3
+"""Refresh the desktop roster from a local Grok Bot agents directory.
+
+Reads ``<dir>/*/profile.json`` and writes ``~/.config/omarchy/grokbot-bots.json``.
+Descriptions are reduced to one public role line. Email addresses and home
+paths are redacted. The webhook key is never read.
+
+  grokbot-sync --from /path/to/agents
+  grokbot-sync --seed data/bots.json
+
+``agentsDir`` in ``~/.config/omarchy/grokbot-desktop.json`` or
+``GROKBOT_AGENTS_DIR`` is used when ``--from`` is omitted.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import stat
+import sys
+
+MAX_PROFILE_BYTES = 256 * 1024
+MAX_ROLE = 180
+EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+HOME_PATH = re.compile(r"/(?:home|Users)/[A-Za-z0-9._-]+(?:/[^\s,;)]*)?")
+SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,80}$")
+CONTROLS = re.compile(r"[\x00-\x1f\x7f]+")
+
+
+def config_dir():
+    base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.environ.get("HOME", ""), ".config")
+    return os.path.join(base, "omarchy")
+
+
+def read_json(path, limit=MAX_PROFILE_BYTES):
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return None
+    if stat.S_ISLNK(st.st_mode) or not stat.S_ISREG(st.st_mode):
+        return None
+    if st.st_size > limit:
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+
+
+def desktop_config():
+    data = read_json(os.path.join(config_dir(), "grokbot-desktop.json"), 64 * 1024)
+    return data if isinstance(data, dict) else {}
+
+
+def redact_role(text):
+    raw = CONTROLS.sub(" ", str(text or ""))
+    raw = EMAIL.sub("[redacted]", raw)
+    raw = HOME_PATH.sub("[path]", raw)
+    raw = " ".join(raw.split())
+    if not raw:
+        return ""
+    sentence = re.split(r"(?<=[.!?])\s", raw, maxsplit=1)[0]
+    role = sentence.strip()
+    if len(role) > MAX_ROLE:
+        role = role[: MAX_ROLE - 1].rstrip() + "…"
+    return role
+
+
+def short_name(name):
+    text = str(name or "").strip()
+    if " · " in text:
+        return text.split(" · ", 1)[0].strip() or text
+    return text
+
+
+def safe_image(value):
+    path = str(value or "")
+    if not path.startswith("/") or len(path) > 512:
+        return ""
+    if "/../" in path or path.endswith("/..") or "/./" in path:
+        return ""
+    return path
+
+
+def bot_from_profile(data):
+    if not isinstance(data, dict):
+        return None
+    bot_id = str(data.get("id") or "").strip()
+    name = str(data.get("name") or "").strip()
+    if not SAFE_ID.fullmatch(bot_id) or not name or len(name) > 160:
+        return None
+    shape = str(data.get("avatarShape") or "blob").strip()
+    color = str(data.get("avatarColor") or "blue").strip()
+    if not re.fullmatch(r"[a-z]{3,16}", shape):
+        shape = "blob"
+    if not re.fullmatch(r"[a-z]{3,16}", color):
+        color = "blue"
+    bot = {
+        "id": bot_id,
+        "name": name,
+        "shortName": short_name(name),
+        "description": redact_role(data.get("description") or data.get("title") or ""),
+        "avatarShape": shape,
+        "avatarColor": color,
+        "isPrimary": bool(data.get("isPrimary")),
+    }
+    image = safe_image(data.get("avatarImage"))
+    if image:
+        bot["avatarImage"] = image
+    return bot
+
+
+def inside(root, path):
+    root_real = os.path.realpath(root)
+    path_real = os.path.realpath(path)
+    try:
+        common = os.path.commonpath([root_real, path_real])
+    except ValueError:
+        return False
+    return common == root_real
+
+
+def collect(source):
+    bots = []
+    seen = set()
+    try:
+        names = sorted(os.listdir(source))
+    except OSError as exc:
+        raise SystemExit(f"cannot read {source}: {exc}") from exc
+    for name in names:
+        directory = os.path.join(source, name)
+        profile = os.path.join(directory, "profile.json")
+        if not inside(source, profile):
+            continue
+        try:
+            if not stat.S_ISDIR(os.lstat(directory).st_mode):
+                continue
+        except OSError:
+            continue
+        bot = bot_from_profile(read_json(profile))
+        if not bot or bot["id"] in seen:
+            continue
+        seen.add(bot["id"])
+        bots.append(bot)
+    bots.sort(key=lambda item: (not item["isPrimary"], item["shortName"].lower()))
+    return bots
+
+
+def write_roster(path, bots):
+    parent = os.path.dirname(path)
+    os.makedirs(parent, mode=0o755, exist_ok=True)
+    payload = json.dumps({"bots": bots}, indent=2) + "\n"
+    temporary = path + ".tmp"
+    with open(temporary, "w", encoding="utf-8") as handle:
+        handle.write(payload)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.chmod(temporary, 0o644)
+    os.replace(temporary, path)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Refresh the Grok Bot desktop roster")
+    parser.add_argument("--from", dest="source", help="agents directory containing */profile.json")
+    parser.add_argument("--output", help="roster path (default: ~/.config/omarchy/grokbot-bots.json)")
+    parser.add_argument("--seed", help="copy this JSON roster instead of reading profiles")
+    args = parser.parse_args(argv)
+    output = args.output or os.path.join(config_dir(), "grokbot-bots.json")
+    if args.seed:
+        seeded = read_json(args.seed, 1024 * 1024)
+        bots = seeded.get("bots") if isinstance(seeded, dict) else None
+        if not isinstance(bots, list) or not bots:
+            print("seed roster is empty", file=sys.stderr)
+            return 2
+        write_roster(output, bots)
+        print(f"seeded {len(bots)} bots -> {output}")
+        return 0
+    source = args.source or os.environ.get("GROKBOT_AGENTS_DIR") or desktop_config().get("agentsDir") or ""
+    source = str(source)
+    if not source.startswith("/") or "/.." in source:
+        print("pass --from DIR, set agentsDir, or set GROKBOT_AGENTS_DIR", file=sys.stderr)
+        return 2
+    bots = collect(source)
+    if not bots:
+        print("no profiles found", file=sys.stderr)
+        return 1
+    write_roster(output, bots)
+    print(f"synced {len(bots)} bots -> {output}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

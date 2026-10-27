@@ -1,0 +1,139 @@
+{
+  "bots": [
+    {
+      "id": "e0195a7d-f804-4688-9191-e2cf3574a6d1",
+      "name": "Bob",
+      "shortName": "Bob",
+      "description": "Morning digest and front door. Delegates to the rest of the roster.",
+      "avatarShape": "teardrop",
+      "avatarColor": "orange",
+      "isPrimary": true
+    },
+    {
+      "id": "d0357ba3-1642-47bd-9b0c-95000cb33992",
+      "name": "OmaBot · Try Omarchy for Linux on your Bots Computer",
+      "shortName": "OmaBot",
+      "description": "Omarchy operator for the Try Omarchy desktop.",
+      "avatarShape": "blob",
+      "avatarColor": "green",
+      "isPrimary": false
+    },
+    {
+      "id": "282eb8af-bad6-469a-9b02-1642fec94473",
+      "name": "Poteto",
+      "shortName": "Poteto",
+      "description": "Owns code: scoping, building, reviewing, and verifying.",
+      "avatarShape": "blob",
+      "avatarColor": "brown",
+      "isPrimary": false
+    },
+    {
+      "id": "656295d3-33f7-49bb-a46b-ac9c8e27b7c9",
+      "name": "Omarchy Bot",
+      "shortName": "Omarchy Bot",
+      "description": "Publishing desk for the weekly This Week in Omarchy series.",
+      "avatarShape": "hex",
+      "avatarColor": "green",
+      "isPrimary": false
+    },
+    {
+      "id": "bed72fb0-0323-4349-81df-dfd08c1f25f6",
+      "name": "Inbox Admin",
+      "shortName": "Inbox Admin",
+      "description": "Inbox triage and personal admin.",
+      "avatarShape": "tablet",
+      "avatarColor": "cyan",
+      "isPrimary": false
+    },
+    {
+      "id": "23c1f61a-4475-40dc-9735-3f6c2356ad08",
+      "name": "dr eggbot",
+      "shortName": "dr eggbot",
+      "description": "Designs Grok Bots.",
+      "avatarShape": "teardrop",
+      "avatarColor": "red",
+      "isPrimary": false
+    },
+    {
+      "id": "e3d5b428-7673-4527-b902-376eb1f43f14",
+      "name": "Shop With Grok",
+      "shortName": "Shop With Grok",
+      "description": "Merchant shopping for GrokShop. Never confirms a purchase on its own.",
+      "avatarShape": "wedge",
+      "avatarColor": "yellow",
+      "isPrimary": false
+    },
+    {
+      "id": "da22c7f3-7897-49b2-b4c8-ccc89107dcbf",
+      "name": ".promo",
+      "shortName": ".promo",
+      "description": "Launch and promo videos.",
+      "avatarShape": "blob",
+      "avatarColor": "blue",
+      "isPrimary": false
+    },
+    {
+      "id": "73a546c8-243a-456b-bc2d-71dd785c1b57",
+      "name": "Afterglow",
+      "shortName": "Afterglow",
+      "description": "Daily post-game for how posts performed.",
+      "avatarShape": "blob",
+      "avatarColor": "black",
+      "isPrimary": false
+    },
+    {
+      "id": "378abf9d-c832-46e7-b086-de521ff3d6eb",
+      "name": "Family Finances",
+      "shortName": "Family Finances",
+      "description": "Family finances.",
+      "avatarShape": "squircle",
+      "avatarColor": "magenta",
+      "isPrimary": false
+    },
+    {
+      "id": "8715dbc6-d584-417a-a892-368a16baa8dc",
+      "name": "Middle Farm Admin",
+      "shortName": "Middle Farm Admin",
+      "description": "Property admin: taxes, fees, maintenance, and deadlines.",
+      "avatarShape": "pebble",
+      "avatarColor": "yellow",
+      "isPrimary": false
+    },
+    {
+      "id": "64726ca8-0f59-4d71-9e17-1de60123e3db",
+      "name": "Side Hustle CEO",
+      "shortName": "Side Hustle CEO",
+      "description": "Finds and runs a small website business.",
+      "avatarShape": "cloud",
+      "avatarColor": "brown",
+      "isPrimary": false
+    },
+    {
+      "id": "bd5f2d80-b7ac-48ea-97c4-5f3b16207182",
+      "name": "X Desk",
+      "shortName": "X Desk",
+      "description": "X desk for tagged posts, follows, and feed work.",
+      "avatarShape": "blob",
+      "avatarColor": "blue",
+      "isPrimary": false
+    },
+    {
+      "id": "129f9b89-bb06-43ce-867e-401aebd9ac77",
+      "name": "Writer",
+      "shortName": "Writer",
+      "description": "Drafts posts for approval.",
+      "avatarShape": "blob",
+      "avatarColor": "blue",
+      "isPrimary": false
+    },
+    {
+      "id": "0f73dfb4-2538-4a3b-b043-5e1e0196ea7f",
+      "name": "Omarchy Changelog",
+      "shortName": "Omarchy Changelog",
+      "description": "Unofficial Omarchy release-log drafts.",
+      "avatarShape": "blob",
+      "avatarColor": "blue",
+      "isPrimary": false
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+#!/bin/sh
+# Close the companion bubble when it is open, otherwise close the active window.
+# Layer surfaces are not the active window, so Super+W needs this helper.
+# Copy it to ~/.local/bin and bind it yourself. The plugin does not edit Hyprland.
+#
+# Hyprland 0.56 treats `hyprctl dispatch <words>` as Lua. The window close goes
+# through the Lua dispatcher.
+if [ "$(omarchy-shell io.github.tcballard.grokbot-desktop dismiss 2>/dev/null)" != "dismissed" ]; then
+  hyprctl dispatch 'hl.dsp.window.close()'
+fi

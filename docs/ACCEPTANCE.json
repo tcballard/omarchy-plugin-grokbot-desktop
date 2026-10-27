@@ -4,9 +4,34 @@
   "date": null,
   "platform": null,
   "omarchy_version": null,
+  "portable": {
+    "command": "./tests/run",
+    "covers": [
+      "service manifest and Main.qml entry point",
+      "25-shape contour morph",
+      "11-colour palette contrast",
+      "bundled 15-bot roster",
+      "IPC surface and plain-text bubble",
+      "grokbot-ask stdin, webhook payload, stdout cap, and key-not-on-argv",
+      "grokbot-sync redaction",
+      "grokbot-cursor socket-path refusal"
+    ],
+    "doesNotEstablish": "Live Omarchy, Hyprland, or webhook acceptance"
+  },
+  "live": {
+    "status": "not-run",
+    "required": [
+      "omarchy plugin validate .",
+      "layer-shell mark, click-through, dodge, and drag persistence",
+      "bot switch morph",
+      "summon, ask, say, and sayLink on a running shell"
+    ]
+  },
   "commands": [],
   "results": [],
   "limitations": [
-    "No live Omarchy desktop acceptance recorded."
+    "No live Omarchy desktop acceptance recorded.",
+    "preview.png is an architectural preview rendered from repository data, not an on-device capture.",
+    "Portable checks do not establish live desktop compatibility."
   ]
 }
