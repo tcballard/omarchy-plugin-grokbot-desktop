@@ -51,6 +51,7 @@
     "grokbot-desktop-ctl wave, celebrate, spin, and say are not shown.",
     "A real Grok Bot webhook was not identified. The Ask Bob reply is on screen only.",
     "Portable checks do not establish live desktop compatibility.",
-    "tools/render-preview.py can still redraw the chrome offline. preview.png in this tree is the on-device frame, not that render."
+    "tools/render-preview.py can still redraw the chrome offline. preview.png in this tree is the on-device frame, not that render.",
+    "The motion and layout pass after 91f8f75e (single bubble card with an appearance page, non-modal bubble, OKLCH morphs, squash and stretch, reduce-motion, compact idle window, QtQuick.Shapes mark) was checked with ./tests/run and an offscreen Qt 6.12 harness with stubbed Quickshell modules, rendered on Mesa llvmpipe. It has not been recorded on a live Omarchy desktop, and preview.png and the demo video predate it."
   ]
 }

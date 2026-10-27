@@ -14,5 +14,5 @@ fi
 # Unqualified ids are the house style. This Qt install is missing jsroot.qmltypes,
 # so builtins such as Timer are unresolved here. Main.qml is parsed with Quickshell
 # types unresolved, so unknown-property checks there wait for an Omarchy host.
-"${QMLLINT}" --unqualified info --import info --type info CompanionMark.qml BubblePanel.qml SettingsPanel.qml
+"${QMLLINT}" --unqualified info --import info --type info CompanionMark.qml BubblePanel.qml SettingsPanel.qml HoverArea.qml
 "${QMLLINT}" --unqualified info --import info --type info --property info Main.qml
