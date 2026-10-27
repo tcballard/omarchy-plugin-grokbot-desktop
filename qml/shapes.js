@@ -340,3 +340,23 @@ function blend(nameA, nameB, t) {
     spread: a.spread + (b.spread - a.spread) * u
   }
 }
+
+// SVG path for a contour scaled to `rad` around (cx, cy). Each point is a
+// quadratic control with the curve passing through the midpoints between
+// neighbours, which gives a smooth closed outline.
+function svgPath(points, rad, cx, cy) {
+  var n = points ? points.length : 0
+  if (n < 3) return ""
+  function x(p) { return (cx + p[0] * rad).toFixed(2) }
+  function y(p) { return (cy + p[1] * rad).toFixed(2) }
+  function mid(a, b) { return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] }
+  var start = mid(points[n - 1], points[0])
+  var parts = ["M", x(start), y(start)]
+  var i
+  for (i = 0; i < n; i++) {
+    var m = mid(points[i], points[(i + 1) % n])
+    parts.push("Q", x(points[i]), y(points[i]), x(m), y(m))
+  }
+  parts.push("Z")
+  return parts.join(" ")
+}

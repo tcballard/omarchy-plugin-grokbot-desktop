@@ -876,3 +876,16 @@ test('the idle window is a compact box around the mark', () => {
   assert.match(qmlFunction(main, 'updateGazeTarget'), /root\.originX/)
   assert.doesNotMatch(main, /anchors \{ top: true; bottom: true; left: true; right: true \}/)
 })
+
+test('the mark is a GPU path with rectangle eyes', () => {
+  const mark = read('CompanionMark.qml')
+  assert.match(mark, /import QtQuick\.Shapes/)
+  assert.match(mark, /PathSvg \{ path: mark\.outline \}/)
+  assert.match(mark, /active: mark\.showImage/, 'the canvas only loads for a photo')
+  assert.equal((mark.match(/radius: mark\.eyeGeo\.r/g) || []).length, 2)
+  const path = shapes.svgPath(shapes.SHAPES.circle.points, 50, 64, 64)
+  assert.match(path, /^M [\d.]+ [\d.]+ Q /)
+  assert.match(path, / Z$/)
+  assert.equal((path.match(/ Q /g) || []).length, shapes.POINT_COUNT)
+  assert.equal(shapes.svgPath([], 50, 0, 0), '')
+})

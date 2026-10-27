@@ -1,10 +1,11 @@
 import QtQuick
+import QtQuick.Shapes
 import "qml/shapes.js" as Shapes
 import "qml/palette.js" as Palette
 import "qml/face.js" as Face
 
 // Flat Grok Bot silhouette. No outline, no highlight, no sclera.
-// The face is two angled capsule cutouts.
+// The face is two angled cut-outs: capsules open, lid lines closed.
 Item {
   id: mark
   property string shapeFrom: "teardrop"
@@ -29,7 +30,6 @@ Item {
   // the mark.
   property real attention: 1
   property bool reduceMotion: false
-  onAttentionChanged: canvas.requestPaint()
   property bool mixFromColors: false
   property color fillFrom: "#F28B30"
   property color eyeFrom: "#141416"
@@ -65,32 +65,6 @@ Item {
     return Qt.rgba(c.r, c.g, c.b, 1)
   }
 
-  function tracePath(ctx, pts, rad, cx, cy) {
-    var n = pts.length
-    function px(point) { return cx + point[0] * rad }
-    function py(point) { return cy + point[1] * rad }
-    ctx.beginPath()
-    ctx.moveTo(px(pts[0]), py(pts[0]))
-    var i
-    for (i = 0; i < n; i++) {
-      var a = pts[i]
-      var b = pts[(i + 1) % n]
-      ctx.quadraticCurveTo(px(a), py(a), px([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]), py([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]))
-    }
-    ctx.closePath()
-  }
-
-  function paintEye(ctx, x, y, geo, angleDeg, fill) {
-    ctx.save()
-    ctx.translate(x, y)
-    ctx.rotate(angleDeg * Math.PI / 180)
-    ctx.beginPath()
-    ctx.roundedRect(-geo.w / 2, -geo.h / 2, geo.w, geo.h, geo.r, geo.r)
-    ctx.fillStyle = fill
-    ctx.fill()
-    ctx.restore()
-  }
-
   // The eye pose eases between expressions instead of snapping.
   readonly property var pose: Face.pose(expression)
   property real poseTilt: pose.tilt
@@ -99,21 +73,38 @@ Item {
   Behavior on poseTilt { NumberAnimation { duration: mark.reduceMotion ? 0 : 160; easing.type: Easing.OutCubic } }
   Behavior on poseHeight { NumberAnimation { duration: mark.reduceMotion ? 0 : 160; easing.type: Easing.OutCubic } }
   Behavior on poseOpen { NumberAnimation { duration: mark.reduceMotion ? 0 : 180; easing.type: Easing.InOutCubic } }
-  onPoseTiltChanged: canvas.requestPaint()
-  onPoseHeightChanged: canvas.requestPaint()
-  onPoseOpenChanged: canvas.requestPaint()
 
-  onBlendedChanged: canvas.requestPaint()
-  onFillColorChanged: canvas.requestPaint()
-  onEyeColorChanged: canvas.requestPaint()
-  onGazeXChanged: canvas.requestPaint()
-  onGazeYChanged: canvas.requestPaint()
-  onEyeOpenChanged: canvas.requestPaint()
-  onExpressionChanged: canvas.requestPaint()
-  onThinkAngleChanged: canvas.requestPaint()
-  onSleepDriftChanged: canvas.requestPaint()
-  onWidthChanged: canvas.requestPaint()
-  onHeightChanged: canvas.requestPaint()
+  // Geometry shared by the body and the eyes.
+  readonly property real rad: Math.min(width, height) * 0.46
+  readonly property real cx: width / 2
+  readonly property real cy: height / 2
+  readonly property string outline: Shapes.svgPath(mark.blended ? mark.blended.points : null, mark.rad, mark.cx, mark.cy)
+  readonly property real eyeTilt: mark.poseTilt + (mark.expression === "think" ? Math.sin(mark.thinkAngle) * 2 : 0)
+  readonly property var eyeGeo: Face.eye(mark.rad, Math.min(mark.eyeOpen, mark.poseOpen),
+    mark.poseHeight * mark.attention * (1 - Math.min(0.2, Math.abs(mark.gazeY) * 0.12)))
+  readonly property real gazeCx: mark.cx + mark.gazeX * mark.rad * 0.16
+  readonly property real gazeCy: mark.cy + mark.gazeY * mark.rad * 0.1 + mark.sleepDrift * 0.12
+  readonly property bool showImage: mark.imageSource.length > 6 && avatar.status === Image.Ready
+
+  // The silhouette is a GPU-drawn path, so it stays crisp at any scale.
+  Shape {
+    id: body
+    anchors.fill: parent
+    visible: !mark.showImage
+    Component.onCompleted: {
+      try {
+        body.preferredRendererType = Shape.CurveRenderer
+      } catch (e) {
+        // Older Qt draws with the default renderer.
+      }
+    }
+    ShapePath {
+      strokeWidth: -1
+      strokeColor: "transparent"
+      fillColor: mark.fillColor
+      PathSvg { path: mark.outline }
+    }
+  }
 
   Image {
     id: avatar
@@ -123,47 +114,50 @@ Item {
     cache: false
     fillMode: Image.PreserveAspectCrop
     source: mark.imageSource.length > 6 ? mark.imageSource : ""
-    onStatusChanged: canvas.requestPaint()
   }
 
-  Canvas {
-    id: canvas
+  // A bot photo is clipped to the silhouette. Few bots have one, so this
+  // painter only loads when one is shown.
+  Loader {
     anchors.fill: parent
-    antialiasing: true
-    onPaint: {
-      var ctx = getContext("2d")
-      ctx.reset()
-      ctx.clearRect(0, 0, width, height)
-      var face = mark.blended
-      var pts = face ? face.points : null
-      if (!pts || pts.length < 3) return
-      var w = width
-      var h = height
-      var cx = w / 2
-      var cy = h / 2
-      var rad = Math.min(w, h) * 0.46
-      mark.tracePath(ctx, pts, rad, cx, cy)
-      if (avatar.status === Image.Ready && mark.imageSource.length > 6) {
+    active: mark.showImage
+    sourceComponent: Canvas {
+      id: photo
+      Connections {
+        target: mark
+        function onOutlineChanged() { photo.requestPaint() }
+      }
+      onPaint: {
+        var ctx = getContext("2d")
+        ctx.reset()
+        ctx.path = mark.outline
         ctx.save()
         ctx.clip()
-        ctx.drawImage(avatar, 0, 0, w, h)
+        ctx.drawImage(avatar, 0, 0, width, height)
         ctx.restore()
-      } else {
-        ctx.fillStyle = mark.fillColor
-        ctx.fill()
       }
-
-      var open = Math.min(mark.eyeOpen, mark.poseOpen)
-      var tilt = mark.poseTilt + (mark.expression === "think" ? Math.sin(mark.thinkAngle) * 2 : 0)
-      var heightScale = mark.poseHeight
-      heightScale *= mark.attention * (1 - Math.min(0.2, Math.abs(mark.gazeY) * 0.12))
-
-      var gx = cx + mark.gazeX * rad * 0.16
-      var gy = cy + mark.gazeY * rad * 0.1 + mark.sleepDrift * 0.12
-      var sep = rad * 0.3
-      var geo = Face.eye(rad, open, heightScale)
-      mark.paintEye(ctx, gx - sep * 0.5, gy + rad * 0.035, geo, tilt, mark.eyeColor)
-      mark.paintEye(ctx, gx + sep * 0.5, gy - rad * 0.035, geo, tilt, mark.eyeColor)
     }
+  }
+
+  Rectangle {
+    width: mark.eyeGeo.w
+    height: mark.eyeGeo.h
+    radius: mark.eyeGeo.r
+    x: mark.gazeCx - mark.rad * 0.15 - width / 2
+    y: mark.gazeCy + mark.rad * 0.035 - height / 2
+    rotation: mark.eyeTilt
+    color: mark.eyeColor
+    antialiasing: true
+  }
+
+  Rectangle {
+    width: mark.eyeGeo.w
+    height: mark.eyeGeo.h
+    radius: mark.eyeGeo.r
+    x: mark.gazeCx + mark.rad * 0.15 - width / 2
+    y: mark.gazeCy - mark.rad * 0.035 - height / 2
+    rotation: mark.eyeTilt
+    color: mark.eyeColor
+    antialiasing: true
   }
 }
