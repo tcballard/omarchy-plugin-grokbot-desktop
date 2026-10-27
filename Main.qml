@@ -156,6 +156,9 @@ Item {
     if (root.sizeName === "custom") return root.sizePx
     return 128
   }
+  // The drawn size eases to the chosen size.
+  property real shownSize: root.markSize
+  Behavior on shownSize { NumberAnimation { duration: root.ms(220); easing.type: Easing.OutCubic } }
   readonly property string shownShape: root.shapeTo
   readonly property string shownColor: root.colorTo
   readonly property string canonicalShape: Shapes.resolve(root.shownShape)
@@ -549,10 +552,35 @@ Item {
     root.scheduleSave()
   }
 
+  // Changing corners pops the mark out where it is and back in at the new
+  // corner, rather than sliding it across whatever is on the desktop.
   function setAnchor(name) {
     if (name !== "br" && name !== "bl" && name !== "tr" && name !== "tl") return
-    root.anchorName = name
-    root.scheduleSave()
+    if (name === root.anchorName) return
+    root.pendingAnchor = name
+    cornerAnim.restart()
+  }
+
+  property string pendingAnchor: "br"
+  property real cornerScale: 1
+  property real cornerFade: 1
+
+  SequentialAnimation {
+    id: cornerAnim
+    ParallelAnimation {
+      NumberAnimation { target: root; property: "cornerScale"; to: 0.6; duration: root.ms(120); easing.type: Easing.InCubic }
+      NumberAnimation { target: root; property: "cornerFade"; to: 0; duration: root.ms(120); easing.type: Easing.InCubic }
+    }
+    ScriptAction {
+      script: {
+        root.anchorName = root.pendingAnchor
+        root.scheduleSave()
+      }
+    }
+    ParallelAnimation {
+      NumberAnimation { target: root; property: "cornerScale"; to: 1; duration: root.ms(260); easing.type: Easing.OutBack }
+      NumberAnimation { target: root; property: "cornerFade"; to: 1; duration: root.ms(160); easing.type: Easing.OutCubic }
+    }
   }
 
   function setIdle(value) {
@@ -1463,8 +1491,9 @@ Item {
 
     Item {
       id: stage
-      width: root.markSize + 24
-      height: root.markSize + 28
+      opacity: root.cornerFade
+      width: root.shownSize + 24
+      height: root.shownSize + 28
       x: {
         var edge = root.anchorFromRight ? win.width - width - root.posRight : root.posRight
         return Math.max(0, Math.min(win.width - width, edge))
@@ -1479,15 +1508,15 @@ Item {
       Shape {
         id: floorShadow
         readonly property real lift: Math.max(0, -(root.idleY + root.hopY + Math.sin(root.orbit * Math.PI / 180) * 5 * root.orbitAmp)) + root.dragLift * 14
-        readonly property real flat: Math.max(10, root.markSize * 0.12) / width
+        readonly property real flat: Math.max(10, root.shownSize * 0.12) / width
         property real rest: 0.34 * root.dodgeOpacity
         Behavior on rest { NumberAnimation { duration: root.ms(160) } }
         // Drawn as a circle and squashed, so the radial fade stays soft all
         // the way round the ellipse.
-        width: root.markSize * 0.62
+        width: root.shownSize * 0.62
         height: width
         anchors.horizontalCenter: parent.horizontalCenter
-        y: parent.height - 6 - root.markSize * 0.07 - height / 2
+        y: parent.height - 6 - root.shownSize * 0.07 - height / 2
         scale: Math.max(0.55, 1 - lift / 70)
         opacity: rest * Math.max(0.3, 1 - lift / 45)
         transform: Scale { origin.x: floorShadow.width / 2; origin.y: floorShadow.height / 2; yScale: floorShadow.flat }
@@ -1520,8 +1549,8 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 8
-        width: root.markSize
-        height: root.markSize
+        width: root.shownSize
+        height: root.shownSize
         shapeFrom: root.shapeFrom
         shapeTo: root.shapeTo
         morph: root.morphProgress
@@ -1544,7 +1573,7 @@ Item {
           return "file://" + bot.avatarImage
         }
         opacity: root.dodgeOpacity
-        scale: root.breathe * root.talkScale * root.morphPop * root.hoverScale * (1 + 0.06 * root.dragLift)
+        scale: root.breathe * root.talkScale * root.morphPop * root.hoverScale * root.cornerScale * (1 + 0.06 * root.dragLift)
         attention: root.hovering ? 1.12 : 1
         reduceMotion: root.reduceMotion
         Behavior on attention { NumberAnimation { duration: root.ms(160); easing.type: Easing.OutCubic } }
@@ -1566,7 +1595,7 @@ Item {
 
         Rectangle {
           id: replyDot
-          width: Math.max(12, root.markSize * 0.11)
+          width: Math.max(12, root.shownSize * 0.11)
           height: width
           radius: width / 2
           x: mark.width * 0.7

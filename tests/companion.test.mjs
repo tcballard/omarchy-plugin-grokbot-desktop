@@ -778,3 +778,11 @@ test('the card, menu, and roster animate in and out', () => {
   assert.match(bubble, /Behavior on shownHeight/)
   assert.match(bubble, /Behavior on expand/)
 })
+
+test('size eases and corner changes pop out and back in', () => {
+  assert.match(main, /Behavior on shownSize/)
+  assert.match(main, /width: root\.shownSize \+ 24/)
+  const corner = qmlFunction(main, 'setAnchor')
+  assert.match(corner, /cornerAnim\.restart\(\)/)
+  assert.doesNotMatch(corner, /root\.anchorName = name/)
+})
