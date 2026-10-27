@@ -171,7 +171,7 @@ Item {
               visible: cell.active
               readonly property string outline: Shapes.svgPath(Shapes.get(cell.modelData).points, cell.unit, width / 2, height / 2)
               ShapePath {
-                strokeColor: Theme.textMuted
+                strokeColor: Theme.ring
                 strokeWidth: 2 * (0.224 + 0.055) * cell.unit
                 fillColor: "transparent"
                 joinStyle: ShapePath.RoundJoin
@@ -242,7 +242,7 @@ Item {
               radius: width / 2
               color: "transparent"
               border.width: swatchGrid.dot * 0.08
-              border.color: Theme.textMuted
+              border.color: Theme.ring
               visible: parent.active
             }
             Rectangle {

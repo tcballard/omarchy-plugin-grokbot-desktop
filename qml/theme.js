@@ -26,4 +26,5 @@ var ok = "#5BC67A"
 var okFill = "#18261E"
 var okEdge = "#284233"
 var recording = "#FF6700"
-var link = "#0A84FF"         // "Reset to default", as Grok Bot shows it
+var link = "#0E6DD2"         // "Reset to default", as Grok Bot shows it in dark mode
+var ring = "#656569"         // picker selection rings, as Grok Bot draws them in dark mode

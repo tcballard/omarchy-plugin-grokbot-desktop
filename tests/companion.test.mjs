@@ -889,6 +889,9 @@ test('chrome colours come from one token file and text follows the shell font', 
   assert.match(main, /Commons\.Style\.font\.family/)
   const theme = loadLibrary('qml/theme.js')
   assert.equal(theme.surface, '#141416')
+  // Measured from Grok Bot's dark-mode picker.
+  assert.equal(theme.ring, '#656569')
+  assert.equal(theme.link, '#0E6DD2')
 })
 
 test('every control gives hover, cursor, keyboard, and accessible feedback', () => {
