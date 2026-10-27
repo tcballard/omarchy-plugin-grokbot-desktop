@@ -1470,11 +1470,6 @@ Item {
     WlrLayershell.layer: WlrLayer.Top
     WlrLayershell.keyboardFocus: root.surfacesOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
-    Shortcut {
-      sequence: "Escape"
-      enabled: root.surfacesOpen
-      onActivated: root.stepBack()
-    }
 
     // Only the mark and the open card take the pointer, so the desktop stays
     // usable while a reply is on screen. The right-click menu is the one
@@ -1605,6 +1600,13 @@ Item {
     Item {
       id: stage
       opacity: root.cornerFade
+
+      // Lives on an item so it resolves the layer window it belongs to.
+      Shortcut {
+        sequence: "Escape"
+        enabled: root.surfacesOpen
+        onActivated: root.stepBack()
+      }
       width: root.stageW
       height: root.stageH
       x: root.stageScreenX - root.originX
