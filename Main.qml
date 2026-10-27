@@ -1019,13 +1019,16 @@ Item {
     }
   }
 
+  // A new gap is drawn after every blink so the rhythm never settles.
   Timer {
-    interval: 2800 + Math.random() * 2400
+    id: blinkTimer
+    interval: 3200
     repeat: true
     running: root.present && root.expression === "idle" && !root.asking
     onTriggered: {
       root.blinkTwice = Math.random() < 0.35
       blinkAnim.restart()
+      blinkTimer.interval = 2800 + Math.random() * 2400
     }
   }
 

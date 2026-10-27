@@ -694,3 +694,8 @@ test('continuous motion and drag run at the display and input rate', () => {
   assert.match(qmlFunction(main, 'dragMove'), /function dragMove\(px, py\)/)
   assert.doesNotMatch(qmlFunction(main, 'cursorLine'), /dragMove/)
 })
+
+test('each blink draws a new gap', () => {
+  const blink = main.slice(main.indexOf('id: blinkTimer'), main.indexOf('id: blinkTimer') + 500)
+  assert.match(blink, /onTriggered:[\s\S]*blinkTimer\.interval = 2800 \+ Math\.random\(\) \* 2400/)
+})
