@@ -982,6 +982,18 @@ test('the idle window is a compact box around the mark', () => {
   assert.doesNotMatch(main, /anchors \{ top: true; bottom: true; left: true; right: true \}/)
 })
 
+test('Hyprland does not animate the window growing to the output and back', () => {
+  // The same rule Omarchy gives its own shell surfaces, scoped to this namespace.
+  assert.match(main, /WlrLayershell\.namespace: root\.layerNamespace/)
+  assert.match(main, /readonly property string layerNamespace: "grokbot-desktop"/)
+  assert.match(main, /"\/usr\/bin\/hyprctl", "eval"/)
+  assert.match(main, /hl\.layer_rule\(\{ match = \{ namespace = \\"\^" \+ root\.layerNamespace \+ "\$\\" \}, no_anim = true, animation = \\"none\\" \}\)/)
+  // Added before the window first maps, never left hiding it, and again after a reload.
+  assert.match(main, /visible: root\.present && root\.targetScreen !== null && root\.layerRuleTried/)
+  assert.match(main, /running: !root\.layerRuleTried\s*\n\s*onTriggered: root\.layerRuleTried = true/)
+  assert.match(main, /String\(event\.name\) === "configreloaded"[^\n]*layerRuleProc\.running = true/)
+})
+
 test('the mark is a GPU path with rectangle eyes', () => {
   const mark = read('CompanionMark.qml')
   assert.match(mark, /import QtQuick\.Shapes/)

@@ -158,7 +158,7 @@ Agent mode is the fallback. It is your local coding agent answering in the bot's
 omarchy plugin remove io.github.tcballard.grokbot-desktop
 ```
 
-That removes the plugin checkout and its `shell.json` entry. It does not delete `~/.config/omarchy/grokbot-desktop.json`, `~/.config/omarchy/grokbot-bots.json`, or `~/.config/omarchy/grokbot-webhook.key`. Hyprland bindings and the copied desktop file stay until you remove them.
+That removes the plugin checkout and its `shell.json` entry. The companion's runtime Hyprland layer rule, which only stops the compositor animating its own window, is not written to any file and is gone at the next Hyprland reload. It does not delete `~/.config/omarchy/grokbot-desktop.json`, `~/.config/omarchy/grokbot-bots.json`, or `~/.config/omarchy/grokbot-webhook.key`. Hyprland bindings and the copied desktop file stay until you remove them.
 
 ## Development
 

@@ -549,6 +549,40 @@ Item {
     root.loadSettings()
     root.latchMonitor()
     cursorProc.running = root.cursorHelper !== ""
+    layerRuleProc.running = true
+  }
+
+  // Hyprland animates layer surfaces, so the window growing from its compact
+  // corner box to the whole output (and back) slid the mark toward the middle
+  // of the screen and popped it back. Omarchy turns that off for its own
+  // shell surfaces with a layer rule; the companion adds the same rule for its
+  // namespace before its window first maps, and again after a config reload,
+  // which drops rules added at runtime. The rule matches only this namespace
+  // and is gone at the next reload once the plugin is removed.
+  readonly property string layerNamespace: "grokbot-desktop"
+  property bool layerRuleTried: false
+
+  Process {
+    id: layerRuleProc
+    command: ["/usr/bin/hyprctl", "eval",
+      "pcall(function() grokbot_desktop_layer_rule:set_enabled(false) end); "
+      + "grokbot_desktop_layer_rule = hl.layer_rule({ match = { namespace = \"^" + root.layerNamespace + "$\" }, no_anim = true, animation = \"none\" })"]
+    onExited: root.layerRuleTried = true
+  }
+
+  // A Hyprland without the Lua API, or no hyprctl, must not keep the
+  // companion hidden.
+  Timer {
+    interval: 1500
+    running: !root.layerRuleTried
+    onTriggered: root.layerRuleTried = true
+  }
+
+  Connections {
+    target: Hyprland
+    function onRawEvent(event) {
+      if (event && String(event.name) === "configreloaded" && !layerRuleProc.running) layerRuleProc.running = true
+    }
   }
 
   function scheduleSave() { saveTimer.restart() }
@@ -1471,7 +1505,7 @@ Item {
   PanelWindow {
     id: win
     screen: root.targetScreen
-    visible: root.present && root.targetScreen !== null
+    visible: root.present && root.targetScreen !== null && root.layerRuleTried
     // Idle, the window is a small box around the mark in its corner, so
     // breathing and bobbing redraw a few hundred pixels instead of the whole
     // output. It covers the output while the card or menu is showing, during
@@ -1492,7 +1526,7 @@ Item {
     implicitHeight: Math.max(1, root.compactY1 - root.compactY0)
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
-    WlrLayershell.namespace: "grokbot-desktop"
+    WlrLayershell.namespace: root.layerNamespace
     WlrLayershell.layer: WlrLayer.Top
     WlrLayershell.keyboardFocus: root.surfacesOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
