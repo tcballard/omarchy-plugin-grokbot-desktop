@@ -795,3 +795,16 @@ test('the appearance page fits without scrolling on a 800px screen', () => {
   assert.match(page, /id: cornerPicker/)
   assert.match(page, /ScrollBar\.vertical/)
 })
+
+test('selection rings stay visible on every colour', () => {
+  const hex = (h) => ({ r: parseInt(h.slice(1, 3), 16) / 255, g: parseInt(h.slice(3, 5), 16) / 255, b: parseInt(h.slice(5, 7), 16) / 255 })
+  assert.equal(palette.ringReadable(hex(palette.COLORS.black.fill)), false)
+  assert.equal(palette.ringReadable(hex(palette.COLORS.orange.fill)), true)
+  for (const name of palette.NAMES) {
+    const c = hex(palette.COLORS[name].fill)
+    const ring = palette.ringReadable(c) ? c : hex('#F4F4F5')
+    assert.ok(palette.contrast(ring, palette.CHROME) >= 3, name)
+  }
+  assert.match(read('BubblePanel.qml'), /app\.ringColor\(app\.paletteFill\(modelData\.color\)\)/)
+  assert.match(read('SettingsPanel.qml'), /tone: app\.ringColor\(/)
+})

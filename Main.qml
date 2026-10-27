@@ -368,6 +368,11 @@ Item {
     return Palette.known(name) ? Palette.get(name).fill : root.accent
   }
 
+  function ringColor(value) {
+    var c = Qt.color(value)
+    return Palette.ringReadable({ r: c.r, g: c.g, b: c.b }) ? c : Qt.color("#F4F4F5")
+  }
+
   function matchBot(query) {
     var q = String(query || "").trim()
     var lower = q.toLowerCase()

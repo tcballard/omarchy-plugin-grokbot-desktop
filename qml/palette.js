@@ -95,3 +95,21 @@ function mix(a, b, t) {
     h: p.h + dh * u
   })
 }
+
+// A selection ring in the item's own colour, or near-white when that colour
+// would fall below 3:1 against the dark chrome behind it.
+var CHROME = { r: 0x23 / 255, g: 0x23 / 255, b: 0x27 / 255 }
+
+function luminance(rgb) {
+  return 0.2126 * toLinear(rgb.r) + 0.7152 * toLinear(rgb.g) + 0.0722 * toLinear(rgb.b)
+}
+
+function contrast(a, b) {
+  var la = luminance(a)
+  var lb = luminance(b)
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
+}
+
+function ringReadable(rgb) {
+  return contrast(rgb, CHROME) >= 3
+}

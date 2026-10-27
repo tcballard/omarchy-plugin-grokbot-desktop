@@ -289,14 +289,14 @@ Rectangle {
           delegate: Rectangle {
             required property var modelData
             readonly property bool active: bubble.activePin(modelData.id)
-            readonly property string plate: active ? "#232327" : "#1C1C1F"
+            readonly property string plate: active ? "#27272A" : "#1C1C1F"
             readonly property string eyePlate: modelData.color === "black" ? "#F4F4F5" : plate
             width: pinLabel.implicitWidth + 34
             height: 28
             radius: 14
             color: plate
-            border.width: 1
-            border.color: active ? "#3F3F46" : "#2E2E32"
+            border.width: active ? 1.5 : 1
+            border.color: active ? app.ringColor(app.paletteFill(modelData.color)) : "#2E2E32"
             CompanionMark {
               x: 8
               y: 6
@@ -363,14 +363,14 @@ Rectangle {
           delegate: Rectangle {
             required property var modelData
             readonly property bool active: bubble.activePin(modelData.id)
-            readonly property string plate: active ? "#232327" : "#1C1C1F"
+            readonly property string plate: active ? "#27272A" : "#1C1C1F"
             readonly property string eyePlate: modelData.color === "black" ? "#F4F4F5" : plate
             width: extraName.implicitWidth + 34
             height: 28
             radius: 14
             color: plate
-            border.width: 1
-            border.color: active ? "#3F3F46" : "#2E2E32"
+            border.width: active ? 1.5 : 1
+            border.color: active ? app.ringColor(app.paletteFill(modelData.color)) : "#2E2E32"
             CompanionMark {
               x: 8
               y: 6

@@ -17,7 +17,9 @@ Item {
     return text.charAt(0).toUpperCase() + text.slice(1)
   }
 
-  readonly property color tone: app.shownColor === "omarchy" ? app.accent : app.paletteFill(app.shownColor)
+  // Active borders use the chosen colour, or near-white when that colour is
+  // too dark to read on the chrome (black, for one).
+  readonly property color tone: app.ringColor(app.shownColor === "omarchy" ? app.accent : app.paletteFill(app.shownColor))
   readonly property var accentNames: {
     var names = app && app.colorNames ? app.colorNames : []
     var out = []
