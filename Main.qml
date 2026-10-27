@@ -1243,14 +1243,13 @@ Item {
       }
 
       Rectangle {
-        anchors.centerIn: mark
-        width: root.markSize * 0.92
-        height: root.markSize * 0.92
-        radius: width / 2
-        color: "#141416"
-        border.width: 1
-        border.color: "#2E2E32"
-        opacity: root.ghost ? 0.2 : 0.72
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: parent.height - 14
+        width: root.markSize * 0.46
+        height: 10
+        radius: 5
+        color: "#000000"
+        opacity: root.ghost ? 0.05 : 0.18
       }
 
       CompanionMark {

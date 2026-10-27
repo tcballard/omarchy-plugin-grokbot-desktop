@@ -187,8 +187,9 @@ function contour(kind) {
       x = c * pebble * 1.03
       y = sn * pebble * 0.91
     } else if (s === "drop") {
-      x = c * (0.84 + 0.2 * sn) * 0.94
-      y = sn * 0.95
+      var belly = 0.86 + 0.2 * sn - 0.05 * Math.cos(2 * t)
+      x = c * belly * 0.96
+      y = sn * 0.96 + 0.03 * (1 - sn * sn)
     } else if (s === "heart") {
       x = 0.88 * Math.pow(Math.sin(t), 3)
       y = -0.88 * (0.8125 * Math.cos(t) - 0.3125 * Math.cos(2 * t) - 0.125 * Math.cos(3 * t) - 0.0625 * Math.cos(4 * t)) - 0.04
