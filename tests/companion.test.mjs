@@ -818,3 +818,13 @@ test('the header names every bot by role and elides instead of cutting words', (
   assert.match(bubble, /rotation: app\.rosterExpanded \? 180 : 0/)
   assert.match(bubble, /app\.rosterExpanded \? "Less" : "\+" \+ bubble\.extraBots\.length/)
 })
+
+test('pins follow use and a closed-bubble switch names the bot', () => {
+  const bubble = read('BubblePanel.qml')
+  assert.doesNotMatch(bubble, /key: "X Desk"/)
+  assert.match(bubble, /app\.recentBots/)
+  const select = qmlFunction(main, 'selectBot')
+  assert.match(select, /recentBots = \[id\]/)
+  assert.match(select, /showSwitchTag\(\)/)
+  assert.match(qmlFunction(main, 'saveSettings'), /settings\.recentBots = root\.recentBots/)
+})

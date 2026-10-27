@@ -30,33 +30,36 @@ Rectangle {
   border.color: "#27272A"
   clip: true
 
+  // The primary bot plus the four most recently used, shown in roster
+  // order so chips do not reshuffle as you switch between them.
   readonly property var pinnedBots: {
-    var wanted = [
-      { key: "Bob", label: "Bob" },
-      { key: "OmaBot", label: "OmaBot" },
-      { key: "Poteto", label: "Poteto" },
-      { key: "X Desk", label: "X Desk" },
-      { key: "Inbox Admin", label: "Inbox" }
-    ]
     var bots = app && app.bots ? app.bots : []
-    var out = []
+    var wanted = {}
+    var count = 0
+    var primary = app ? app.primaryBot() : null
+    if (primary) { wanted[primary.id] = true; count++ }
+    var recent = app ? app.recentBots : []
     var i
-    var j
-    for (i = 0; i < wanted.length; i++) {
-      for (j = 0; j < bots.length; j++) {
-        var bot = bots[j]
-        var name = String(bot.shortName || bot.name || "")
-        var inbox = wanted[i].key === "Inbox Admin" && name.indexOf("Inbox") === 0
-        if (name === wanted[i].key || inbox) {
-          out.push({
-            id: String(bot.id || ""),
-            label: wanted[i].label,
-            shape: String(bot.avatarShape || "bean"),
-            color: String(bot.avatarColor || "orange")
-          })
-          break
-        }
-      }
+    for (i = 0; i < recent.length && count < 5; i++) {
+      if (wanted[recent[i]] || !app.findBot(recent[i])) continue
+      wanted[recent[i]] = true
+      count++
+    }
+    for (i = 0; i < bots.length && count < 5; i++) {
+      if (wanted[bots[i].id]) continue
+      wanted[bots[i].id] = true
+      count++
+    }
+    var out = []
+    for (i = 0; i < bots.length; i++) {
+      var bot = bots[i]
+      if (!wanted[bot.id]) continue
+      out.push({
+        id: String(bot.id || ""),
+        label: String(bot.shortName || bot.name || "Bot"),
+        shape: String(bot.avatarShape || "bean"),
+        color: String(bot.avatarColor || "orange")
+      })
     }
     return out
   }
@@ -299,7 +302,7 @@ Rectangle {
             readonly property bool active: bubble.activePin(modelData.id)
             readonly property string plate: active ? "#27272A" : "#1C1C1F"
             readonly property string eyePlate: modelData.color === "black" ? "#F4F4F5" : plate
-            width: pinLabel.implicitWidth + 34
+            width: pinLabel.width + 34
             height: 28
             radius: 14
             color: plate
@@ -322,6 +325,8 @@ Rectangle {
               id: pinLabel
               x: 28
               y: 6
+              width: Math.min(implicitWidth, 120)
+              elide: Text.ElideRight
               text: modelData.label
               color: active ? "#F4F4F5" : "#A1A1AA"
               font.pixelSize: 11

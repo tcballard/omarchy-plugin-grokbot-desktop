@@ -67,6 +67,10 @@ Item {
   property string askedText: ""
   property bool syncOn: true
   property string chosenBotId: root.defaultBotId
+  // Most recently used bot ids, newest first. The bubble pins the primary
+  // bot plus the latest of these.
+  property var recentBots: []
+  property string switchTag: ""
   property string customShape: "teardrop"
   property string customColor: "orange"
   property string sizeName: "medium"
@@ -359,6 +363,19 @@ Item {
 
   // Every bot shows its role: the first clause of its description. The
   // header elides it to fit, so it is never cut mid-word.
+  // Switching bots with the bubble closed (voice, IPC) names the new bot
+  // beside the mark for a moment.
+  function showSwitchTag() {
+    root.switchTag = root.botLabel()
+    switchTagTimer.restart()
+  }
+
+  Timer {
+    id: switchTagTimer
+    interval: 1400
+    onTriggered: root.switchTag = ""
+  }
+
   function botTag() {
     var bot = root.currentBot()
     var role = root.plainLine(bot ? bot.description : "", 120)
@@ -448,6 +465,8 @@ Item {
 
   function loadSettings() {
     root.chosenBotId = String(root.setting("botId", root.defaultBotId))
+    var recent = root.setting("recentBots", [])
+    root.recentBots = Array.isArray(recent) ? recent.filter(function (id) { return typeof id === "string" && id.length <= 64 }).slice(0, 6) : []
     root.syncOn = root.setting("syncAppearance", true) !== false
     root.customShape = String(root.setting("shape", "teardrop"))
     root.customColor = String(root.setting("color", "orange"))
@@ -488,6 +507,7 @@ Item {
     settings.marginX = root.posRight
     settings.marginY = root.posBottom
     settings.botId = root.chosenBotId
+    settings.recentBots = root.recentBots
     settings.syncAppearance = root.syncOn
     settings.shape = root.customShape
     settings.color = root.customColor
@@ -508,7 +528,10 @@ Item {
 
   function selectBot(id) {
     if (!root.findBot(id)) return "unknown bot"
+    var changed = id !== root.chosenBotId
     root.chosenBotId = id
+    root.recentBots = [id].concat(root.recentBots.filter(function (other) { return other !== id })).slice(0, 6)
+    if (changed && !root.bubbleOpen) root.showSwitchTag()
     root.switcherOpen = false
     root.rosterExpanded = false
     root.retargetAppearance(true)
@@ -1549,6 +1572,34 @@ Item {
             startAngle: 0
             sweepAngle: 360
           }
+        }
+      }
+
+      Rectangle {
+        id: nameTag
+        readonly property bool shown: root.switchTag !== ""
+        property string label: ""
+        width: nameText.implicitWidth + 20
+        height: 24
+        radius: 12
+        color: "#141416"
+        border.width: 1
+        border.color: "#27272A"
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: root.anchorFromBottom ? -height - 4 + (shown ? 0 : 6) : parent.height + 4 - (shown ? 0 : 6)
+        opacity: shown ? 1 : 0
+        visible: opacity > 0.01
+        onShownChanged: if (shown) label = root.switchTag
+        Behavior on opacity { NumberAnimation { duration: root.ms(160) } }
+        Behavior on y { NumberAnimation { duration: root.ms(200); easing.type: Easing.OutCubic } }
+        Text {
+          id: nameText
+          anchors.centerIn: parent
+          text: nameTag.label
+          color: "#F4F4F5"
+          font.pixelSize: 12
+          font.bold: true
+          textFormat: Text.PlainText
         }
       }
 
