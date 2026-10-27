@@ -960,3 +960,14 @@ test('the stem stays in the cut-out layer and fades by opacity', () => {
   const st = shapes.SHAPES.pebble.stem
   assert.ok(Math.min(...st.map((p) => p[1])) < -1, 'the stem rises above the body')
 })
+
+test('picking a shape or colour swaps at once, as Grok Bot\'s picker does', () => {
+  for (const name of ['selectShape', 'selectColor', 'setSync']) {
+    assert.match(qmlFunction(main, name), /retargetAppearance\(false\)/, name)
+  }
+  assert.doesNotMatch(qmlFunction(main, 'selectBot'), /retargetAppearance\(false\)/, 'a bot switch still morphs')
+  const page = read('SettingsPanel.qml')
+  assert.match(page, /opacity: shapeArea\.pressed \? 0\.55 : 1/)
+  assert.match(page, /opacity: swatchArea\.pressed \? 0\.55 : 1/)
+  assert.match(page, /visible: cell\.active/)
+})

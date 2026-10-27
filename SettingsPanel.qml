@@ -167,10 +167,8 @@ Item {
               anchors.centerIn: parent
               width: cell.markSize
               height: cell.markSize
-              opacity: cell.active ? 1 : 0
-              scale: cell.active ? 1 : 0.9
-              Behavior on opacity { NumberAnimation { duration: app && app.reduceMotion ? 0 : 160 } }
-              Behavior on scale { NumberAnimation { duration: app && app.reduceMotion ? 0 : 200; easing.type: Easing.OutCubic } }
+              // Grok Bot moves the ring at once, with no transition.
+              visible: cell.active
               readonly property string outline: Shapes.svgPath(Shapes.get(cell.modelData).points, cell.unit, width / 2, height / 2)
               ShapePath {
                 strokeColor: Theme.textMuted
@@ -200,8 +198,8 @@ Item {
               accent: app.accent
               cutoutHex: Theme.surface
               eyeOpen: 1
-              scale: shapeArea.containsMouse && !cell.active ? 1.07 : 1
-              Behavior on scale { NumberAnimation { duration: app && app.reduceMotion ? 0 : 140; easing.type: Easing.OutCubic } }
+              // Pressed, the shape dims to 55%, as in the app.
+              opacity: shapeArea.pressed ? 0.55 : 1
             }
 
             HoverArea {
@@ -245,10 +243,7 @@ Item {
               color: "transparent"
               border.width: swatchGrid.dot * 0.08
               border.color: Theme.textMuted
-              opacity: parent.active ? 1 : 0
-              scale: parent.active ? 1 : 0.85
-              Behavior on opacity { NumberAnimation { duration: app && app.reduceMotion ? 0 : 160 } }
-              Behavior on scale { NumberAnimation { duration: app && app.reduceMotion ? 0 : 200; easing.type: Easing.OutCubic } }
+              visible: parent.active
             }
             Rectangle {
               anchors.centerIn: parent
@@ -256,8 +251,7 @@ Item {
               height: width
               radius: width / 2
               color: modelData === "omarchy" ? app.accent : app.paletteFill(modelData)
-              scale: swatchArea.containsMouse && !parent.active ? 1.08 : 1
-              Behavior on scale { NumberAnimation { duration: app && app.reduceMotion ? 0 : 140; easing.type: Easing.OutCubic } }
+              opacity: swatchArea.pressed ? 0.55 : 1
               // A hole marks the swatch that follows the theme accent.
               Rectangle {
                 anchors.centerIn: parent

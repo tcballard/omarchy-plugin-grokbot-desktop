@@ -596,11 +596,13 @@ Item {
     return root.botLabel()
   }
 
+  // Picking a shape or colour swaps the avatar at once, as Grok Bot's
+  // picker does; only a switch to another bot morphs.
   function selectShape(name) {
     if (!Shapes.known(name)) return "unknown shape"
     root.syncOn = false
     root.customShape = name
-    root.retargetAppearance(true)
+    root.retargetAppearance(false)
     root.scheduleSave()
     return "ok"
   }
@@ -609,14 +611,14 @@ Item {
     if (!Palette.accepts(name)) return "unknown color"
     root.syncOn = false
     root.customColor = name
-    root.retargetAppearance(true)
+    root.retargetAppearance(false)
     root.scheduleSave()
     return "ok"
   }
 
   function setSync(value) {
     root.syncOn = value === true
-    root.retargetAppearance(true)
+    root.retargetAppearance(false)
     root.scheduleSave()
   }
 
@@ -1437,7 +1439,7 @@ Item {
       root.syncOn = false
       root.customShape = shape
       root.customColor = color
-      root.retargetAppearance(true)
+      root.retargetAppearance(false)
       root.scheduleSave()
       return "ok"
     }
