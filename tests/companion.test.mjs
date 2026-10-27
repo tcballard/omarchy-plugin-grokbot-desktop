@@ -834,3 +834,7 @@ test('the right-click menu opens toward the screen from any corner', () => {
   assert.match(menu, /root\.anchorFromRight \? stage\.x - width - 8 : stage\.x \+ stage\.width \+ 8/)
   assert.doesNotMatch(menu, /x: Math\.max\(8, stage\.x - width - 8\)/)
 })
+
+test('the prompt bubble fits short prompts', () => {
+  assert.match(read('BubblePanel.qml'), /width: Math\.min\(implicitWidth, bubble\.width - 120\)/)
+})

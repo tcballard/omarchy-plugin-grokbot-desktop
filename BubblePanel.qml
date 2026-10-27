@@ -440,7 +440,7 @@ Rectangle {
           id: userText
           x: 14
           y: 10
-          width: Math.min(300, bubble.width - 150)
+          width: Math.min(implicitWidth, bubble.width - 120)
           text: app.askedText
           color: "#F4F4F5"
           font.pixelSize: 13
