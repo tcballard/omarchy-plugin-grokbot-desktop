@@ -409,6 +409,36 @@ Rectangle {
       }
     }
 
+    // While an ask runs and nothing has come back, three dots pulse where
+    // the reply will land.
+    Item {
+      id: typing
+      width: parent.width
+      height: 18
+      visible: app.asking && app.bubbleBody === ""
+      property real phase: 0
+      FrameAnimation {
+        running: typing.visible
+        onTriggered: typing.phase = (typing.phase + frameTime * 5) % (Math.PI * 2)
+      }
+      Row {
+        anchors.verticalCenter: parent.verticalCenter
+        spacing: 5
+        Repeater {
+          model: 3
+          delegate: Rectangle {
+            required property int index
+            width: 7
+            height: 7
+            radius: 3.5
+            color: "#A1A1AA"
+            opacity: 0.35 + 0.65 * Math.max(0, Math.sin(typing.phase - index * 0.7))
+            y: -2 * Math.max(0, Math.sin(typing.phase - index * 0.7))
+          }
+        }
+      }
+    }
+
     // Replies are selectable plain text. Long ones scroll inside the card,
     // with a fade at whichever edge has more to read.
     Item {

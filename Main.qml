@@ -1050,11 +1050,23 @@ Item {
   }
 
   SequentialAnimation {
-    running: root.present && !root.dragging
+    running: root.present && !root.dragging && root.expression !== "sleep"
     loops: Animation.Infinite
     NumberAnimation { target: root; property: "breathe"; to: 1.035; duration: 1700; easing.type: Easing.InOutSine }
     NumberAnimation { target: root; property: "breathe"; to: 0.985; duration: 1700; easing.type: Easing.InOutSine }
   }
+
+  // Asleep, the breath slows and deepens.
+  SequentialAnimation {
+    running: root.present && !root.dragging && root.expression === "sleep"
+    loops: Animation.Infinite
+    NumberAnimation { target: root; property: "breathe"; to: 1.05; duration: 3000; easing.type: Easing.InOutSine }
+    NumberAnimation { target: root; property: "breathe"; to: 0.975; duration: 3000; easing.type: Easing.InOutSine }
+  }
+
+  // Thinking, the eyes drift up and aside and the body sways slowly.
+  property real thinkLook: root.expression === "think" ? 1 : 0
+  Behavior on thinkLook { NumberAnimation { duration: 320; easing.type: Easing.InOutCubic } }
 
   // When the bob stops (another motion, or a drag) the mark settles back
   // to rest instead of freezing or snapping.
@@ -1434,8 +1446,8 @@ Item {
         fillFrom: root.fillFrom
         eyeFrom: root.eyeFrom
         accent: root.accent
-        gazeX: root.gazeX
-        gazeY: root.gazeY
+        gazeX: root.gazeX * (1 - root.thinkLook) + 0.55 * root.thinkLook
+        gazeY: root.gazeY * (1 - root.thinkLook) - 0.75 * root.thinkLook
         eyeOpen: root.eyeOpen
         expression: root.expression === "celebrate" ? "happy" : root.expression
         thinkAngle: root.thinkAngle
@@ -1459,7 +1471,7 @@ Item {
             x: Math.cos(root.orbit * Math.PI / 180) * 6 * root.orbitAmp
             y: root.idleY + root.hopY + Math.sin(root.orbit * Math.PI / 180) * 5 * root.orbitAmp
           },
-          Rotation { origin.x: mark.width / 2; origin.y: mark.height / 2; angle: root.spinAngle + root.waveAngle }
+          Rotation { origin.x: mark.width / 2; origin.y: mark.height; angle: root.spinAngle + root.waveAngle + Math.sin(root.thinkAngle * 0.5) * 3 * root.thinkLook }
         ]
         Behavior on opacity { NumberAnimation { duration: 160 } }
 

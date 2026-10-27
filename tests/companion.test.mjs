@@ -734,3 +734,10 @@ test('morph colours keep their saturation through the blend', () => {
   }
   assert.match(main, /morphPopAnim\.restart\(\)/)
 })
+
+test('thinking and sleeping read at a glance', () => {
+  assert.match(main, /property real thinkLook: root\.expression === "think" \? 1 : 0/)
+  assert.match(main, /Math\.sin\(root\.thinkAngle \* 0\.5\) \* 3 \* root\.thinkLook/)
+  assert.match(main, /running: root\.present && !root\.dragging && root\.expression === "sleep"/)
+  assert.match(read('BubblePanel.qml'), /visible: app\.asking && app\.bubbleBody === ""/)
+})
