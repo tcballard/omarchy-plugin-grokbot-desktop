@@ -121,7 +121,7 @@ Webhook mode POSTs exactly:
 
 The bearer token is read from `~/.config/omarchy/grokbot-webhook.key` (mode `0600`) or from `GROKBOT_WEBHOOK_KEY` in the helper's own environment. The shell does not put that variable on the helper command line. The URL must be `https`, or `http` to localhost.
 
-Agent mode is the fallback. It reads `~/.config/omarchy/defaults/agent` and can target `grok`, `claude`, `codex`, `opencode`, `gemini`, `copilot`, `crush`, `pi`, or `omp`. A `command` array overrides that and still receives the prompt on stdin. Stdout is capped at 64 KiB.
+Agent mode is the fallback. It is your local coding agent answering in the bot's name, not the Grok Bot itself. It reads `~/.config/omarchy/defaults/agent` (or an `agent` key) and can target `grok`, `claude`, `codex`, `opencode`, `gemini`, `copilot`, `crush`, `pi`, or `omp`; any other default is reported rather than swapped for Claude. The prompt goes on stdin, except for Grok, which is run as `grok --no-auto-update -p "<prompt>"` because that is its headless form, so the prompt is visible in the process list while it runs. An agent that Omarchy has only stubbed for install-on-first-run is reported as not installed rather than installed by an ask. When the agent fails, the bubble shows the agent's name and what it printed. A `command` array overrides all of this and still receives the prompt on stdin. Stdout is capped at 64 KiB.
 
 ```json
 {

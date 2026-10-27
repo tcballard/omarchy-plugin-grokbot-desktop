@@ -256,6 +256,71 @@ test('agent mode keeps the prompt on stdin and caps a flood', () => {
   assert.ok(flood.stdout.length <= 65536)
 })
 
+function agentHome(agent, files) {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'grokbot-agent-'))
+  const config = path.join(home, '.config', 'omarchy')
+  const bin = path.join(home, '.local', 'bin')
+  fs.mkdirSync(path.join(config, 'defaults'), { recursive: true })
+  fs.mkdirSync(bin, { recursive: true, mode: 0o755 })
+  fs.writeFileSync(path.join(config, 'defaults', 'agent'), `${agent}\n`)
+  fs.writeFileSync(path.join(config, 'grokbot-desktop.json'), JSON.stringify({ dispatch: 'agent' }))
+  for (const [name, body] of Object.entries(files)) {
+    fs.writeFileSync(path.join(bin, name), body, { mode: 0o755 })
+  }
+  return home
+}
+
+function askAgent(home, prompt = 'hello there') {
+  return runPython('bin/grokbot-ask', [], {
+    input: JSON.stringify({ botId: 'e0195a7d-f804-4688-9191-e2cf3574a6d1', botName: 'Bob', prompt }),
+    env: { PATH: '/usr/bin:/bin', HOME: home, XDG_CONFIG_HOME: path.join(home, '.config'), XDG_DATA_HOME: path.join(home, '.local', 'share') }
+  })
+}
+
+test('grok is asked headless with the prompt after -p', () => {
+  const home = agentHome('grok', {
+    grok: '#!/usr/bin/python3\nimport json,os,sys\nopen(os.environ["HOME"]+"/argv.json","w").write(json.dumps({"argv":sys.argv[1:],"stdin":sys.stdin.read()}))\nprint("hi from grok")\n'
+  })
+  const result = askAgent(home, 'what time is it')
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /hi from grok/)
+  const seen = JSON.parse(fs.readFileSync(path.join(home, 'argv.json'), 'utf8'))
+  assert.deepEqual(seen.argv.slice(0, 2), ['--no-auto-update', '-p'])
+  assert.match(seen.argv[2], /as the Grok Bot Bob[\s\S]*what time is it$/)
+  assert.equal(seen.stdin, '')
+})
+
+test('a failing agent names itself and passes on what it printed', () => {
+  const home = agentHome('grok', {
+    grok: '#!/bin/sh\necho "Not signed in. Run grok login."\nexit 1\n'
+  })
+  const result = askAgent(home)
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /^grok: Not signed in\. Run grok login\./)
+
+  fs.writeFileSync(path.join(home, '.local', 'bin', 'grok'), '#!/bin/sh\nexit 3\n', { mode: 0o755 })
+  const silent = askAgent(home)
+  assert.equal(silent.status, 3)
+  assert.match(silent.stderr, /^grok: exited 3 with no output/)
+})
+
+test('an ask never runs Omarchy\'s install-on-first-run agent wrapper', () => {
+  const home = agentHome('grok', {
+    grok: '#!/bin/bash\ntouch "$HOME/installed"\nmise use -g --quiet "grok" || exit 1\nexec mise x "grok" -- "grok" "$@"\n'
+  })
+  const result = askAgent(home)
+  assert.equal(result.status, 127)
+  assert.match(result.stderr, /grok isn't installed\. Install it with: omarchy default agent grok/)
+  assert.equal(fs.existsSync(path.join(home, 'installed')), false)
+})
+
+test('an unsupported default agent is reported instead of swapped for another', () => {
+  const home = agentHome('cursor-agent', {})
+  const result = askAgent(home)
+  assert.equal(result.status, 127)
+  assert.match(result.stderr, /can't ask cursor-agent yet/)
+})
+
 function spawnCollected(args, options) {
   return new Promise((resolve, reject) => {
     const child = spawn(args[0], args.slice(1), { env: options.env })
