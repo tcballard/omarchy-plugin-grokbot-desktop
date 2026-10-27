@@ -99,6 +99,7 @@ Item {
   property real thinkAngle: 0
   property real sleepDrift: 0
   property real breathe: 1
+  property real talkScale: 1
   property real idleY: 0
   property real hopY: 0
   property real spinAngle: 0
@@ -1084,9 +1085,9 @@ Item {
 
   SequentialAnimation {
     id: syllableAnim
-    NumberAnimation { target: root; property: "breathe"; to: 1.08; duration: 90 }
-    NumberAnimation { target: root; property: "breathe"; to: 0.96; duration: 90 }
-    NumberAnimation { target: root; property: "breathe"; to: 1; duration: 120 }
+    NumberAnimation { target: root; property: "talkScale"; to: 1.08; duration: 90; easing.type: Easing.OutQuad }
+    NumberAnimation { target: root; property: "talkScale"; to: 0.96; duration: 90; easing.type: Easing.InOutQuad }
+    NumberAnimation { target: root; property: "talkScale"; to: 1; duration: 120; easing.type: Easing.OutQuad }
   }
 
   NumberAnimation {
@@ -1371,7 +1372,7 @@ Item {
           return "file://" + bot.avatarImage
         }
         opacity: root.ghost ? 0.28 : 1
-        scale: root.breathe
+        scale: root.breathe * root.talkScale
         transform: [
           Translate {
             x: root.motionName === "hyper" ? Math.cos(root.orbit * Math.PI / 180) * 6 : 0

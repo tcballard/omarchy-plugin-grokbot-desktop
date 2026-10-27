@@ -654,3 +654,10 @@ test('a new appearance picked mid-morph starts from the contour on screen', () =
   assert.equal(b.length, a.length)
   assert.equal(JSON.stringify(shapes.mix(a, b, 0)), JSON.stringify(a))
 })
+
+test('the reply pulse and idle breathing animate separate properties', () => {
+  const pulse = main.slice(main.indexOf('id: syllableAnim'), main.indexOf('id: syllableAnim') + 400)
+  assert.match(pulse, /property: "talkScale"/)
+  assert.doesNotMatch(pulse, /property: "breathe"/)
+  assert.match(main, /scale: root\.breathe \* root\.talkScale/)
+})
