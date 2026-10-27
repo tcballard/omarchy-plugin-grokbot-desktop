@@ -749,3 +749,10 @@ test('the mark answers hover and lifts while dragged', () => {
   assert.match(qmlFunction(main, 'endDrag'), /landAnim\.restart\(\)/)
   assert.match(qmlFunction(main, 'dragMove'), /dragTiltTarget =/)
 })
+
+test('dodge fades with distance and visibly fades back during the dwell', () => {
+  const dodge = qmlFunction(main, 'updateDodge')
+  assert.match(dodge, /pointerGap\(\) \/ 36/)
+  assert.match(dodge, /held = \(Date\.now\(\) - root\.dwellSince\) \/ root\.dwellMs/)
+  assert.match(main, /opacity: root\.dodgeOpacity/)
+})

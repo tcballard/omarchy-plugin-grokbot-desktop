@@ -991,32 +991,44 @@ Item {
       && root.cursorY >= rect.y && root.cursorY <= rect.y + rect.h
   }
 
+  // Pixels from the pointer to the mark's box; 0 inside it.
+  function pointerGap() {
+    var rect = root.stageRect()
+    if (!rect || !root.cursorKnown) return 1e9
+    var dx = Math.max(rect.x - root.cursorX, 0, root.cursorX - rect.x - rect.w)
+    var dy = Math.max(rect.y - root.cursorY, 0, root.cursorY - rect.y - rect.h)
+    return Math.sqrt(dx * dx + dy * dy)
+  }
+
+  // Dodge fades with distance: faint as the pointer arrives, and while it
+  // rests on the mark the mark visibly fades back in over the dwell before
+  // it takes clicks again.
   function updateDodge() {
-    if (!root.dodgeOn || !root.present || root.dragging || root.surfacesOpen || !root.cursorKnown) {
+    if (!root.dodgeOn || !root.present || root.dragging || root.surfacesOpen || !root.cursorKnown || !root.pointerIsNear()) {
       root.ghost = false
       root.claimed = false
       root.dwellSince = 0
+      root.dodgeOpacity = 1
       return
     }
-    if (!root.pointerIsNear()) {
-      root.ghost = false
-      root.claimed = false
-      root.dwellSince = 0
-      return
-    }
+    var floor = 0.28
     if (root.pointerInside()) {
       if (root.dwellSince === 0) root.dwellSince = Date.now()
-      if (Date.now() - root.dwellSince > 380) root.claimed = true
+      var held = (Date.now() - root.dwellSince) / root.dwellMs
+      if (held >= 1) root.claimed = true
+      root.dodgeOpacity = root.claimed ? 1 : floor + (1 - floor) * Math.max(0, Math.min(1, held))
     } else {
       root.dwellSince = 0
       root.claimed = false
+      root.dodgeOpacity = floor + (1 - floor) * Math.max(0, Math.min(1, root.pointerGap() / 36))
     }
     root.ghost = !root.claimed
   }
 
-  Timer {
-    interval: 100
-    repeat: true
+  readonly property int dwellMs: 380
+  property real dodgeOpacity: 1
+
+  FrameAnimation {
     running: root.dodgeOn && root.present && !root.surfacesOpen && root.pointerNear
     onTriggered: root.updateDodge()
   }
@@ -1427,7 +1439,7 @@ Item {
         id: floorShadow
         readonly property real lift: Math.max(0, -(root.idleY + root.hopY + Math.sin(root.orbit * Math.PI / 180) * 5 * root.orbitAmp)) + root.dragLift * 14
         readonly property real flat: Math.max(10, root.markSize * 0.12) / width
-        property real rest: root.ghost ? 0.08 : 0.34
+        property real rest: 0.34 * root.dodgeOpacity
         Behavior on rest { NumberAnimation { duration: 160 } }
         // Drawn as a circle and squashed, so the radial fade stays soft all
         // the way round the ellipse.
@@ -1490,7 +1502,7 @@ Item {
           if (!root.syncOn || !bot || !bot.avatarImage) return ""
           return "file://" + bot.avatarImage
         }
-        opacity: root.ghost ? 0.28 : 1
+        opacity: root.dodgeOpacity
         scale: root.breathe * root.talkScale * root.morphPop * root.hoverScale * (1 + 0.06 * root.dragLift)
         attention: root.hovering ? 1.12 : 1
         Behavior on attention { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
@@ -1508,7 +1520,7 @@ Item {
           },
           Rotation { origin.x: mark.width / 2; origin.y: mark.height; angle: root.spinAngle + root.waveAngle + Math.sin(root.thinkAngle * 0.5) * 3 * root.thinkLook + root.dragTilt }
         ]
-        Behavior on opacity { NumberAnimation { duration: 160 } }
+        Behavior on opacity { NumberAnimation { duration: 90 } }
 
         Rectangle {
           id: replyDot
@@ -1569,6 +1581,7 @@ Item {
           if (containsMouse) {
             root.claimed = true
             root.ghost = false
+            root.dodgeOpacity = 1
           }
         }
       }
