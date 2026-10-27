@@ -77,6 +77,13 @@ Item {
   property string colorFrom: "orange"
   property string colorTo: "orange"
   property real morphProgress: 1
+  // The contour and colours on screen when the current morph began, so a
+  // new target picked mid-morph starts from what is visible, not from the
+  // previous target.
+  property var morphFromPoints: null
+  property var morphToPoints: null
+  property color fillFrom: "#F28B30"
+  property color eyeFrom: "#141416"
   property string expression: "idle"
   property bool sleepHold: false
   property real eyeOpen: 1
@@ -353,7 +360,10 @@ Item {
   function retargetAppearance(animate) {
     var nextShape = root.destinationShape()
     var nextColor = root.destinationColor()
-    if (!animate || (nextShape === root.shapeTo && nextColor === root.colorTo && root.morphProgress >= 0.999)) {
+    if (nextShape === root.shapeTo && nextColor === root.colorTo && (root.morphProgress >= 0.999 || animate)) return
+    if (!animate) {
+      morphAnim.stop()
+      root.morphFromPoints = null
       root.shapeFrom = nextShape
       root.shapeTo = nextShape
       root.colorFrom = nextColor
@@ -361,6 +371,15 @@ Item {
       root.morphProgress = 1
       return
     }
+    root.startMorph(nextShape, nextColor)
+  }
+
+  function startMorph(nextShape, nextColor) {
+    var face = mark.blended.points
+    root.fillFrom = mark.fillColor
+    root.eyeFrom = mark.eyeColor
+    root.morphToPoints = Shapes.align(face, Shapes.get(nextShape).points)
+    root.morphFromPoints = face
     root.shapeFrom = root.shapeTo
     root.colorFrom = root.colorTo
     root.shapeTo = nextShape
@@ -624,10 +643,7 @@ Item {
       var index = Shapes.NAMES.indexOf(Shapes.resolve(current))
       if (index < 0) index = 0
       var next = Shapes.NAMES[(index + 1) % Shapes.NAMES.length]
-      root.shapeFrom = current
-      root.shapeTo = next
-      root.morphProgress = 0
-      morphAnim.restart()
+      root.startMorph(next, root.colorTo)
       morphBackTimer.restart()
       return "ok"
     }
@@ -637,14 +653,7 @@ Item {
   Timer {
     id: morphBackTimer
     interval: 700
-    onTriggered: {
-      root.shapeFrom = root.shapeTo
-      root.colorFrom = root.colorTo
-      root.shapeTo = root.destinationShape()
-      root.colorTo = root.destinationColor()
-      root.morphProgress = 0
-      morphAnim.restart()
-    }
+    onTriggered: root.startMorph(root.destinationShape(), root.destinationColor())
   }
 
   function sayNotice(title, text, links) {
@@ -1343,8 +1352,12 @@ Item {
         shapeFrom: root.shapeFrom
         shapeTo: root.shapeTo
         morph: root.morphProgress
+        face: root.morphFromPoints ? Shapes.mix(root.morphFromPoints, root.morphToPoints, root.morphProgress) : null
         colorFromName: root.colorFrom
         colorName: root.colorTo
+        mixFromColors: root.morphFromPoints !== null
+        fillFrom: root.fillFrom
+        eyeFrom: root.eyeFrom
         accent: root.accent
         gazeX: root.gazeX
         gazeY: root.gazeY

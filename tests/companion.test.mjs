@@ -642,3 +642,15 @@ test('morphs pair contour points at the least travel', () => {
     }
   }
 })
+
+test('a new appearance picked mid-morph starts from the contour on screen', () => {
+  const start = qmlFunction(main, 'startMorph')
+  assert.match(start, /mark\.blended\.points/)
+  assert.match(start, /mark\.fillColor/)
+  assert.match(start, /Shapes\.align\(face/)
+  assert.ok(start.indexOf('morphToPoints =') < start.indexOf('morphFromPoints ='))
+  const a = shapes.SHAPES.cloud.points
+  const b = shapes.align(a, shapes.SHAPES.star.points)
+  assert.equal(b.length, a.length)
+  assert.equal(JSON.stringify(shapes.mix(a, b, 0)), JSON.stringify(a))
+})

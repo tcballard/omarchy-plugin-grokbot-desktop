@@ -21,8 +21,14 @@ Item {
   property real thinkAngle: 0
   property real sleepDrift: 0
   property string imageSource: ""
+  // A contour supplied by the caller replaces the named blend. The main
+  // mark uses it to morph from whatever was on screen.
+  property var face: null
+  property bool mixFromColors: false
+  property color fillFrom: "#F28B30"
+  property color eyeFrom: "#141416"
 
-  readonly property var blended: Shapes.blend(shapeFrom, shapeTo, morph)
+  readonly property var blended: face ? ({ points: face }) : Shapes.blend(shapeFrom, shapeTo, morph)
   readonly property real accentLuma: accent.r * 0.2126 + accent.g * 0.7152 + accent.b * 0.0722
   readonly property color fillColor: mark.fillHex !== "" ? mark.parseHex(mark.fillHex) : mixToken("fill")
   readonly property color eyeColor: mark.cutoutHex !== "" ? mark.parseHex(mark.cutoutHex) : mixToken("eye")
@@ -46,7 +52,7 @@ Item {
 
   function mixToken(key) {
     var fromName = mark.colorFromName !== "" ? mark.colorFromName : mark.colorName
-    var a = mark.tokenColor(fromName, key)
+    var a = mark.mixFromColors ? (key === "fill" ? mark.fillFrom : mark.eyeFrom) : mark.tokenColor(fromName, key)
     var b = mark.tokenColor(mark.colorName, key)
     var t = mark.morph
     return Qt.rgba(
