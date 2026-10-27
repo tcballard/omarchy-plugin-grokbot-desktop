@@ -256,7 +256,7 @@ test('webhook mode posts the four fields and keeps the key off argv', async () =
       seen = { headers: req.headers, body: JSON.parse(Buffer.concat(chunks).toString('utf8')) }
       try { cmdline = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8') } catch { cmdline = '' }
       res.setHeader('content-type', 'application/json')
-      res.end(JSON.stringify({ reply: 'pong' }))
+      res.end(JSON.stringify({ reply: 'pong: a < b\n\nthen x => y' }))
     })
   })
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
@@ -281,6 +281,8 @@ test('webhook mode posts the four fields and keeps the key off argv', async () =
   server.close()
   assert.equal(child.status, 0, child.stderr)
   assert.match(child.stdout, /pong/)
+  assert.equal(child.stdout, 'pong: a < b\n\nthen x => y\n')
+  assert.doesNotMatch(qmlFunction(main, 'cleanText'), /\[<>\]/)
   assert.equal(child.stdout.includes(key), false)
   assert.equal(child.stderr.includes(key), false)
   assert.equal(cmdline.includes(key), false)

@@ -503,7 +503,6 @@ Item {
 
   function cleanText(value, max) {
     var text = String(value || "").replace(/\u001b\[[0-9;]*[A-Za-z]/g, "")
-    text = text.replace(/[<>]/g, "")
     text = text.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
     return text.trim().slice(0, max)
   }

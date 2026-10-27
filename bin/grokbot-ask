@@ -115,6 +115,14 @@ def plain(value, limit):
     return text[:limit]
 
 
+def reply_text(value, limit):
+    # Replies are shown as plain text, so angle brackets and line breaks are
+    # content. Only control characters other than tab and newline go.
+    text = str(value or "").replace("\r\n", "\n").replace("\r", "\n")
+    text = CONTROLS.sub("", text)
+    return text.strip()[:limit]
+
+
 def host_name(given):
     raw = plain(given or os.uname().nodename, 64)
     raw = raw.split(".")[0]
@@ -214,7 +222,7 @@ def extract_reply(raw):
             for key in ("reply", "text", "message", "output"):
                 value = data.get(key)
                 if isinstance(value, str) and value.strip():
-                    return plain(value, 4000)
+                    return reply_text(value, 4000)
     return stripped[:4000]
 
 

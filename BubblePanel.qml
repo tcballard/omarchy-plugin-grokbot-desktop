@@ -407,21 +407,61 @@ Rectangle {
       }
     }
 
-    Flickable {
-      id: replyFlick
+    // Replies are selectable plain text. Long ones scroll inside the card,
+    // with a fade at whichever edge has more to read.
+    Item {
+      id: replyBox
+      readonly property real cap: Math.max(140, bubble.maxHeight - 300)
       width: parent.width
-      height: Math.min(140, replyText.implicitHeight)
-      contentHeight: replyText.implicitHeight
-      clip: true
+      height: Math.min(cap, replyText.implicitHeight)
       visible: app.bubbleBody !== ""
-      Text {
-        id: replyText
-        width: replyFlick.width
-        text: app.bubbleBody
-        color: "#F4F4F5"
-        font.pixelSize: 13
-        wrapMode: Text.WordWrap
-        textFormat: Text.PlainText
+
+      Flickable {
+        id: replyFlick
+        anchors.fill: parent
+        contentHeight: replyText.implicitHeight
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        ScrollBar.vertical: ScrollBar { policy: replyFlick.contentHeight > replyFlick.height ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff }
+
+        TextEdit {
+          id: replyText
+          width: replyFlick.width - 10
+          text: app.bubbleBody
+          readOnly: true
+          selectByMouse: true
+          color: "#F4F4F5"
+          selectionColor: "#3F3F46"
+          selectedTextColor: "#F4F4F5"
+          font.pixelSize: 13
+          wrapMode: TextEdit.Wrap
+          textFormat: TextEdit.PlainText
+        }
+
+        onContentHeightChanged: contentY = 0
+      }
+
+      Rectangle {
+        width: parent.width - 10
+        height: 16
+        opacity: replyFlick.contentY > 1 ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 120 } }
+        gradient: Gradient {
+          GradientStop { position: 0; color: "#141416" }
+          GradientStop { position: 1; color: "#00141416" }
+        }
+      }
+
+      Rectangle {
+        anchors.bottom: parent.bottom
+        width: parent.width - 10
+        height: 16
+        opacity: replyFlick.contentY + replyFlick.height < replyFlick.contentHeight - 1 ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 120 } }
+        gradient: Gradient {
+          GradientStop { position: 0; color: "#00141416" }
+          GradientStop { position: 1; color: "#141416" }
+        }
       }
     }
 
