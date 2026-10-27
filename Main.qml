@@ -107,9 +107,9 @@ Item {
   // off the floor and leans it into the motion.
   property bool hovering: false
   property real hoverScale: root.hovering && !root.dragging ? 1.04 : 1
-  Behavior on hoverScale { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+  Behavior on hoverScale { NumberAnimation { duration: root.ms(160); easing.type: Easing.OutCubic } }
   property real dragLift: root.dragging ? 1 : 0
-  Behavior on dragLift { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+  Behavior on dragLift { NumberAnimation { duration: root.ms(180); easing.type: Easing.OutCubic } }
   property real dragTilt: 0
   property real dragTiltTarget: 0
   property real lastDragX: 0
@@ -119,15 +119,15 @@ Item {
   // Vertical squash and stretch about the base; width answers inversely so
   // the mark keeps its volume.
   property real squash: 1
-  property real bobAmp: root.motionName === "playful" ? 1 : 0
-  Behavior on bobAmp { NumberAnimation { duration: 420; easing.type: Easing.InOutCubic } }
+  property real bobAmp: root.liveMotion === "playful" ? 1 : 0
+  Behavior on bobAmp { NumberAnimation { duration: root.ms(420); easing.type: Easing.InOutCubic } }
   readonly property real stretchY: root.squash * (1 + root.bobAmp * (-root.idleY / 7 * 0.04 - 0.02))
   property real spinAngle: 0
   property real waveAngle: 0
   property real orbit: 0
   // Hyper's orbit radius fades in and out so switching motion never jumps.
-  property real orbitAmp: root.motionName === "hyper" ? 1 : 0
-  Behavior on orbitAmp { NumberAnimation { duration: 420; easing.type: Easing.InOutCubic } }
+  property real orbitAmp: root.liveMotion === "hyper" ? 1 : 0
+  Behavior on orbitAmp { NumberAnimation { duration: root.ms(420); easing.type: Easing.InOutCubic } }
   property var bots: []
   property string bubbleBody: ""
   property string promptDraft: ""
@@ -161,6 +161,28 @@ Item {
   readonly property string canonicalShape: Shapes.resolve(root.shownShape)
   readonly property bool anchorFromRight: root.anchorName === "br" || root.anchorName === "tr"
   readonly property bool anchorFromBottom: root.anchorName === "br" || root.anchorName === "bl"
+  // Omarchy turns shell animation off with Hyprland's (`omarchy toggle
+  // animations`, for machines that render on the CPU). Older shells have no
+  // Style.reduceMotion, so that reads as motion allowed.
+  readonly property bool reduceMotion: root.styleReducesMotion()
+  readonly property string liveMotion: root.reduceMotion ? "calm" : root.motionName
+
+  function styleReducesMotion() {
+    try {
+      return Commons.Style !== undefined && Commons.Style !== null && Commons.Style.reduceMotion === true
+    } catch (e) {
+      return false
+    }
+  }
+
+  function ms(value) { return root.reduceMotion ? 0 : value }
+
+  onReduceMotionChanged: {
+    if (!root.reduceMotion) return
+    root.breathe = 1
+    root.sleepDrift = 0
+  }
+
   readonly property bool surfacesOpen: root.bubbleOpen || root.menuOpen
 
   function tomlColor(text, key) {
@@ -881,7 +903,7 @@ Item {
   // Continuous motion runs on the frame clock, so it is as smooth as the
   // display refresh instead of stepping at a fixed timer rate.
   FrameAnimation {
-    running: root.expression === "think" || root.asking
+    running: (root.expression === "think" || root.asking) && !root.reduceMotion
     onTriggered: root.thinkAngle += frameTime * 4.5
   }
 
@@ -1073,7 +1095,7 @@ Item {
   }
 
   SequentialAnimation {
-    running: root.present && !root.dragging && root.expression !== "sleep"
+    running: root.present && !root.dragging && !root.reduceMotion && root.expression !== "sleep"
     loops: Animation.Infinite
     NumberAnimation { target: root; property: "breathe"; to: 1.035; duration: 1700; easing.type: Easing.InOutSine }
     NumberAnimation { target: root; property: "breathe"; to: 0.985; duration: 1700; easing.type: Easing.InOutSine }
@@ -1081,7 +1103,7 @@ Item {
 
   // Asleep, the breath slows and deepens.
   SequentialAnimation {
-    running: root.present && !root.dragging && root.expression === "sleep"
+    running: root.present && !root.dragging && !root.reduceMotion && root.expression === "sleep"
     loops: Animation.Infinite
     NumberAnimation { target: root; property: "breathe"; to: 1.05; duration: 3000; easing.type: Easing.InOutSine }
     NumberAnimation { target: root; property: "breathe"; to: 0.975; duration: 3000; easing.type: Easing.InOutSine }
@@ -1089,7 +1111,7 @@ Item {
 
   // Thinking, the eyes drift up and aside and the body sways slowly.
   property real thinkLook: root.expression === "think" ? 1 : 0
-  Behavior on thinkLook { NumberAnimation { duration: 320; easing.type: Easing.InOutCubic } }
+  Behavior on thinkLook { NumberAnimation { duration: root.ms(320); easing.type: Easing.InOutCubic } }
 
   // When the bob stops (another motion, or a drag) the mark settles back
   // to rest instead of freezing or snapping.
@@ -1098,12 +1120,12 @@ Item {
     target: root
     property: "idleY"
     to: 0
-    duration: 360
+    duration: root.ms(360)
     easing.type: Easing.OutCubic
   }
 
   SequentialAnimation {
-    running: root.motionName === "playful" && root.present && !root.dragging
+    running: root.liveMotion === "playful" && root.present && !root.dragging
     loops: Animation.Infinite
     onRunningChanged: if (!running && root.idleY !== 0) settleIdle.restart()
     NumberAnimation { target: root; property: "idleY"; to: -7; duration: 1800; easing.type: Easing.InOutSine }
@@ -1111,7 +1133,7 @@ Item {
   }
 
   NumberAnimation {
-    running: root.motionName === "hyper" && root.present && !root.dragging
+    running: root.liveMotion === "hyper" && root.present && !root.dragging
     loops: Animation.Infinite
     target: root
     property: "orbit"
@@ -1123,12 +1145,12 @@ Item {
   Timer {
     interval: 2600
     repeat: true
-    running: root.motionName === "hyper" && root.present && !root.dragging && !root.asking
+    running: root.liveMotion === "hyper" && root.present && !root.dragging && !root.asking
     onTriggered: root.hop()
   }
 
   SequentialAnimation {
-    running: root.expression === "sleep"
+    running: root.expression === "sleep" && !root.reduceMotion
     loops: Animation.Infinite
     NumberAnimation { target: root; property: "sleepDrift"; to: -8; duration: 1400; easing.type: Easing.InOutSine }
     NumberAnimation { target: root; property: "sleepDrift"; to: 0; duration: 1400; easing.type: Easing.InOutSine }
@@ -1137,24 +1159,24 @@ Item {
   // Anticipate, launch stretched, fall, land squashed, then settle.
   SequentialAnimation {
     id: hopAnim
-    NumberAnimation { target: root; property: "squash"; to: 0.88; duration: 70; easing.type: Easing.OutQuad }
+    NumberAnimation { target: root; property: "squash"; to: 0.88; duration: root.ms(70); easing.type: Easing.OutQuad }
     ParallelAnimation {
-      NumberAnimation { target: root; property: "hopY"; to: -18; duration: 170; easing.type: Easing.OutQuad }
-      NumberAnimation { target: root; property: "squash"; to: 1.07; duration: 120; easing.type: Easing.OutQuad }
+      NumberAnimation { target: root; property: "hopY"; to: -18; duration: root.ms(170); easing.type: Easing.OutQuad }
+      NumberAnimation { target: root; property: "squash"; to: 1.07; duration: root.ms(120); easing.type: Easing.OutQuad }
     }
     ParallelAnimation {
-      NumberAnimation { target: root; property: "hopY"; to: 0; duration: 170; easing.type: Easing.InQuad }
-      NumberAnimation { target: root; property: "squash"; to: 1; duration: 170; easing.type: Easing.InOutQuad }
+      NumberAnimation { target: root; property: "hopY"; to: 0; duration: root.ms(170); easing.type: Easing.InQuad }
+      NumberAnimation { target: root; property: "squash"; to: 1; duration: root.ms(170); easing.type: Easing.InOutQuad }
     }
-    NumberAnimation { target: root; property: "squash"; to: 0.9; duration: 70; easing.type: Easing.OutQuad }
-    NumberAnimation { target: root; property: "squash"; to: 1; duration: 240; easing.type: Easing.OutBack }
+    NumberAnimation { target: root; property: "squash"; to: 0.9; duration: root.ms(70); easing.type: Easing.OutQuad }
+    NumberAnimation { target: root; property: "squash"; to: 1; duration: root.ms(240); easing.type: Easing.OutBack }
   }
 
   SequentialAnimation {
     id: syllableAnim
-    NumberAnimation { target: root; property: "talkScale"; to: 1.08; duration: 90; easing.type: Easing.OutQuad }
-    NumberAnimation { target: root; property: "talkScale"; to: 0.96; duration: 90; easing.type: Easing.InOutQuad }
-    NumberAnimation { target: root; property: "talkScale"; to: 1; duration: 120; easing.type: Easing.OutQuad }
+    NumberAnimation { target: root; property: "talkScale"; to: 1.08; duration: root.ms(90); easing.type: Easing.OutQuad }
+    NumberAnimation { target: root; property: "talkScale"; to: 0.96; duration: root.ms(90); easing.type: Easing.InOutQuad }
+    NumberAnimation { target: root; property: "talkScale"; to: 1; duration: root.ms(120); easing.type: Easing.OutQuad }
   }
 
   NumberAnimation {
@@ -1163,25 +1185,25 @@ Item {
     property: "spinAngle"
     from: 0
     to: 360
-    duration: 700
+    duration: root.ms(700)
     easing.type: Easing.InOutCubic
   }
 
   SequentialAnimation {
     id: waveAnim
-    NumberAnimation { target: root; property: "waveAngle"; to: -10; duration: 140 }
-    NumberAnimation { target: root; property: "waveAngle"; to: 10; duration: 180 }
-    NumberAnimation { target: root; property: "waveAngle"; to: -6; duration: 140 }
-    NumberAnimation { target: root; property: "waveAngle"; to: 0; duration: 160 }
+    NumberAnimation { target: root; property: "waveAngle"; to: -10; duration: root.ms(140) }
+    NumberAnimation { target: root; property: "waveAngle"; to: 10; duration: root.ms(180) }
+    NumberAnimation { target: root; property: "waveAngle"; to: -6; duration: root.ms(140) }
+    NumberAnimation { target: root; property: "waveAngle"; to: 0; duration: root.ms(160) }
   }
 
   // A small give while the contour changes: shrink through the middle of
   // the morph, overshoot as it lands, settle.
   SequentialAnimation {
     id: morphPopAnim
-    NumberAnimation { target: root; property: "morphPop"; to: 0.94; duration: 260; easing.type: Easing.InOutQuad }
-    NumberAnimation { target: root; property: "morphPop"; to: 1.03; duration: 170; easing.type: Easing.OutQuad }
-    NumberAnimation { target: root; property: "morphPop"; to: 1; duration: 200; easing.type: Easing.InOutQuad }
+    NumberAnimation { target: root; property: "morphPop"; to: 0.94; duration: root.ms(260); easing.type: Easing.InOutQuad }
+    NumberAnimation { target: root; property: "morphPop"; to: 1.03; duration: root.ms(170); easing.type: Easing.OutQuad }
+    NumberAnimation { target: root; property: "morphPop"; to: 1; duration: root.ms(200); easing.type: Easing.InOutQuad }
   }
 
   NumberAnimation {
@@ -1190,7 +1212,7 @@ Item {
     property: "morphProgress"
     from: 0
     to: 1
-    duration: 560
+    duration: root.ms(560)
     easing.type: Easing.InOutCubic
   }
 
@@ -1234,8 +1256,8 @@ Item {
 
   SequentialAnimation {
     id: landAnim
-    NumberAnimation { target: root; property: "squash"; to: 0.9; duration: 80; easing.type: Easing.OutQuad }
-    NumberAnimation { target: root; property: "squash"; to: 1; duration: 260; easing.type: Easing.OutBack }
+    NumberAnimation { target: root; property: "squash"; to: 0.9; duration: root.ms(80); easing.type: Easing.OutQuad }
+    NumberAnimation { target: root; property: "squash"; to: 1; duration: root.ms(260); easing.type: Easing.OutBack }
   }
 
   function endDrag() {
@@ -1440,7 +1462,7 @@ Item {
         readonly property real lift: Math.max(0, -(root.idleY + root.hopY + Math.sin(root.orbit * Math.PI / 180) * 5 * root.orbitAmp)) + root.dragLift * 14
         readonly property real flat: Math.max(10, root.markSize * 0.12) / width
         property real rest: 0.34 * root.dodgeOpacity
-        Behavior on rest { NumberAnimation { duration: 160 } }
+        Behavior on rest { NumberAnimation { duration: root.ms(160) } }
         // Drawn as a circle and squashed, so the radial fade stays soft all
         // the way round the ellipse.
         width: root.markSize * 0.62
@@ -1505,7 +1527,8 @@ Item {
         opacity: root.dodgeOpacity
         scale: root.breathe * root.talkScale * root.morphPop * root.hoverScale * (1 + 0.06 * root.dragLift)
         attention: root.hovering ? 1.12 : 1
-        Behavior on attention { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+        reduceMotion: root.reduceMotion
+        Behavior on attention { NumberAnimation { duration: root.ms(160); easing.type: Easing.OutCubic } }
         transformOrigin: Item.Bottom
         transform: [
           Scale {
@@ -1520,7 +1543,7 @@ Item {
           },
           Rotation { origin.x: mark.width / 2; origin.y: mark.height; angle: root.spinAngle + root.waveAngle + Math.sin(root.thinkAngle * 0.5) * 3 * root.thinkLook + root.dragTilt }
         ]
-        Behavior on opacity { NumberAnimation { duration: 90 } }
+        Behavior on opacity { NumberAnimation { duration: root.ms(90) } }
 
         Rectangle {
           id: replyDot
@@ -1534,7 +1557,7 @@ Item {
           border.color: "#141416"
           scale: root.replyUnread ? 1 : 0
           visible: scale > 0.01
-          Behavior on scale { NumberAnimation { duration: 260; easing.type: Easing.OutBack } }
+          Behavior on scale { NumberAnimation { duration: root.ms(260); easing.type: Easing.OutBack } }
         }
       }
 

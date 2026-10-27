@@ -70,6 +70,8 @@ Rectangle {
     return out
   }
 
+  function ms(value) { return app && app.reduceMotion ? 0 : value }
+
   function focusPrompt() {
     promptField.forceActiveFocus()
     promptField.selectAll()
@@ -80,7 +82,7 @@ Rectangle {
   }
 
   FrameAnimation {
-    running: voiceButton.dictating && bubble.visible
+    running: voiceButton.dictating && bubble.visible && !(app && app.reduceMotion)
     onTriggered: voiceButton.wave = (voiceButton.wave + frameTime * 6.4) % 6.28318
   }
 
@@ -92,7 +94,7 @@ Rectangle {
     width: bubble.width - 32
     height: bubble.height - 28
     visible: bubble.appearancePage || x < bubble.width
-    Behavior on x { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+    Behavior on x { NumberAnimation { duration: bubble.ms(240); easing.type: Easing.OutCubic } }
   }
 
   Column {
@@ -102,7 +104,7 @@ Rectangle {
     width: parent.width - 32
     spacing: 12
     visible: !bubble.appearancePage || x > -bubble.width + 16
-    Behavior on x { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+    Behavior on x { NumberAnimation { duration: bubble.ms(240); easing.type: Easing.OutCubic } }
 
     Item {
       id: header
@@ -418,7 +420,7 @@ Rectangle {
       visible: app.asking && app.bubbleBody === ""
       property real phase: 0
       FrameAnimation {
-        running: typing.visible
+        running: typing.visible && !(app && app.reduceMotion)
         onTriggered: typing.phase = (typing.phase + frameTime * 5) % (Math.PI * 2)
       }
       Row {
@@ -477,7 +479,7 @@ Rectangle {
         width: parent.width - 10
         height: 16
         opacity: replyFlick.contentY > 1 ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: 120 } }
+        Behavior on opacity { NumberAnimation { duration: bubble.ms(120) } }
         gradient: Gradient {
           GradientStop { position: 0; color: "#141416" }
           GradientStop { position: 1; color: "#00141416" }
@@ -489,7 +491,7 @@ Rectangle {
         width: parent.width - 10
         height: 16
         opacity: replyFlick.contentY + replyFlick.height < replyFlick.contentHeight - 1 ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: 120 } }
+        Behavior on opacity { NumberAnimation { duration: bubble.ms(120) } }
         gradient: Gradient {
           GradientStop { position: 0; color: "#00141416" }
           GradientStop { position: 1; color: "#141416" }
@@ -545,7 +547,7 @@ Rectangle {
         border.width: 1
         border.color: "#2C2C30"
         opacity: usable ? 1 : 0.45
-        Behavior on opacity { NumberAnimation { duration: 140 } }
+        Behavior on opacity { NumberAnimation { duration: bubble.ms(140) } }
         Rectangle {
           width: 14
           height: 1.6
@@ -581,15 +583,15 @@ Rectangle {
         color: mode === "send" ? "#F4F4F5" : "#232327"
         border.width: dictating && mode === "voice" ? 1.5 : 1
         border.color: mode === "send" ? "#F4F4F5" : (dictating ? (app ? app.accent : "#F28B30") : "#3F3F46")
-        Behavior on color { ColorAnimation { duration: 120 } }
+        Behavior on color { ColorAnimation { duration: bubble.ms(120) } }
 
         Canvas {
           id: waveCanvas
           anchors.fill: parent
           opacity: voiceButton.mode === "voice" ? 1 : 0
           scale: voiceButton.mode === "voice" ? 1 : 0.6
-          Behavior on opacity { NumberAnimation { duration: 120 } }
-          Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+          Behavior on opacity { NumberAnimation { duration: bubble.ms(120) } }
+          Behavior on scale { NumberAnimation { duration: bubble.ms(160); easing.type: Easing.OutCubic } }
           onPaint: {
             var ctx = getContext("2d")
             ctx.reset()
@@ -618,8 +620,8 @@ Rectangle {
           anchors.fill: parent
           opacity: voiceButton.mode === "send" ? 1 : 0
           scale: voiceButton.mode === "send" ? 1 : 0.6
-          Behavior on opacity { NumberAnimation { duration: 120 } }
-          Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+          Behavior on opacity { NumberAnimation { duration: bubble.ms(120) } }
+          Behavior on scale { NumberAnimation { duration: bubble.ms(160); easing.type: Easing.OutCubic } }
           onPaint: {
             var ctx = getContext("2d")
             ctx.reset()
@@ -645,8 +647,8 @@ Rectangle {
           color: "#F4F4F5"
           opacity: voiceButton.mode === "stop" ? 1 : 0
           scale: voiceButton.mode === "stop" ? 1 : 0.6
-          Behavior on opacity { NumberAnimation { duration: 120 } }
-          Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+          Behavior on opacity { NumberAnimation { duration: bubble.ms(120) } }
+          Behavior on scale { NumberAnimation { duration: bubble.ms(160); easing.type: Easing.OutCubic } }
         }
 
         onDictatingChanged: waveCanvas.requestPaint()

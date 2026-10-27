@@ -28,6 +28,7 @@ Item {
   // Eye opening multiplier for attention, such as the pointer resting on
   // the mark.
   property real attention: 1
+  property bool reduceMotion: false
   onAttentionChanged: canvas.requestPaint()
   property bool mixFromColors: false
   property color fillFrom: "#F28B30"
@@ -95,9 +96,9 @@ Item {
   property real poseTilt: pose.tilt
   property real poseHeight: pose.height
   property real poseOpen: pose.open
-  Behavior on poseTilt { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
-  Behavior on poseHeight { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
-  Behavior on poseOpen { NumberAnimation { duration: 180; easing.type: Easing.InOutCubic } }
+  Behavior on poseTilt { NumberAnimation { duration: mark.reduceMotion ? 0 : 160; easing.type: Easing.OutCubic } }
+  Behavior on poseHeight { NumberAnimation { duration: mark.reduceMotion ? 0 : 160; easing.type: Easing.OutCubic } }
+  Behavior on poseOpen { NumberAnimation { duration: mark.reduceMotion ? 0 : 180; easing.type: Easing.InOutCubic } }
   onPoseTiltChanged: canvas.requestPaint()
   onPoseHeightChanged: canvas.requestPaint()
   onPoseOpenChanged: canvas.requestPaint()

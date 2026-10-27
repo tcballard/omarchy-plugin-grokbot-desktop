@@ -738,7 +738,7 @@ test('morph colours keep their saturation through the blend', () => {
 test('thinking and sleeping read at a glance', () => {
   assert.match(main, /property real thinkLook: root\.expression === "think" \? 1 : 0/)
   assert.match(main, /Math\.sin\(root\.thinkAngle \* 0\.5\) \* 3 \* root\.thinkLook/)
-  assert.match(main, /running: root\.present && !root\.dragging && root\.expression === "sleep"/)
+  assert.match(main, /running: root\.present && !root\.dragging && !root\.reduceMotion && root\.expression === "sleep"/)
   assert.match(read('BubblePanel.qml'), /visible: app\.asking && app\.bubbleBody === ""/)
 })
 
@@ -755,4 +755,15 @@ test('dodge fades with distance and visibly fades back during the dwell', () => 
   assert.match(dodge, /pointerGap\(\) \/ 36/)
   assert.match(dodge, /held = \(Date\.now\(\) - root\.dwellSince\) \/ root\.dwellMs/)
   assert.match(main, /opacity: root\.dodgeOpacity/)
+})
+
+test('reduced motion stops loops and zeroes one-shot timing', () => {
+  assert.match(main, /Commons\.Style\.reduceMotion === true/)
+  assert.match(main, /readonly property string liveMotion: root\.reduceMotion \? "calm" : root\.motionName/)
+  for (const loop of main.matchAll(/loops: Animation\.Infinite/g)) {
+    const head = main.slice(Math.max(0, loop.index - 200), loop.index)
+    assert.match(head, /reduceMotion|liveMotion/, 'every endless loop stops under reduced motion')
+  }
+  assert.match(main, /id: morphAnim[\s\S]{0,200}duration: root\.ms\(560\)/)
+  assert.doesNotMatch(read('BubblePanel.qml'), /duration: \d/)
 })
