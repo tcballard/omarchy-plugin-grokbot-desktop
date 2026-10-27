@@ -838,3 +838,18 @@ test('the right-click menu opens toward the screen from any corner', () => {
 test('the prompt bubble fits short prompts', () => {
   assert.match(read('BubblePanel.qml'), /width: Math\.min\(implicitWidth, bubble\.width - 120\)/)
 })
+
+test('chrome colours come from one token file and text follows the shell font', () => {
+  for (const file of ['BubblePanel.qml', 'SettingsPanel.qml']) {
+    const source = read(file)
+    assert.doesNotMatch(source, /"#[0-9A-Fa-f]{6,8}"/, `${file} uses qml/theme.js`)
+    for (const element of source.matchAll(/textFormat: (Text|TextEdit)\.PlainText/g)) {
+      const before = source.slice(Math.max(0, element.index - 600), element.index)
+      const start = Math.max(before.lastIndexOf('Text {'), before.lastIndexOf('TextEdit {'))
+      assert.match(before.slice(start), /font\.family:/, `${file} text without a family`)
+    }
+  }
+  assert.match(main, /Commons\.Style\.font\.family/)
+  const theme = loadLibrary('qml/theme.js')
+  assert.equal(theme.surface, '#141416')
+})

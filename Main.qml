@@ -9,6 +9,7 @@ import qs.Commons as Commons
 import "qml/shapes.js" as Shapes
 import "qml/palette.js" as Palette
 import "qml/dictation.js" as Dictation
+import "qml/theme.js" as Theme
 
 // Grok Bot desktop companion. A service inside omarchy-shell: a transparent
 // layer-shell window, click-through except for the mark (and the bubble or
@@ -183,6 +184,18 @@ Item {
   }
 
   function ms(value) { return root.reduceMotion ? 0 : value }
+
+  // Text follows the shell's font (the fontconfig alias `omarchy font set`
+  // writes) where the shell exposes it; otherwise Qt's default.
+  readonly property string fontFamily: root.styleFontFamily()
+
+  function styleFontFamily() {
+    try {
+      return Commons.Style && Commons.Style.font ? String(Commons.Style.font.family || "") : ""
+    } catch (e) {
+      return ""
+    }
+  }
 
   onReduceMotionChanged: {
     if (!root.reduceMotion) return
@@ -390,7 +403,7 @@ Item {
 
   function ringColor(value) {
     var c = Qt.color(value)
-    return Palette.ringReadable({ r: c.r, g: c.g, b: c.b }) ? c : Qt.color("#F4F4F5")
+    return Palette.ringReadable({ r: c.r, g: c.g, b: c.b }) ? c : Qt.color(Theme.text)
   }
 
   function matchBot(query) {
@@ -1476,9 +1489,9 @@ Item {
       width: 188
       height: menuColumn.implicitHeight + 16
       radius: 12
-      color: "#141416"
+      color: Theme.surface
       border.width: 1
-      border.color: "#27272A"
+      border.color: Theme.lifted
       // Opens on the side of the mark that faces the screen, level with the
       // mark's floor or top depending on the corner.
       x: {
@@ -1512,8 +1525,9 @@ Item {
               anchors.verticalCenter: parent.verticalCenter
               x: 8
               text: modelData.label
-              color: "#F4F4F5"
+              color: Theme.text
               font.pixelSize: 13
+              font.family: root.fontFamily
               textFormat: Text.PlainText
             }
             MouseArea {
@@ -1592,9 +1606,9 @@ Item {
         width: nameText.implicitWidth + 20
         height: 24
         radius: 12
-        color: "#141416"
+        color: Theme.surface
         border.width: 1
-        border.color: "#27272A"
+        border.color: Theme.lifted
         anchors.horizontalCenter: parent.horizontalCenter
         y: root.anchorFromBottom ? -height - 4 + (shown ? 0 : 6) : parent.height + 4 - (shown ? 0 : 6)
         opacity: shown ? 1 : 0
@@ -1606,9 +1620,10 @@ Item {
           id: nameText
           anchors.centerIn: parent
           text: nameTag.label
-          color: "#F4F4F5"
+          color: Theme.text
           font.pixelSize: 12
           font.bold: true
+          font.family: root.fontFamily
           textFormat: Text.PlainText
         }
       }
@@ -1669,9 +1684,9 @@ Item {
           radius: width / 2
           x: mark.width * 0.7
           y: mark.height * 0.14
-          color: "#F4F4F5"
+          color: Theme.text
           border.width: 2
-          border.color: "#141416"
+          border.color: Theme.surface
           scale: root.replyUnread ? 1 : 0
           visible: scale > 0.01
           Behavior on scale { NumberAnimation { duration: root.ms(260); easing.type: Easing.OutBack } }

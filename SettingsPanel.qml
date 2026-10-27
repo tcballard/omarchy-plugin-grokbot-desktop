@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import "qml/theme.js" as Theme
 
 // Monochrome appearance page. It slides in inside the bubble card, so it has
 // no chrome of its own. Inactive marks stay muted; the active shape uses the
@@ -39,15 +40,15 @@ Item {
       height: 32
       radius: 16
       anchors.verticalCenter: parent.verticalCenter
-      color: "#1C1C1F"
+      color: Theme.raised
       border.width: 1
-      border.color: "#2E2E32"
+      border.color: Theme.edge
       Canvas {
         anchors.fill: parent
         onPaint: {
           var ctx = getContext("2d")
           ctx.reset()
-          ctx.strokeStyle = "#E4E4E7"
+          ctx.strokeStyle = Theme.icon
           ctx.lineWidth = 1.6
           ctx.lineCap = "round"
           ctx.lineJoin = "round"
@@ -66,9 +67,10 @@ Item {
       anchors.leftMargin: 10
       anchors.verticalCenter: parent.verticalCenter
       text: "Appearance"
-      color: "#F4F4F5"
+      color: Theme.text
       font.pixelSize: 15
       font.bold: true
+      font.family: app.fontFamily
       textFormat: Text.PlainText
     }
 
@@ -78,25 +80,26 @@ Item {
       width: syncLabel.implicitWidth + 28
       height: 24
       radius: 12
-      color: app.syncOn ? "#18261E" : "#19191C"
+      color: app.syncOn ? Theme.okFill : Theme.field
       border.width: 1
-      border.color: app.syncOn ? "#284233" : "#2E2E32"
+      border.color: app.syncOn ? Theme.okEdge : Theme.edge
       Rectangle {
         x: 8
         y: 8
         width: 8
         height: 8
         radius: 4
-        color: app.syncOn ? "#5BC67A" : "#71717A"
+        color: app.syncOn ? Theme.ok : Theme.textFaint
       }
       Text {
         id: syncLabel
         x: 20
         y: 4
         text: app.syncOn ? "Synced · " + app.botLabel() : "Custom"
-        color: app.syncOn ? "#5BC67A" : "#A1A1AA"
+        color: app.syncOn ? Theme.ok : Theme.textMuted
         font.pixelSize: 11
         font.bold: true
+        font.family: app.fontFamily
         textFormat: Text.PlainText
       }
       MouseArea { anchors.fill: parent; onClicked: app.setSync(!app.syncOn) }
@@ -122,7 +125,7 @@ Item {
 
       Text {
         text: "MARK SILHOUETTE  ·  " + drawer.title(drawer.hoverShape !== "" ? drawer.hoverShape : app.canonicalShape)
-        color: "#71717A"
+        color: Theme.textFaint
         font.pixelSize: 10
         font.bold: true
         font.family: "monospace"
@@ -144,9 +147,9 @@ Item {
             width: shapeGrid.cellW
             height: 44
             radius: 12
-            color: "#19191C"
+            color: Theme.field
             border.width: active ? 1.5 : 1
-            border.color: active ? drawer.tone : "#26262A"
+            border.color: active ? drawer.tone : Theme.edgeSoft
             Rectangle {
               anchors.fill: parent
               radius: parent.radius
@@ -162,8 +165,8 @@ Item {
               morph: 1
               colorName: active ? app.shownColor : "gray"
               accent: app.accent
-              fillHex: active ? "" : "#71717A"
-              cutoutHex: active && app.shownColor === "black" ? "#F4F4F5" : "#19191C"
+              fillHex: active ? "" : Theme.textFaint
+              cutoutHex: active && app.shownColor === "black" ? Theme.text : Theme.field
               eyeOpen: 1
             }
             MouseArea {
@@ -178,7 +181,7 @@ Item {
 
       Text {
         text: "COLOUR  ·  " + (drawer.hoverColor !== "" ? drawer.hoverColor : (app.shownColor === "omarchy" ? "Theme accent" : drawer.title(app.shownColor)))
-        color: "#71717A"
+        color: Theme.textFaint
         font.pixelSize: 10
         font.bold: true
         font.family: "monospace"
@@ -201,7 +204,7 @@ Item {
               radius: 14
               color: "transparent"
               border.width: modelData === app.shownColor ? 2 : 0
-              border.color: "#F4F4F5"
+              border.color: Theme.text
             }
             Rectangle {
               anchors.centerIn: parent
@@ -210,7 +213,7 @@ Item {
               radius: 10
               color: app.paletteFill(modelData)
               border.width: 1
-              border.color: "#27272A"
+              border.color: Theme.lifted
             }
             MouseArea {
               anchors.fill: parent
@@ -230,7 +233,7 @@ Item {
             radius: 14
             color: "transparent"
             border.width: app.shownColor === "omarchy" ? 2 : 0
-            border.color: "#F4F4F5"
+            border.color: Theme.text
           }
           Rectangle {
             anchors.centerIn: parent
@@ -239,14 +242,14 @@ Item {
             radius: 10
             color: app.accent
             border.width: 1
-            border.color: "#27272A"
+            border.color: Theme.lifted
             // A hole marks the swatch that follows the theme accent.
             Rectangle {
               anchors.centerIn: parent
               width: 8
               height: 8
               radius: 4
-              color: "#141416"
+              color: Theme.surface
             }
           }
           MouseArea {
@@ -260,7 +263,7 @@ Item {
 
       Text {
         text: "IDLE MOTION & RIG"
-        color: "#71717A"
+        color: Theme.textFaint
         font.pixelSize: 10
         font.bold: true
         font.family: "monospace"
@@ -284,24 +287,26 @@ Item {
             width: motionRow.cardW
             height: 44
             radius: 11
-            color: active ? "#232327" : "#19191C"
+            color: active ? Theme.selected : Theme.field
             border.width: active ? 1.5 : 1
-            border.color: active ? drawer.tone : "#26262A"
+            border.color: active ? drawer.tone : Theme.edgeSoft
             Text {
               x: 10
               y: 6
               text: modelData.label
-              color: active ? "#F4F4F5" : "#A1A1AA"
+              color: active ? Theme.text : Theme.textMuted
               font.pixelSize: 12
               font.bold: active
+              font.family: app.fontFamily
               textFormat: Text.PlainText
             }
             Text {
               x: 10
               y: 24
               text: modelData.detail
-              color: active ? drawer.tone : "#71717A"
+              color: active ? drawer.tone : Theme.textFaint
               font.pixelSize: 10
+              font.family: app.fontFamily
               textFormat: Text.PlainText
             }
             MouseArea { anchors.fill: parent; onClicked: app.setMotion(modelData.id) }
@@ -312,7 +317,7 @@ Item {
       Text {
         readonly property var corners: ({ br: "Bottom right", bl: "Bottom left", tr: "Top right", tl: "Top left" })
         text: "PLACEMENT  ·  " + corners[app.anchorName]
-        color: "#71717A"
+        color: Theme.textFaint
         font.pixelSize: 10
         font.bold: true
         font.family: "monospace"
@@ -330,9 +335,9 @@ Item {
           width: 66
           height: 44
           radius: 9
-          color: "#19191C"
+          color: Theme.field
           border.width: 1
-          border.color: "#26262A"
+          border.color: Theme.edgeSoft
           Repeater {
             model: ["tl", "tr", "bl", "br"]
             delegate: Item {
@@ -348,7 +353,7 @@ Item {
                 radius: width / 2
                 anchors.centerIn: parent
                 anchors.horizontalCenterOffset: modelData.charAt(1) === "l" ? -4 : 4
-                color: active ? drawer.tone : (cornerArea.containsMouse ? "#A1A1AA" : "#52525B")
+                color: active ? drawer.tone : (cornerArea.containsMouse ? Theme.textMuted : Theme.dim)
                 Behavior on width { NumberAnimation { duration: app && app.reduceMotion ? 0 : 140; easing.type: Easing.OutCubic } }
               }
               MouseArea {
@@ -376,16 +381,17 @@ Item {
               width: 64
               height: 32
               radius: 10
-              color: active ? "#232327" : "#19191C"
+              color: active ? Theme.selected : Theme.field
               border.width: active ? 1.5 : 1
-              border.color: active ? drawer.tone : "#26262A"
+              border.color: active ? drawer.tone : Theme.edgeSoft
               z: active ? 1 : 0
               Text {
                 anchors.centerIn: parent
                 text: drawer.title(modelData)
-                color: active ? "#F4F4F5" : "#A1A1AA"
+                color: active ? Theme.text : Theme.textMuted
                 font.pixelSize: 11
                 font.bold: active
+                font.family: app.fontFamily
                 textFormat: Text.PlainText
               }
               MouseArea { anchors.fill: parent; onClicked: app.setSize(modelData) }
@@ -399,25 +405,26 @@ Item {
           width: dodgeLabel.implicitWidth + 40
           height: 32
           radius: 10
-          color: app.dodgeOn ? "#232327" : "#19191C"
+          color: app.dodgeOn ? Theme.selected : Theme.field
           border.width: app.dodgeOn ? 1.5 : 1
-          border.color: app.dodgeOn ? drawer.tone : "#26262A"
+          border.color: app.dodgeOn ? drawer.tone : Theme.edgeSoft
           Rectangle {
             x: 10
             anchors.verticalCenter: parent.verticalCenter
             width: 8
             height: 8
             radius: 4
-            color: app.dodgeOn ? drawer.tone : "#52525B"
+            color: app.dodgeOn ? drawer.tone : Theme.dim
           }
           Text {
             id: dodgeLabel
             x: 26
             anchors.verticalCenter: parent.verticalCenter
             text: "Dodge"
-            color: app.dodgeOn ? "#F4F4F5" : "#A1A1AA"
+            color: app.dodgeOn ? Theme.text : Theme.textMuted
             font.pixelSize: 11
             font.bold: app.dodgeOn
+            font.family: app.fontFamily
             textFormat: Text.PlainText
           }
           MouseArea { anchors.fill: parent; onClicked: app.setDodge(!app.dodgeOn) }
@@ -433,8 +440,8 @@ Item {
     opacity: flick.contentY + flick.height < flick.contentHeight - 1 ? 1 : 0
     Behavior on opacity { NumberAnimation { duration: app && app.reduceMotion ? 0 : 120 } }
     gradient: Gradient {
-      GradientStop { position: 0; color: "#00141416" }
-      GradientStop { position: 1; color: "#141416" }
+      GradientStop { position: 0; color: Theme.surfaceClear }
+      GradientStop { position: 1; color: Theme.surface }
     }
   }
 }

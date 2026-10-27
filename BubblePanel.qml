@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import "qml/theme.js" as Theme
 
 // Grok Bot popover. One card with two pages: the chat and, behind the
 // sliders button, the appearance page. Roster text, replies, prompts, and
@@ -25,9 +26,9 @@ Rectangle {
     NumberAnimation { duration: bubble.ms(200); easing.type: Easing.OutCubic }
   }
   radius: 22
-  color: "#141416"
+  color: Theme.surface
   border.width: 1
-  border.color: "#27272A"
+  border.color: Theme.lifted
   clip: true
 
   // The primary bot plus the three most recently used, shown in roster
@@ -132,9 +133,9 @@ Rectangle {
         height: 32
         radius: 16
         anchors.verticalCenter: parent.verticalCenter
-        color: app.settingsOpen ? "#232327" : "#1C1C1F"
+        color: app.settingsOpen ? Theme.selected : Theme.raised
         border.width: 1
-        border.color: app.settingsOpen ? "#3F3F46" : "#2E2E32"
+        border.color: app.settingsOpen ? Theme.edgeStrong : Theme.edge
         Canvas {
           id: slidersIcon
           anchors.fill: parent
@@ -144,7 +145,7 @@ Rectangle {
             ctx.reset()
             ctx.lineCap = "round"
             ctx.lineWidth = 1.4
-            ctx.strokeStyle = "#E4E4E7"
+            ctx.strokeStyle = Theme.icon
             var rows = [3, 9, 15]
             var knobs = [4, 14, 8]
             var i
@@ -153,7 +154,7 @@ Rectangle {
               ctx.moveTo(1, rows[i])
               ctx.lineTo(width - 1, rows[i])
               ctx.stroke()
-              ctx.fillStyle = i === 1 ? "#5BC67A" : "#F4F4F5"
+              ctx.fillStyle = i === 1 ? Theme.ok : Theme.text
               ctx.beginPath()
               ctx.arc(knobs[i], rows[i], 2.1, 0, Math.PI * 2)
               ctx.fill()
@@ -174,15 +175,15 @@ Rectangle {
         radius: 16
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
-        color: "#1C1C1F"
+        color: Theme.raised
         border.width: 1
-        border.color: "#2E2E32"
+        border.color: Theme.edge
         Canvas {
           anchors.fill: parent
           onPaint: {
             var ctx = getContext("2d")
             ctx.reset()
-            ctx.strokeStyle = "#A1A1AA"
+            ctx.strokeStyle = Theme.textMuted
             ctx.lineWidth = 1.6
             ctx.lineCap = "round"
             ctx.beginPath()
@@ -202,9 +203,9 @@ Rectangle {
         height: 36
         radius: 18
         anchors.horizontalCenter: parent.horizontalCenter
-        color: "#1C1C1F"
+        color: Theme.raised
         border.width: 1
-        border.color: "#2E2E32"
+        border.color: Theme.edge
         width: Math.min(parent.width - 80, headerRow.implicitWidth + 22)
 
         Row {
@@ -229,7 +230,7 @@ Rectangle {
             fillFrom: app.fillFrom
             eyeFrom: app.eyeFrom
             accent: app.accent
-            cutoutHex: app.shownColor === "black" ? "#F4F4F5" : "#1C1C1F"
+            cutoutHex: app.shownColor === "black" ? Theme.text : Theme.raised
             expression: "idle"
             eyeOpen: 1
           }
@@ -237,18 +238,20 @@ Rectangle {
             id: nameText
             y: 9
             text: app.botLabel()
-            color: "#F4F4F5"
+            color: Theme.text
             font.pixelSize: 14
             font.bold: true
+            font.family: app.fontFamily
             textFormat: Text.PlainText
           }
           Text {
             y: 11
             width: Math.max(0, Math.min(implicitWidth, headerRow.roleRoom))
             text: "· " + app.botTag()
-            color: "#A1A1AA"
+            color: Theme.textMuted
             font.pixelSize: 12
             elide: Text.ElideRight
+            font.family: app.fontFamily
             textFormat: Text.PlainText
           }
           Canvas {
@@ -260,7 +263,7 @@ Rectangle {
             onPaint: {
               var ctx = getContext("2d")
               ctx.reset()
-              ctx.strokeStyle = "#A1A1AA"
+              ctx.strokeStyle = Theme.textMuted
               ctx.lineWidth = 1.4
               ctx.lineCap = "round"
               ctx.lineJoin = "round"
@@ -300,14 +303,14 @@ Rectangle {
           delegate: Rectangle {
             required property var modelData
             readonly property bool active: bubble.activePin(modelData.id)
-            readonly property string plate: active ? "#27272A" : "#1C1C1F"
-            readonly property string eyePlate: modelData.color === "black" ? "#F4F4F5" : plate
+            readonly property string plate: active ? Theme.lifted : Theme.raised
+            readonly property string eyePlate: modelData.color === "black" ? Theme.text : plate
             width: pinLabel.width + 34
             height: 28
             radius: 14
             color: plate
             border.width: active ? 1.5 : 1
-            border.color: active ? app.ringColor(app.paletteFill(modelData.color)) : "#2E2E32"
+            border.color: active ? app.ringColor(app.paletteFill(modelData.color)) : Theme.edge
             CompanionMark {
               x: 8
               y: 6
@@ -328,9 +331,10 @@ Rectangle {
               width: Math.min(implicitWidth, 120)
               elide: Text.ElideRight
               text: modelData.label
-              color: active ? "#F4F4F5" : "#A1A1AA"
+              color: active ? Theme.text : Theme.textMuted
               font.pixelSize: 11
               font.bold: active
+              font.family: app.fontFamily
               textFormat: Text.PlainText
             }
             MouseArea {
@@ -345,16 +349,17 @@ Rectangle {
           width: extraLabel.implicitWidth + 18
           height: 28
           radius: 14
-          color: app.rosterExpanded ? "#232327" : "#1C1C1F"
+          color: app.rosterExpanded ? Theme.selected : Theme.raised
           border.width: 1
-          border.color: "#2E2E32"
+          border.color: Theme.edge
           Text {
             id: extraLabel
             anchors.centerIn: parent
             text: app.rosterExpanded ? "Less" : "+" + bubble.extraBots.length
-            color: "#A1A1AA"
+            color: Theme.textMuted
             font.pixelSize: 11
             font.bold: true
+            font.family: app.fontFamily
             textFormat: Text.PlainText
           }
           MouseArea {
@@ -376,14 +381,14 @@ Rectangle {
           delegate: Rectangle {
             required property var modelData
             readonly property bool active: bubble.activePin(modelData.id)
-            readonly property string plate: active ? "#27272A" : "#1C1C1F"
-            readonly property string eyePlate: modelData.color === "black" ? "#F4F4F5" : plate
+            readonly property string plate: active ? Theme.lifted : Theme.raised
+            readonly property string eyePlate: modelData.color === "black" ? Theme.text : plate
             width: extraName.implicitWidth + 34
             height: 28
             radius: 14
             color: plate
             border.width: active ? 1.5 : 1
-            border.color: active ? app.ringColor(app.paletteFill(modelData.color)) : "#2E2E32"
+            border.color: active ? app.ringColor(app.paletteFill(modelData.color)) : Theme.edge
             CompanionMark {
               x: 8
               y: 6
@@ -402,9 +407,10 @@ Rectangle {
               x: 28
               y: 6
               text: modelData.label
-              color: active ? "#F4F4F5" : "#A1A1AA"
+              color: active ? Theme.text : Theme.textMuted
               font.pixelSize: 11
               font.bold: active
+              font.family: app.fontFamily
               textFormat: Text.PlainText
             }
             MouseArea {
@@ -419,7 +425,7 @@ Rectangle {
     Rectangle {
       width: parent.width
       height: 1
-      color: "#222226"
+      color: Theme.divider
       visible: app.askedText !== "" || app.bubbleBody !== "" || app.noticeLinks.length > 0
     }
 
@@ -433,18 +439,19 @@ Rectangle {
         width: userText.width + 28
         height: userText.implicitHeight + 20
         radius: 18
-        color: "#232327"
+        color: Theme.selected
         border.width: 1
-        border.color: "#2E2E32"
+        border.color: Theme.edge
         Text {
           id: userText
           x: 14
           y: 10
           width: Math.min(implicitWidth, bubble.width - 120)
           text: app.askedText
-          color: "#F4F4F5"
+          color: Theme.text
           font.pixelSize: 13
           wrapMode: Text.WordWrap
+          font.family: app.fontFamily
           textFormat: Text.PlainText
         }
       }
@@ -472,7 +479,7 @@ Rectangle {
             width: 7
             height: 7
             radius: 3.5
-            color: "#A1A1AA"
+            color: Theme.textMuted
             opacity: 0.35 + 0.65 * Math.max(0, Math.sin(typing.phase - index * 0.7))
             y: -2 * Math.max(0, Math.sin(typing.phase - index * 0.7))
           }
@@ -503,11 +510,12 @@ Rectangle {
           text: app.bubbleBody
           readOnly: true
           selectByMouse: true
-          color: "#F4F4F5"
-          selectionColor: "#3F3F46"
-          selectedTextColor: "#F4F4F5"
+          color: Theme.text
+          selectionColor: Theme.edgeStrong
+          selectedTextColor: Theme.text
           font.pixelSize: 13
           wrapMode: TextEdit.Wrap
+          font.family: app.fontFamily
           textFormat: TextEdit.PlainText
         }
 
@@ -520,8 +528,8 @@ Rectangle {
         opacity: replyFlick.contentY > 1 ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: bubble.ms(120) } }
         gradient: Gradient {
-          GradientStop { position: 0; color: "#141416" }
-          GradientStop { position: 1; color: "#00141416" }
+          GradientStop { position: 0; color: Theme.surface }
+          GradientStop { position: 1; color: Theme.surfaceClear }
         }
       }
 
@@ -532,8 +540,8 @@ Rectangle {
         opacity: replyFlick.contentY + replyFlick.height < replyFlick.contentHeight - 1 ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: bubble.ms(120) } }
         gradient: Gradient {
-          GradientStop { position: 0; color: "#00141416" }
-          GradientStop { position: 1; color: "#141416" }
+          GradientStop { position: 0; color: Theme.surfaceClear }
+          GradientStop { position: 1; color: Theme.surface }
         }
       }
     }
@@ -549,15 +557,16 @@ Rectangle {
           width: linkLabel.implicitWidth + 18
           height: 28
           radius: 14
-          color: "#19191C"
+          color: Theme.field
           border.width: 1
-          border.color: "#2A2A2E"
+          border.color: Theme.edgeLink
           Text {
             id: linkLabel
             anchors.centerIn: parent
             text: modelData.label
-            color: "#A1A1AA"
+            color: Theme.textMuted
             font.pixelSize: 12
+            font.family: app.fontFamily
             textFormat: Text.PlainText
           }
           MouseArea {
@@ -582,9 +591,9 @@ Rectangle {
         width: 42
         height: 42
         radius: 21
-        color: "#1C1C1F"
+        color: Theme.raised
         border.width: 1
-        border.color: "#2C2C30"
+        border.color: Theme.edgeField
         opacity: usable ? 1 : 0.45
         Behavior on opacity { NumberAnimation { duration: bubble.ms(140) } }
         Rectangle {
@@ -592,14 +601,14 @@ Rectangle {
           height: 1.6
           radius: 1
           anchors.centerIn: parent
-          color: "#D4D4D8"
+          color: Theme.iconSoft
         }
         Rectangle {
           width: 1.6
           height: 14
           radius: 1
           anchors.centerIn: parent
-          color: "#D4D4D8"
+          color: Theme.iconSoft
         }
         MouseArea {
           anchors.fill: parent
@@ -612,16 +621,16 @@ Rectangle {
         id: voiceButton
         readonly property bool dictating: app ? app.dictating : false
         property real wave: 0
-        property string ink: dictating ? "#F28B30" : "#F4F4F5"
+        property string ink: dictating ? Theme.recording : Theme.text
         readonly property bool asking: app ? app.asking : false
         readonly property string mode: asking ? "stop" : (promptField.text.trim() !== "" ? "send" : "voice")
         width: 42
         height: 42
         radius: 21
         anchors.right: parent.right
-        color: mode === "send" ? "#F4F4F5" : "#232327"
+        color: mode === "send" ? Theme.text : Theme.selected
         border.width: dictating && mode === "voice" ? 1.5 : 1
-        border.color: mode === "send" ? "#F4F4F5" : (dictating ? (app ? app.accent : "#F28B30") : "#3F3F46")
+        border.color: mode === "send" ? Theme.text : (dictating ? (app ? app.accent : Theme.recording) : Theme.edgeStrong)
         Behavior on color { ColorAnimation { duration: bubble.ms(120) } }
 
         Canvas {
@@ -664,7 +673,7 @@ Rectangle {
           onPaint: {
             var ctx = getContext("2d")
             ctx.reset()
-            ctx.strokeStyle = "#141416"
+            ctx.strokeStyle = Theme.surface
             ctx.lineWidth = 2
             ctx.lineCap = "round"
             ctx.lineJoin = "round"
@@ -683,7 +692,7 @@ Rectangle {
           width: 12
           height: 12
           radius: 3
-          color: "#F4F4F5"
+          color: Theme.text
           opacity: voiceButton.mode === "stop" ? 1 : 0
           scale: voiceButton.mode === "stop" ? 1 : 0.6
           Behavior on opacity { NumberAnimation { duration: bubble.ms(120) } }
@@ -721,9 +730,9 @@ Rectangle {
         anchors.rightMargin: 8
         height: 42
         radius: 21
-        color: "#19191C"
+        color: Theme.field
         border.width: 1
-        border.color: "#2C2C30"
+        border.color: Theme.edgeField
 
         TextField {
           id: promptField
@@ -734,9 +743,10 @@ Rectangle {
           bottomPadding: 0
           verticalAlignment: TextInput.AlignVCenter
           placeholderText: app.asking ? "Asking…" : ("Ask " + app.botLabel())
-          placeholderTextColor: "#71717A"
+          placeholderTextColor: Theme.textFaint
+          font.family: app.fontFamily
           text: app.promptDraft
-          color: "#F4F4F5"
+          color: Theme.text
           font.pixelSize: 14
           selectByMouse: true
           onTextChanged: {
