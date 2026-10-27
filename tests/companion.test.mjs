@@ -1061,3 +1061,33 @@ test('at rest the avatar holds still and does not blink, as in Grok Bot', () => 
   assert.match(breath, /root\.liveMotion !== "calm"/)
   assert.doesNotMatch(qmlFunction(main, 'cursorLine'), /root\.gazeX = root\.gazeTargetX/, 'the eyes always ease to the pointer')
 })
+
+test('the eyes follow the pointer across the screen and stay inside the shape', async () => {
+  const face = loadLibrary('qml/face.js')
+  // Full deflection a short way from the mark, not only when the pointer is close.
+  assert.match(qmlFunction(main, 'updateGazeTarget'), /var reach = 1 - Math\.exp\(-dist \/ 220\)/)
+  assert.ok(1 - Math.exp(-600 / 220) > 0.9)
+  const mark = read('CompanionMark.qml')
+  assert.match(mark, /Face\.gazeShift\(mark\.gazeRoom, mark\.gazeX, mark\.gazeY\)/)
+  assert.match(mark, /gazeDx: mark\.gazeShift\.x \* mark\.rad/)
+  // Wide travel where the shape has room for it.
+  const open = face.gazeShift(shapes.GAZE_ROOM.squircle, -1, 0)
+  assert.equal(open.x, -face.GAZE_X)
+  assert.ok(face.GAZE_X >= 0.24 && face.GAZE_Y >= 0.18)
+  // Every shape, every direction: the eyes never leave the outline.
+  for (const name of shapes.NAMES) {
+    const shape = shapes.get(name)
+    const need = Math.min(face.GAZE_MARGIN, face.clearance(shape.points, shape.eyes, 0, 0))
+    for (let a = 0; a < 360; a += 5) {
+      const shift = face.gazeShift(shapes.GAZE_ROOM[name], Math.cos(a * Math.PI / 180), Math.sin(a * Math.PI / 180))
+      const room = face.clearance(shape.points, shape.eyes, shift.x, shift.y)
+      assert.ok(room > 0 && room > need - 0.02, `${name} at ${a} degrees`)
+    }
+  }
+  // Blocked head-on, the eyes slide along the edge toward the pointer.
+  const slide = face.gazeShift(shapes.GAZE_ROOM.wedge, -0.71, -0.71)
+  assert.ok(slide.x < -0.1)
+  // The table in shapes.js is what tools/gaze-room.mjs computes.
+  const { tables } = await import('../tools/gaze-room.mjs')
+  assert.deepEqual(JSON.parse(JSON.stringify(shapes.GAZE_ROOM)), tables())
+})

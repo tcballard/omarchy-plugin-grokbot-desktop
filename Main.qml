@@ -1091,7 +1091,9 @@ Item {
       root.gazeTargetY = 0
       return
     }
-    var reach = dist / (dist + 180)
+    // Most of the way there a short distance from the mark, and all the way
+    // across the screen, so the eyes visibly follow the pointer anywhere.
+    var reach = 1 - Math.exp(-dist / 220)
     root.gazeTargetX = Math.max(-1, Math.min(1, dx / dist * reach))
     root.gazeTargetY = Math.max(-1, Math.min(1, dy / dist * reach))
   }

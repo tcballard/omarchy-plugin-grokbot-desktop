@@ -49,4 +49,4 @@ Installed runtime files are the manifest, QML, `qml/*.js`, `data/bots.json`, `bi
 python3 tools/measure-avatars.py picker-srgb.png /tmp/measured.json --js qml/shapes.js
 ```
 
-The tool needs numpy, scipy, scikit-image, and Pillow. It rewrites only the block between the `MEASURED SHAPES` markers. It expects the fourteen shapes in rows of four, five, and five; check the printed extents and eye angles before committing.
+The tool needs numpy, scipy, scikit-image, and Pillow. It rewrites only the block between the `MEASURED SHAPES` markers. Then run `node tools/gaze-room.mjs` to regenerate the `GAZE ROOM` table, which bounds how far each shape's eyes follow the pointer; the tests fail while it is stale. It expects the fourteen shapes in rows of four, five, and five; check the printed extents and eye angles before committing.
