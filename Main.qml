@@ -736,6 +736,14 @@ Item {
     return String(value || "").replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").trim().slice(0, max)
   }
 
+  // A typed prompt keeps the line breaks Shift+Enter put in it; other
+  // control characters become spaces.
+  function plainPrompt(value, max) {
+    var text = String(value || "").replace(/\r\n?/g, "\n")
+    text = text.replace(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]+/g, " ")
+    return text.replace(/[ ]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim().slice(0, max)
+  }
+
   function cleanText(value, max) {
     var text = String(value || "").replace(/\u001b\[[0-9;]*[A-Za-z]/g, "")
     text = text.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
@@ -905,12 +913,12 @@ Item {
   }
 
   function submitPrompt(value) {
-    var prompt = root.plainLine(value, 4000)
+    var prompt = root.plainPrompt(value, 4000)
     if (prompt === "" || root.asking) return
     var route = Dictation.route(prompt, root.bots, root.defaultBotId)
     if (route.matched) {
       if (route.botId) root.selectBot(route.botId)
-      prompt = root.plainLine(route.prompt, 4000)
+      prompt = root.plainPrompt(route.prompt, 4000)
       root.promptDraft = ""
       if (prompt === "") {
         root.openBubble()

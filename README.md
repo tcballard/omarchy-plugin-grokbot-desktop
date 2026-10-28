@@ -39,7 +39,7 @@ The companion sits in a corner. Clicks outside the mark pass through, and they k
 | Action | Result |
 | --- | --- |
 | Click, `summon`, or `toggle` | Opens the speech bubble |
-| Enter, or the send arrow (the waveform button turns into it once you type) | Sends the prompt. A leading "Hey <Bot>" selects that bot first |
+| Enter, or the send arrow (the waveform button turns into it once you type) | Sends the prompt. A leading "Hey <Bot>" selects that bot first. Long prompts wrap and the field grows to six lines before it scrolls; Shift+Enter starts a new line |
 | Waveform button on an empty field | Focuses the field and toggles Superwhisper or Voxtype |
 | Stop button while asking | Cancels the ask in flight |
 | `+` | Starts a new conversation |

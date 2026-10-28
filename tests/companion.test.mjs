@@ -1014,13 +1014,30 @@ test('the prompt bubble fits short prompts', () => {
   assert.match(read('BubblePanel.qml'), /width: Math\.min\(implicitWidth, bubble\.width - 120\)/)
 })
 
+test('a long prompt wraps and the field grows so all of it shows before sending', () => {
+  const panel = read('BubblePanel.qml')
+  assert.match(panel, /TextArea\.flickable: TextArea \{\s*id: promptField/)
+  assert.match(panel, /wrapMode: TextArea\.Wrap/)
+  assert.doesNotMatch(panel, /TextField \{/)
+  // Up to six lines, then it scrolls with the caret kept in view.
+  assert.match(panel, /promptField\.oneLine \* 6/)
+  assert.match(panel, /onCursorRectangleChanged:/)
+  // Enter sends; Shift+Enter is a new line.
+  assert.match(panel, /if \(event\.modifiers & Qt\.ShiftModifier\) \{\s*event\.accepted = false/)
+  assert.match(panel, /Keys\.onReturnPressed: function \(event\) \{ promptField\.returnKey\(event\) \}/)
+  // The line breaks survive into the ask.
+  const clean = new Function(`${qmlFunction(main, 'plainPrompt').replace('function plainPrompt', 'return function')}`)()
+  assert.equal(clean('first line\r\nsecond\u0007line\n\n\n\nend  ', 4000), 'first line\nsecond line\n\nend')
+  assert.match(qmlFunction(main, 'submitPrompt'), /root\.plainPrompt\(value, 4000\)/)
+})
+
 test('chrome colours come from one token file and text is set like Grok Bot\'s app', () => {
   for (const file of ['BubblePanel.qml', 'SettingsPanel.qml']) {
     const source = read(file)
     assert.doesNotMatch(source, /"#[0-9A-Fa-f]{6,8}"/, `${file} uses qml/theme.js`)
     for (const element of source.matchAll(/textFormat: (Text|TextEdit)\.PlainText/g)) {
       const before = source.slice(Math.max(0, element.index - 600), element.index)
-      const start = Math.max(before.lastIndexOf('Text {'), before.lastIndexOf('TextEdit {'))
+      const start = Math.max(before.lastIndexOf('Text {'), before.lastIndexOf('TextEdit {'), before.lastIndexOf('TextArea {'))
       assert.match(before.slice(start), /font\.family:/, `${file} text without a family`)
     }
   }

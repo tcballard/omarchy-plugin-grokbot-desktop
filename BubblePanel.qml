@@ -582,7 +582,10 @@ Rectangle {
     Item {
       id: composer
       width: parent.width
-      height: 42
+      // The field grows with a long prompt, up to six lines, then scrolls.
+      readonly property real fieldHeight: Math.max(42, Math.min(promptField.implicitHeight, promptField.oneLine * 6 + promptField.topPadding + promptField.bottomPadding))
+      height: fieldHeight
+      Behavior on height { NumberAnimation { duration: bubble.ms(120); easing.type: Easing.OutCubic } }
 
       // The left button starts a new conversation. The right button is
       // dictation while the field is empty, send while it has text, and
@@ -590,6 +593,7 @@ Rectangle {
       Rectangle {
         id: plusButton
         readonly property bool usable: app ? !app.asking && (app.askedText !== "" || app.bubbleBody !== "" || app.noticeLinks.length > 0) : false
+        anchors.bottom: parent.bottom
         width: 42
         height: 42
         radius: 21
@@ -630,6 +634,7 @@ Rectangle {
         height: 42
         radius: 21
         anchors.right: parent.right
+        anchors.bottom: parent.bottom
         color: mode === "send" ? Theme.text : Theme.selected
         border.width: dictating && mode === "voice" ? 1.5 : 1
         border.color: mode === "send" ? Theme.text : (dictating ? (app ? app.accent : Theme.recording) : Theme.edgeStrong)
@@ -731,35 +736,71 @@ Rectangle {
         anchors.right: voiceButton.left
         anchors.leftMargin: 8
         anchors.rightMargin: 8
-        height: 42
+        anchors.bottom: parent.bottom
+        height: composer.fieldHeight
         radius: 21
         color: Theme.field
         border.width: 1
         border.color: Theme.edgeField
 
-        TextField {
-          id: promptField
+        // Long prompts wrap instead of scrolling sideways, so the whole
+        // prompt is visible before it is sent. Enter sends; Shift+Enter
+        // starts a new line.
+        Flickable {
+          id: promptFlick
           anchors.fill: parent
           anchors.leftMargin: 16
-          anchors.rightMargin: 16
-          topPadding: 0
-          bottomPadding: 0
-          verticalAlignment: TextInput.AlignVCenter
-          placeholderText: app.asking ? "Asking…" : ("Ask " + app.botLabel())
-          placeholderTextColor: Theme.textFaint
-          font.family: app.fontFamily
-          text: app.promptDraft
-          color: Theme.text
-          font.pixelSize: 14
-          selectByMouse: true
-          onTextChanged: {
-            if (text !== app.promptDraft) app.promptDraft = text
-            // Superwhisper and Voxtype type the transcript when recording ends.
-            if (app.dictating && text.trim() !== "") app.dictating = false
+          anchors.rightMargin: 10
+          clip: true
+          boundsBehavior: Flickable.StopAtBounds
+          contentWidth: width
+          contentHeight: promptField.implicitHeight
+          TextArea.flickable: TextArea {
+            id: promptField
+            readonly property real oneLine: Math.ceil(fontMetrics.height)
+            topPadding: 11
+            bottomPadding: 11
+            leftPadding: 0
+            rightPadding: 6
+            wrapMode: TextArea.Wrap
+            placeholderText: app.asking ? "Asking…" : ("Ask " + app.botLabel())
+            placeholderTextColor: Theme.textFaint
+            font.family: app.fontFamily
+            text: app.promptDraft
+            color: Theme.text
+            font.pixelSize: 14
+            selectByMouse: true
+            textFormat: TextEdit.PlainText
+            background: Item {}
+            FontMetrics {
+              id: fontMetrics
+              font: promptField.font
+            }
+            onTextChanged: {
+              if (text !== app.promptDraft) app.promptDraft = text
+              // Superwhisper and Voxtype type the transcript when recording ends.
+              if (app.dictating && text.trim() !== "") app.dictating = false
+            }
+            // Keep the caret in view while the field scrolls.
+            onCursorRectangleChanged: {
+              var r = cursorRectangle
+              if (r.y < promptFlick.contentY) promptFlick.contentY = r.y
+              else if (r.y + r.height + bottomPadding > promptFlick.contentY + promptFlick.height)
+                promptFlick.contentY = r.y + r.height + bottomPadding - promptFlick.height
+            }
+            Keys.onReturnPressed: function (event) { promptField.returnKey(event) }
+            Keys.onEnterPressed: function (event) { promptField.returnKey(event) }
+            Keys.onEscapePressed: app.stepBack()
+
+            function returnKey(event) {
+              if (event.modifiers & Qt.ShiftModifier) {
+                event.accepted = false
+                return
+              }
+              event.accepted = true
+              app.submitPrompt(text)
+            }
           }
-          onAccepted: app.submitPrompt(text)
-          Keys.onEscapePressed: app.stepBack()
-          background: Item {}
         }
       }
     }
