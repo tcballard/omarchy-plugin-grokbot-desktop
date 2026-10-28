@@ -33,6 +33,16 @@ Rectangle {
 
   // The primary bot plus the three most recently used, shown in roster
   // order so chips do not reshuffle as you switch between them.
+  // Once a conversation has started the bot row folds away; the header pill
+  // becomes the switch button and unfolds every bot until one is picked.
+  readonly property bool inThread: app ? (app.asking || app.askedText !== "" || app.bubbleBody !== "" || app.noticeLinks.length > 0) : false
+  readonly property bool rosterShown: !bubble.inThread || (app ? app.rosterExpanded : false)
+
+  function pickBot(id) {
+    app.selectBot(id)
+    if (bubble.inThread) app.rosterExpanded = false
+  }
+
   readonly property var pinnedBots: {
     var bots = app && app.bots ? app.bots : []
     var wanted = {}
@@ -279,7 +289,7 @@ Rectangle {
         }
 
         HoverArea {
-          label: app.rosterExpanded ? "Show fewer bots" : "Show all bots"
+          label: bubble.inThread ? (app.rosterExpanded ? "Hide bots" : "Switch bot") : (app.rosterExpanded ? "Show fewer bots" : "Show all bots")
           onActivated: app.rosterExpanded = !app.rosterExpanded
         }
       }
@@ -290,9 +300,13 @@ Rectangle {
     Item {
       id: rosterBlock
       property real expand: app.rosterExpanded && bubble.extraBots.length > 0 ? 1 : 0
+      property real shown: bubble.rosterShown ? 1 : 0
       Behavior on expand { NumberAnimation { duration: bubble.ms(220); easing.type: Easing.OutCubic } }
+      Behavior on shown { NumberAnimation { duration: bubble.ms(220); easing.type: Easing.OutCubic } }
       width: parent.width
-      height: pinRow.height + rosterBlock.expand * (6 + extraRow.implicitHeight)
+      height: rosterBlock.shown * (pinRow.height + rosterBlock.expand * (6 + extraRow.implicitHeight))
+      visible: rosterBlock.shown > 0.01
+      opacity: rosterBlock.shown
       clip: true
 
       Flow {
@@ -341,13 +355,13 @@ Rectangle {
             }
             HoverArea {
               label: modelData.label
-              onActivated: app.selectBot(modelData.id)
+              onActivated: bubble.pickBot(modelData.id)
             }
           }
         }
 
         Rectangle {
-          visible: bubble.extraBots.length > 0
+          visible: bubble.extraBots.length > 0 && !bubble.inThread
           width: extraLabel.implicitWidth + 18
           height: 28
           radius: 14
@@ -417,7 +431,7 @@ Rectangle {
             }
             HoverArea {
               label: modelData.label
-              onActivated: app.selectBot(modelData.id)
+              onActivated: bubble.pickBot(modelData.id)
             }
           }
         }

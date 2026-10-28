@@ -1199,3 +1199,18 @@ test('the eyes follow the pointer across the screen and stay inside the shape', 
   const { tables } = await import('../tools/gaze-room.mjs')
   assert.deepEqual(JSON.parse(JSON.stringify(shapes.GAZE_ROOM)), tables())
 })
+
+test('a conversation hides the other bots behind the header switch', () => {
+  const panel = read('BubblePanel.qml')
+  assert.match(panel, /readonly property bool inThread: app \? \(app\.asking \|\| app\.askedText !== "" \|\| app\.bubbleBody !== ""/)
+  assert.match(panel, /readonly property bool rosterShown: !bubble\.inThread \|\| \(app \? app\.rosterExpanded : false\)/)
+  // The row folds smoothly rather than vanishing.
+  assert.match(panel, /height: rosterBlock\.shown \* \(pinRow\.height/)
+  assert.match(panel, /Behavior on shown \{ NumberAnimation/)
+  // The header pill is the switch button in a thread.
+  assert.match(panel, /label: bubble\.inThread \? \(app\.rosterExpanded \? "Hide bots" : "Switch bot"\)/)
+  // Picking a bot folds the list away again; every bot is listed, so no "+N".
+  assert.match(qmlFunction(panel, 'pickBot'), /if \(bubble\.inThread\) app\.rosterExpanded = false/)
+  assert.equal((panel.match(/onActivated: bubble\.pickBot\(modelData\.id\)/g) || []).length, 2)
+  assert.match(panel, /visible: bubble\.extraBots\.length > 0 && !bubble\.inThread/)
+})
