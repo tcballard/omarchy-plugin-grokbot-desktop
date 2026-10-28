@@ -143,10 +143,15 @@ Item {
   property string bubbleBody: ""
   property string promptDraft: ""
   property var noticeLinks: []
+  // Earlier exchanges with the bot on screen, oldest first, each
+  // { asked, body, links }; the latest stays in askedText, bubbleBody, and
+  // noticeLinks. A new ask or notice moves the latest here.
+  property var history: []
+  readonly property int historyLimit: 40
   // Each bot keeps its own conversation. The one on screen lives in
-  // askedText, bubbleBody, noticeLinks, and promptDraft; switching bots puts
-  // it away under its bot and brings the next bot's back. They are kept for
-  // the session only and never written to disk.
+  // history, askedText, bubbleBody, noticeLinks, and promptDraft; switching
+  // bots puts it away under its bot and brings the next bot's back. They are
+  // kept for the session only and never written to disk.
   property var threads: ({})
   // The bot whose ask is running, and bots with a reply not yet seen.
   property string askBotId: ""
@@ -651,12 +656,13 @@ Item {
 
   function stashThread(id) {
     var next = Object.assign({}, root.threads)
-    next[id] = { asked: root.askedText, body: root.bubbleBody, links: root.noticeLinks, draft: root.promptDraft }
+    next[id] = { history: root.history, asked: root.askedText, body: root.bubbleBody, links: root.noticeLinks, draft: root.promptDraft }
     root.threads = next
   }
 
   function loadThread(id) {
     var thread = root.threads[id] || {}
+    root.history = thread.history || []
     root.askedText = thread.asked || ""
     root.bubbleBody = thread.body || ""
     root.noticeLinks = thread.links || []
@@ -936,11 +942,20 @@ Item {
     onTriggered: root.startMorph(root.destinationShape(), root.destinationColor())
   }
 
+  // Moves the latest exchange into the history, so a new one can start.
+  function archiveExchange() {
+    if (root.askedText === "" && root.bubbleBody === "" && root.noticeLinks.length === 0) return
+    root.history = root.history.concat([{ asked: root.askedText, body: root.bubbleBody, links: root.noticeLinks }]).slice(-root.historyLimit)
+    root.askedText = ""
+    root.bubbleBody = ""
+    root.noticeLinks = []
+  }
+
   function sayNotice(title, text, links) {
     var body = root.plainLine(text, 300)
     if (body === "") return "empty text"
     root.summon()
-    root.askedText = ""
+    root.archiveExchange()
     root.noticeLinks = links || []
     var who = root.plainLine(title, 80)
     root.bubbleBody = (who !== "" ? who + "\n" : "") + body
@@ -953,6 +968,7 @@ Item {
   // and Enter leaves the draft alone instead of throwing it away.
   function newConversation() {
     if (root.askingHere) return
+    root.history = []
     root.askedText = ""
     root.bubbleBody = ""
     root.noticeLinks = []
@@ -974,8 +990,6 @@ Item {
       }
     }
     root.promptDraft = ""
-    root.noticeLinks = []
-    root.bubbleBody = ""
     root.launchAsk(prompt)
   }
 
@@ -988,8 +1002,6 @@ Item {
     if (root.asking) return "busy"
     if (route.botId) root.selectBot(route.botId)
     root.promptDraft = ""
-    root.noticeLinks = []
-    root.bubbleBody = ""
     root.openBubble()
     if (!route.prompt) return "opened"
     return root.launchAsk(route.prompt)
@@ -1051,9 +1063,8 @@ Item {
   function launchAsk(prompt) {
     if (askProc.running) return "busy"
     root.openBubble()
+    root.archiveExchange()
     root.askedText = String(prompt || "")
-    root.noticeLinks = []
-    root.bubbleBody = ""
     if (!root.trustedBin("/usr/bin/setpriv") || !root.trustedBin("/usr/bin/python3")) {
       root.failAsk("Couldn't find trusted setpriv and python3.")
       return "error"

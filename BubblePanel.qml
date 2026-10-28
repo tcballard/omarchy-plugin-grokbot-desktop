@@ -35,7 +35,8 @@ Rectangle {
   // order so chips do not reshuffle as you switch between them.
   // Once a conversation has started the bot row folds away; the header pill
   // becomes the switch button and unfolds every bot until one is picked.
-  readonly property bool inThread: app ? (app.askingHere || app.askedText !== "" || app.bubbleBody !== "" || app.noticeLinks.length > 0) : false
+  readonly property bool hasThread: app ? (app.history.length > 0 || app.askedText !== "" || app.bubbleBody !== "" || app.noticeLinks.length > 0) : false
+  readonly property bool inThread: app ? (app.askingHere || bubble.hasThread) : false
   readonly property bool rosterShown: !bubble.inThread || (app ? app.rosterExpanded : false)
 
   function pickBot(id) {
@@ -474,106 +475,66 @@ Rectangle {
       width: parent.width
       height: 1
       color: Theme.divider
-      visible: app.askedText !== "" || app.bubbleBody !== "" || app.noticeLinks.length > 0
+      visible: bubble.hasThread
     }
 
+    // The conversation with the bot on screen: earlier exchanges above, the
+    // latest at the bottom, in one scrolling view with a fade at whichever
+    // edge has more to read.
     Item {
+      id: threadBox
+      // Whatever the card has left once the header, divider, and composer
+      // are placed.
+      readonly property real cap: Math.max(140, bubble.maxHeight - 28 - header.height - rosterBlock.height - 1 - composer.height - column.spacing * 3)
       width: parent.width
-      height: userBubble.height
-      visible: app.askedText !== ""
-      Rectangle {
-        id: userBubble
-        anchors.right: parent.right
-        width: userText.width + 28
-        height: userText.implicitHeight + 20
-        radius: 18
-        color: Theme.selected
-        border.width: 1
-        border.color: Theme.edge
-        Text {
-          id: userText
-          x: 14
-          y: 10
-          width: Math.min(implicitWidth, bubble.width - 120)
-          text: app.askedText
-          color: Theme.text
-          font.pixelSize: 13
-          wrapMode: Text.WordWrap
-          font.family: app.fontFamily
-          textFormat: Text.PlainText
-        }
-      }
-    }
-
-    // While an ask runs and nothing has come back, three dots pulse where
-    // the reply will land.
-    Item {
-      id: typing
-      width: parent.width
-      height: 18
-      visible: app.askingHere && app.bubbleBody === ""
-      property real phase: 0
-      FrameAnimation {
-        running: typing.visible && !(app && app.reduceMotion)
-        onTriggered: typing.phase = (typing.phase + frameTime * 5) % (Math.PI * 2)
-      }
-      Row {
-        anchors.verticalCenter: parent.verticalCenter
-        spacing: 5
-        Repeater {
-          model: 3
-          delegate: Rectangle {
-            required property int index
-            width: 7
-            height: 7
-            radius: 3.5
-            color: Theme.textMuted
-            opacity: 0.35 + 0.65 * Math.max(0, Math.sin(typing.phase - index * 0.7))
-            y: -2 * Math.max(0, Math.sin(typing.phase - index * 0.7))
-          }
-        }
-      }
-    }
-
-    // Replies are selectable plain text. Long ones scroll inside the card,
-    // with a fade at whichever edge has more to read.
-    Item {
-      id: replyBox
-      readonly property real cap: Math.max(140, bubble.maxHeight - 300)
-      width: parent.width
-      height: Math.min(cap, replyText.implicitHeight)
-      visible: app.bubbleBody !== ""
+      height: Math.min(cap, threadColumn.implicitHeight)
+      visible: bubble.hasThread || (app && app.askingHere)
 
       Flickable {
-        id: replyFlick
+        id: threadFlick
         anchors.fill: parent
-        contentHeight: replyText.implicitHeight
+        contentHeight: threadColumn.implicitHeight
         clip: true
         boundsBehavior: Flickable.StopAtBounds
-        ScrollBar.vertical: ScrollBar { policy: replyFlick.contentHeight > replyFlick.height ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff }
+        ScrollBar.vertical: ScrollBar { policy: threadFlick.contentHeight > threadFlick.height ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff }
 
-        TextEdit {
-          id: replyText
-          width: replyFlick.width - 10
-          text: app.bubbleBody
-          readOnly: true
-          selectByMouse: true
-          color: Theme.text
-          selectionColor: Theme.edgeStrong
-          selectedTextColor: Theme.text
-          font.pixelSize: 13
-          wrapMode: TextEdit.Wrap
-          font.family: app.fontFamily
-          textFormat: TextEdit.PlainText
+        Column {
+          id: threadColumn
+          width: threadFlick.width - 10
+          spacing: 14
+
+          Repeater {
+            model: app ? app.history : []
+            delegate: Exchange {
+              required property var modelData
+              asked: modelData.asked || ""
+              body: modelData.body || ""
+              links: modelData.links || []
+            }
+          }
+
+          Exchange {
+            id: latest
+            asked: app ? app.askedText : ""
+            body: app ? app.bubbleBody : ""
+            links: app ? app.noticeLinks : []
+            typing: app ? app.askingHere && app.bubbleBody === "" : false
+          }
         }
 
-        onContentHeightChanged: contentY = 0
+        // New content scrolls into view: the end of the thread, or the top
+        // of the latest exchange when it is taller than the view, so a long
+        // reply is read from its start.
+        onContentHeightChanged: {
+          var end = Math.max(0, contentHeight - height)
+          contentY = Math.min(end, Math.max(0, latest.y))
+        }
       }
 
       Rectangle {
         width: parent.width - 10
         height: 16
-        opacity: replyFlick.contentY > 1 ? 1 : 0
+        opacity: threadFlick.contentY > 1 ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: bubble.ms(120) } }
         gradient: Gradient {
           GradientStop { position: 0; color: Theme.surface }
@@ -585,42 +546,11 @@ Rectangle {
         anchors.bottom: parent.bottom
         width: parent.width - 10
         height: 16
-        opacity: replyFlick.contentY + replyFlick.height < replyFlick.contentHeight - 1 ? 1 : 0
+        opacity: threadFlick.contentY + threadFlick.height < threadFlick.contentHeight - 1 ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: bubble.ms(120) } }
         gradient: Gradient {
           GradientStop { position: 0; color: Theme.surfaceClear }
           GradientStop { position: 1; color: Theme.surface }
-        }
-      }
-    }
-
-    Flow {
-      width: parent.width
-      spacing: 6
-      visible: app.noticeLinks.length > 0
-      Repeater {
-        model: app.noticeLinks
-        delegate: Rectangle {
-          required property var modelData
-          width: linkLabel.implicitWidth + 18
-          height: 28
-          radius: 14
-          color: Theme.field
-          border.width: 1
-          border.color: Theme.edgeLink
-          Text {
-            id: linkLabel
-            anchors.centerIn: parent
-            text: modelData.label
-            color: Theme.textMuted
-            font.pixelSize: 12
-            font.family: app.fontFamily
-            textFormat: Text.PlainText
-          }
-          HoverArea {
-            label: modelData.label
-            onActivated: app.openLink(modelData.url)
-          }
         }
       }
     }
@@ -638,7 +568,7 @@ Rectangle {
       // stop while an ask is running; its icons crossfade between modes.
       Rectangle {
         id: plusButton
-        readonly property bool usable: app ? !app.askingHere && (app.askedText !== "" || app.bubbleBody !== "" || app.noticeLinks.length > 0) : false
+        readonly property bool usable: app ? !app.askingHere && bubble.hasThread : false
         anchors.bottom: parent.bottom
         width: 42
         height: 42
@@ -850,6 +780,121 @@ Rectangle {
               event.accepted = true
               app.submitPrompt(text)
             }
+          }
+        }
+      }
+    }
+  }
+
+  // One exchange: what was asked, on the right, then the reply or notice as
+  // selectable plain text with its link buttons. While an ask runs and
+  // nothing has come back, three dots pulse where the reply will land.
+  component Exchange: Column {
+    id: exchange
+    property string asked: ""
+    property string body: ""
+    property var links: []
+    property bool typing: false
+    width: parent ? parent.width : 0
+    spacing: 10
+
+    Item {
+      width: parent.width
+      height: userBubble.height
+      visible: exchange.asked !== ""
+      Rectangle {
+        id: userBubble
+        anchors.right: parent.right
+        width: userText.width + 28
+        height: userText.implicitHeight + 20
+        radius: 18
+        color: Theme.selected
+        border.width: 1
+        border.color: Theme.edge
+        Text {
+          id: userText
+          x: 14
+          y: 10
+          width: Math.min(implicitWidth, bubble.width - 120)
+          text: exchange.asked
+          color: Theme.text
+          font.pixelSize: 13
+          wrapMode: Text.WordWrap
+          font.family: app.fontFamily
+          textFormat: Text.PlainText
+        }
+      }
+    }
+
+    Item {
+      id: typing
+      width: parent.width
+      height: 18
+      visible: exchange.typing
+      property real phase: 0
+      FrameAnimation {
+        running: typing.visible && !(app && app.reduceMotion)
+        onTriggered: typing.phase = (typing.phase + frameTime * 5) % (Math.PI * 2)
+      }
+      Row {
+        anchors.verticalCenter: parent.verticalCenter
+        spacing: 5
+        Repeater {
+          model: 3
+          delegate: Rectangle {
+            required property int index
+            width: 7
+            height: 7
+            radius: 3.5
+            color: Theme.textMuted
+            opacity: 0.35 + 0.65 * Math.max(0, Math.sin(typing.phase - index * 0.7))
+            y: -2 * Math.max(0, Math.sin(typing.phase - index * 0.7))
+          }
+        }
+      }
+    }
+
+    TextEdit {
+      width: parent.width
+      visible: exchange.body !== ""
+      text: exchange.body
+      readOnly: true
+      selectByMouse: true
+      color: Theme.text
+      selectionColor: Theme.edgeStrong
+      selectedTextColor: Theme.text
+      font.pixelSize: 13
+      wrapMode: TextEdit.Wrap
+      font.family: app.fontFamily
+      textFormat: TextEdit.PlainText
+    }
+
+    Flow {
+      width: parent.width
+      spacing: 6
+      visible: exchange.links.length > 0
+      Repeater {
+        model: exchange.links
+        delegate: Rectangle {
+          required property var modelData
+          width: linkLabel.implicitWidth + 18
+          height: 28
+          radius: 14
+          color: Theme.field
+          border.width: 1
+          border.color: Theme.edgeLink
+          Text {
+            id: linkLabel
+            anchors.centerIn: parent
+            text: modelData.label
+            color: Theme.textMuted
+            font.pixelSize: 12
+            font.family: app.fontFamily
+            textFormat: Text.PlainText
+          }
+          HoverArea {
+            label: modelData.label
+            onActivated: app.openLink(modelData.url)
           }
         }
       }

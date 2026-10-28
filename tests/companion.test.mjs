@@ -913,7 +913,7 @@ test('thinking and sleeping read at a glance', () => {
   assert.match(main, /property real thinkLook: root\.expression === "think" \? 1 : 0/)
   assert.match(main, /Math\.sin\(root\.thinkAngle \* 0\.5\) \* 3 \* root\.thinkLook/)
   assert.match(main, /running: root\.present && !root\.dragging && root\.liveMotion !== "calm" && root\.expression === "sleep"/)
-  assert.match(read('BubblePanel.qml'), /visible: app\.askingHere && app\.bubbleBody === ""/)
+  assert.match(read('BubblePanel.qml'), /typing: app \? app\.askingHere && app\.bubbleBody === "" : false/)
 })
 
 test('the mark answers hover and lifts while dragged', () => {
@@ -1198,7 +1198,7 @@ test('the eyes follow the pointer across the screen and stay inside the shape', 
 
 test('a conversation hides the other bots behind the header switch', () => {
   const panel = read('BubblePanel.qml')
-  assert.match(panel, /readonly property bool inThread: app \? \(app\.askingHere \|\| app\.askedText !== "" \|\| app\.bubbleBody !== ""/)
+  assert.match(panel, /readonly property bool inThread: app \? \(app\.askingHere \|\| bubble\.hasThread\)/)
   assert.match(panel, /readonly property bool rosterShown: !bubble\.inThread \|\| \(app \? app\.rosterExpanded : false\)/)
   // The row folds smoothly rather than vanishing.
   assert.match(panel, /height: rosterBlock\.shown \* \(pinRow\.height/)
@@ -1281,7 +1281,7 @@ test('each bot keeps its own conversation, and a reply lands with the bot asked'
   const select = qmlFunction(main, 'selectBot')
   assert.match(select, /if \(changed\) root\.stashThread\(root\.threadBotId\)/)
   assert.match(select, /root\.loadThread\(id\)/)
-  assert.match(qmlFunction(main, 'stashThread'), /\{ asked: root\.askedText, body: root\.bubbleBody, links: root\.noticeLinks, draft: root\.promptDraft \}/)
+  assert.match(qmlFunction(main, 'stashThread'), /\{ history: root\.history, asked: root\.askedText, body: root\.bubbleBody, links: root\.noticeLinks, draft: root\.promptDraft \}/)
   assert.doesNotMatch(qmlFunction(main, 'saveSettings'), /threads/)
   // The ask remembers its bot; its reply is shown there or kept unread.
   assert.match(qmlFunction(main, 'launchAsk'), /root\.askBotId = root\.threadBotId/)
@@ -1298,4 +1298,21 @@ test('each bot keeps its own conversation, and a reply lands with the bot asked'
   assert.match(panel, /"Waiting for " \+ app\.askingLabel\(\) \+ " to answer…"/)
   assert.equal((panel.match(/visible: app\.unreadBots\.indexOf\(modelData\.id\) >= 0/g) || []).length, 2)
   assert.match(panel, /opacity: mode === "send" && app && app\.asking && !app\.askingHere \? 0\.45 : 1/)
+})
+
+test('each bot keeps a scrolling history of its conversation', () => {
+  // A new ask or notice moves the latest exchange into the history.
+  const archive = qmlFunction(main, 'archiveExchange')
+  assert.match(archive, /root\.history = root\.history\.concat\(\[\{ asked: root\.askedText, body: root\.bubbleBody, links: root\.noticeLinks \}\]\)\.slice\(-root\.historyLimit\)/)
+  assert.match(qmlFunction(main, 'launchAsk'), /root\.archiveExchange\(\)\n\s*root\.askedText = String\(prompt \|\| ""\)/)
+  assert.match(qmlFunction(main, 'sayNotice'), /root\.archiveExchange\(\)/)
+  assert.match(qmlFunction(main, 'newConversation'), /root\.history = \[\]/)
+  assert.match(qmlFunction(main, 'loadThread'), /root\.history = thread\.history \|\| \[\]/)
+  // One scrolling view: the history, then the latest exchange.
+  const panel = read('BubblePanel.qml')
+  assert.match(panel, /component Exchange: Column \{/)
+  assert.match(panel, /model: app \? app\.history : \[\]\n\s*delegate: Exchange \{/)
+  assert.match(panel, /Exchange \{\s*id: latest/)
+  assert.match(panel, /contentY = Math\.min\(end, Math\.max\(0, latest\.y\)\)/)
+  assert.match(panel, /readonly property real cap: Math\.max\(140, bubble\.maxHeight - 28 - header\.height/)
 })
