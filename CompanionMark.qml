@@ -55,7 +55,14 @@ Item {
 
   readonly property var named: Shapes.blend(shapeFrom, shapeTo, morph)
   readonly property var blended: face ? ({ points: face, eyes: eyeSet || named.eyes }) : named
-  readonly property var restEyes: mark.blended.eyes
+  // Lively, the mark turns its face toward the gaze the way Grok Bot moves
+  // an avatar: the eyes travel across the face and shrink as it turns away,
+  // and the outline rolls with the turn. Otherwise it keeps the picker pose.
+  property bool lively: false
+  readonly property var lookParams: mark.lively ? Face.mixLook(Shapes.look(mark.shapeFrom), Shapes.look(mark.shapeTo), mark.morph) : null
+  readonly property var turned: mark.lookParams && mark.blended ? Face.look(mark.blended.points, mark.lookParams, mark.gazeX, mark.gazeY) : null
+  readonly property var shownPoints: mark.turned ? Face.rotatePoints(mark.blended.points, mark.turned.turn, mark.turned.centre) : (mark.blended ? mark.blended.points : null)
+  readonly property var restEyes: mark.turned ? mark.turned.eyes : mark.blended.eyes
   readonly property real accentLuma: accent.r * 0.2126 + accent.g * 0.7152 + accent.b * 0.0722
   readonly property color fillColor: mark.fillHex !== "" ? mark.parseHex(mark.fillHex) : mixToken("fill")
   readonly property color eyeColor: mark.cutoutHex !== "" ? mark.parseHex(mark.cutoutHex) : mixToken("eye")
@@ -100,15 +107,13 @@ Item {
   readonly property real rad: Math.min(width, height) * 0.43
   readonly property real cx: width / 2
   readonly property real cy: height / 2
-  readonly property string outline: Shapes.svgPath(mark.blended ? mark.blended.points : null, mark.rad, mark.cx, mark.cy)
+  readonly property string outline: Shapes.svgPath(mark.shownPoints, mark.rad, mark.cx, mark.cy)
   readonly property real eyeTiltDelta: mark.poseTilt + (mark.expression === "think" ? Math.sin(mark.thinkAngle) * 2 : 0)
   readonly property real eyeOpenNow: Math.min(mark.eyeOpen, mark.poseOpen)
   readonly property real eyeSquint: mark.poseHeight * mark.attention * (1 - Math.min(0.2, Math.abs(mark.gazeY) * 0.12))
-  // The gaze moves the eyes as far as the shape leaves room for.
-  readonly property var gazeRoom: Shapes.gazeRoom(mark.shapeFrom, mark.shapeTo, mark.morph)
-  readonly property var gazeShift: Face.gazeShift(mark.gazeRoom, mark.gazeX, mark.gazeY)
-  readonly property real gazeDx: mark.gazeShift.x * mark.rad
-  readonly property real gazeDy: mark.gazeShift.y * mark.rad + mark.sleepDrift * 0.12
+  // The gaze itself is in `turned`; only sleep lets the eyes drift.
+  readonly property real gazeDx: 0
+  readonly property real gazeDy: mark.sleepDrift * 0.12
   readonly property bool showImage: mark.imageSource.length > 6 && avatar.status === Image.Ready
 
   // Supersample the cut-out layers so the mark stays crisp while breathing,

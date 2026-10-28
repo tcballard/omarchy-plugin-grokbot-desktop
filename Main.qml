@@ -1010,7 +1010,7 @@ Item {
       host: ""
     })
     root.asking = true
-    root.expression = "think"
+    root.expression = "work"
     askProc.command = ["/usr/bin/setpriv", "--pdeathsig", "TERM", "/usr/bin/python3", "-I", root.askHelper]
     askProc.environment = root.askEnvironment()
     askProc.stdinEnabled = true
@@ -1080,7 +1080,7 @@ Item {
   // Continuous motion runs on the frame clock, so it is as smooth as the
   // display refresh instead of stepping at a fixed timer rate.
   FrameAnimation {
-    running: (root.expression === "think" || root.asking) && !root.reduceMotion
+    running: root.expression === "think" && !root.reduceMotion
     onTriggered: root.thinkAngle += frameTime * 4.5
   }
 
@@ -1111,9 +1111,12 @@ Item {
     }
     // Most of the way there a short distance from the mark, and all the way
     // across the screen, so the eyes visibly follow the pointer anywhere.
+    // Measured against the larger axis, so a pointer off a corner turns the
+    // face fully that way on both axes, as Grok Bot's corner looks do.
     var reach = 1 - Math.exp(-dist / 220)
-    root.gazeTargetX = Math.max(-1, Math.min(1, dx / dist * reach))
-    root.gazeTargetY = Math.max(-1, Math.min(1, dy / dist * reach))
+    var edge = Math.max(Math.abs(dx), Math.abs(dy))
+    root.gazeTargetX = Math.max(-1, Math.min(1, dx / edge * reach))
+    root.gazeTargetY = Math.max(-1, Math.min(1, dy / edge * reach))
   }
 
   FrameAnimation {
@@ -1242,7 +1245,7 @@ Item {
   Timer {
     id: expressionTimer
     onTriggered: {
-      if (root.asking) root.expression = "think"
+      if (root.asking) root.expression = "work"
       else if (root.sleepHold || Date.now() - root.lastMoveAt > 120000) root.expression = "sleep"
       else root.expression = "idle"
     }
@@ -1299,6 +1302,43 @@ Item {
   // Thinking, the eyes drift up and aside and the body sways slowly.
   property real thinkLook: root.expression === "think" ? 1 : 0
   Behavior on thinkLook { NumberAnimation { duration: root.ms(320); easing.type: Easing.InOutCubic } }
+
+  // While an ask runs the mark looks around as Bob does in Grok Bot's chat
+  // header while it is "Working…": this loop of looks and holds (gaze, then
+  // milliseconds held) is measured from a 60fps recording of the app, as is
+  // the way each look is reached, a fast-out curve over about 280ms, and the
+  // one blink. The app's nod down past the chin is left out: it shows the
+  // top of the head, which a flat outline cannot.
+  readonly property var workLooks: [
+    [0, -0.8, 230], [0, 1, 300], [0, -1, 300], [0, 0.4, 620], [1, -1, 920],
+    [-0.85, 0.17, 510], [-0.54, -1, 350], [-0.1, -1, 400], [-0.55, -0.65, 350],
+    [0.32, -0.3, 200], [1, -0.95, 300], [0, 0.4, 720], [-0.54, -0.13, 560, "blink"],
+    [-0.6, -0.65, 230], [0.37, -0.42, 780], [0.1, -0.8, 280]
+  ]
+  readonly property int workMoveMs: 280
+  property int workStep: 0
+  property real workX: 0
+  property real workY: 0
+  property real workBlend: root.asking && !root.reduceMotion ? 1 : 0
+  Behavior on workX { NumberAnimation { duration: root.ms(root.workMoveMs); easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0, 0.2, 1, 1, 1] } }
+  Behavior on workY { NumberAnimation { duration: root.ms(root.workMoveMs); easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0, 0.2, 1, 1, 1] } }
+  Behavior on workBlend { NumberAnimation { duration: root.ms(root.workMoveMs); easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0, 0.2, 1, 1, 1] } }
+
+  Timer {
+    id: workTimer
+    running: root.present && root.asking && !root.reduceMotion
+    repeat: true
+    triggeredOnStart: true
+    onRunningChanged: if (running) root.workStep = 0
+    onTriggered: {
+      var look = root.workLooks[root.workStep % root.workLooks.length]
+      root.workX = look[0]
+      root.workY = look[1]
+      if (look[3] === "blink") blinkAnim.restart()
+      interval = look[2] + root.workMoveMs
+      root.workStep++
+    }
+  }
 
   // When the bob stops (another motion, or a drag) the mark settles back
   // to rest instead of freezing or snapping.
@@ -1775,8 +1815,9 @@ Item {
         fillFrom: root.fillFrom
         eyeFrom: root.eyeFrom
         accent: root.accent
-        gazeX: root.gazeX * (1 - root.thinkLook) + 0.55 * root.thinkLook
-        gazeY: root.gazeY * (1 - root.thinkLook) - 0.75 * root.thinkLook
+        lively: true
+        gazeX: (root.gazeX * (1 - root.workBlend) + root.workX * root.workBlend) * (1 - root.thinkLook) + 0.55 * root.thinkLook
+        gazeY: (root.gazeY * (1 - root.workBlend) + root.workY * root.workBlend) * (1 - root.thinkLook) - 0.75 * root.thinkLook
         eyeOpen: root.eyeOpen
         expression: root.expression === "celebrate" ? "happy" : root.expression
         thinkAngle: root.thinkAngle

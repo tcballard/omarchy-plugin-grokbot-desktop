@@ -1170,34 +1170,26 @@ test('at rest the avatar holds still and does not blink, as in Grok Bot', () => 
   assert.doesNotMatch(qmlFunction(main, 'cursorLine'), /root\.gazeX = root\.gazeTargetX/, 'the eyes always ease to the pointer')
 })
 
-test('the eyes follow the pointer across the screen and stay inside the shape', async () => {
+test('the eyes follow the pointer across the screen and stay inside the shape', () => {
   const face = loadLibrary('qml/face.js')
-  // Full deflection a short way from the mark, not only when the pointer is close.
-  assert.match(qmlFunction(main, 'updateGazeTarget'), /var reach = 1 - Math\.exp\(-dist \/ 220\)/)
+  // Full deflection a short way from the mark, measured against the larger
+  // axis so corner looks turn fully both ways.
+  const target = qmlFunction(main, 'updateGazeTarget')
+  assert.match(target, /var reach = 1 - Math\.exp\(-dist \/ 220\)/)
+  assert.match(target, /var edge = Math\.max\(Math\.abs\(dx\), Math\.abs\(dy\)\)/)
   assert.ok(1 - Math.exp(-600 / 220) > 0.9)
-  const mark = read('CompanionMark.qml')
-  assert.match(mark, /Face\.gazeShift\(mark\.gazeRoom, mark\.gazeX, mark\.gazeY\)/)
-  assert.match(mark, /gazeDx: mark\.gazeShift\.x \* mark\.rad/)
-  // Wide travel where the shape has room for it.
-  const open = face.gazeShift(shapes.GAZE_ROOM.squircle, -1, 0)
-  assert.equal(open.x, -face.GAZE_X)
-  assert.ok(face.GAZE_X >= 0.24 && face.GAZE_Y >= 0.18)
-  // Every shape, every direction: the eyes never leave the outline.
+  // Every shape, every look: the eyes never leave the outline it is turned to.
   for (const name of shapes.NAMES) {
     const shape = shapes.get(name)
-    const need = Math.min(face.GAZE_MARGIN, face.clearance(shape.points, shape.eyes, 0, 0))
-    for (let a = 0; a < 360; a += 5) {
-      const shift = face.gazeShift(shapes.GAZE_ROOM[name], Math.cos(a * Math.PI / 180), Math.sin(a * Math.PI / 180))
-      const room = face.clearance(shape.points, shape.eyes, shift.x, shift.y)
-      assert.ok(room > 0 && room > need - 0.02, `${name} at ${a} degrees`)
+    const params = shapes.LOOK[name]
+    for (let gy = -1; gy <= 1.001; gy += 0.25) {
+      for (let gx = -1; gx <= 1.001; gx += 0.25) {
+        const turned = face.look(shape.points, params, gx, gy)
+        const outline = face.rotatePoints(shape.points, turned.turn, turned.centre)
+        assert.ok(face.clearance(outline, turned.eyes, 0, 0) > 0, `${name} looking ${gx},${gy}`)
+      }
     }
   }
-  // Blocked head-on, the eyes slide along the edge toward the pointer.
-  const slide = face.gazeShift(shapes.GAZE_ROOM.wedge, -0.71, -0.71)
-  assert.ok(slide.x < -0.1)
-  // The table in shapes.js is what tools/gaze-room.mjs computes.
-  const { tables } = await import('../tools/gaze-room.mjs')
-  assert.deepEqual(JSON.parse(JSON.stringify(shapes.GAZE_ROOM)), tables())
 })
 
 test('a conversation hides the other bots behind the header switch', () => {
@@ -1220,4 +1212,43 @@ test('the appearance page says what Dodge does', () => {
   assert.match(page, /"Dodge is on: as the pointer comes near, " \+ app\.botLabel\(\) \+ " fades and lets clicks through/)
   assert.match(page, /"Dodge is off: " \+ app\.botLabel\(\) \+ " stays solid and takes clicks/)
   assert.match(page, /label: "Dodge: fade and let clicks through when the pointer comes near"/)
+})
+
+test('the desktop mark turns its face as Grok Bot moves Bob', async () => {
+  const face = loadLibrary('qml/face.js')
+  const mark = read('CompanionMark.qml')
+  assert.match(mark, /property bool lively: false/)
+  assert.match(mark, /Face\.look\(mark\.blended\.points, mark\.lookParams, mark\.gazeX, mark\.gazeY\)/)
+  assert.match(mark, /Face\.rotatePoints\(mark\.blended\.points, mark\.turned\.turn, mark\.turned\.centre\)/)
+  assert.match(main, /lively: true/)
+  // Bob looking up and to the right is his picker pose.
+  const bob = shapes.get('teardrop')
+  const picker = face.look(bob.points, shapes.LOOK.teardrop, 1, -1)
+  assert.equal(picker.roll, face.PICKER_ROLL)
+  const err = Math.max(...picker.eyes.map((e, i) => Math.hypot(e.x - bob.eyes[i].x, e.y - bob.eyes[i].y)))
+  assert.ok(err < 0.15, `picker pose off by ${err.toFixed(3)}`)
+  // His eyes cross most of his face, and are largest facing you.
+  const left = face.look(bob.points, shapes.LOOK.teardrop, -1, 0)
+  const right = face.look(bob.points, shapes.LOOK.teardrop, 1, 0)
+  const front = face.look(bob.points, shapes.LOOK.teardrop, 0, 0)
+  const pairX = (look) => (look.eyes[0].x + look.eyes[1].x) / 2
+  assert.ok(pairX(right) - pairX(left) > 0.7, 'eyes travel at least 0.7 of the body radius side to side')
+  assert.ok(front.eyes[0].length > right.eyes[0].length * 1.4, 'eyes shrink as the face turns away')
+  assert.equal(front.eyes[0].angle, 90)
+  assert.ok(Math.abs(right.roll) >= 14, 'the face rolls with the turn')
+  // The table in shapes.js is what tools/look-table.mjs computes.
+  const { tables } = await import('../tools/look-table.mjs')
+  const sample = ['teardrop', 'wedge', 'hex']
+  assert.deepEqual(Object.fromEntries(sample.map((name) => [name, JSON.parse(JSON.stringify(shapes.LOOK[name]))])), tables(sample))
+})
+
+test('while asking, the mark looks around as Bob does while Working', () => {
+  assert.match(main, /root\.asking = true\n\s*root\.expression = "work"/)
+  assert.match(main, /readonly property var workLooks: \[/)
+  assert.match(main, /\[-0\.54, -0\.13, 560, "blink"\]/)
+  assert.match(main, /easing\.bezierCurve: \[0\.4, 0, 0\.2, 1, 1, 1\]/)
+  assert.match(main, /running: root\.present && root\.asking && !root\.reduceMotion/)
+  assert.match(main, /gazeX: \(root\.gazeX \* \(1 - root\.workBlend\) \+ root\.workX \* root\.workBlend\)/)
+  const face = loadLibrary('qml/face.js')
+  assert.deepEqual(JSON.parse(JSON.stringify(face.pose('work'))), { tilt: 0, height: 1, open: 1 })
 })

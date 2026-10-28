@@ -1,9 +1,11 @@
 #!/usr/bin/env node
-// Regenerates the GAZE_ROOM block in qml/shapes.js from the measured outlines
-// and eyes. Run it after tools/measure-avatars.py or after changing the gaze
-// constants in qml/face.js:
+// Regenerates the LOOK block in qml/shapes.js: for each shape, where its eyes
+// sit when it faces you, how big they are, and how much of each gaze they can
+// take before running into its edge (see look() in qml/face.js). Run it after
+// tools/measure-avatars.py or after changing the look constants in
+// qml/face.js:
 //
-//   node tools/gaze-room.mjs
+//   node tools/look-table.mjs
 import fs from 'node:fs'
 import path from 'node:path'
 import vm from 'node:vm'
@@ -19,13 +21,13 @@ function load(file) {
   return context
 }
 
-export function tables() {
+export function tables(names) {
   const shapes = load('qml/shapes.js')
   const face = load('qml/face.js')
   const out = {}
-  for (const name of shapes.NAMES) {
+  for (const name of names || shapes.NAMES) {
     const shape = shapes.get(name)
-    out[name] = Array.from(face.roomTable(shape.points, shape.eyes))
+    out[name] = JSON.parse(JSON.stringify(face.shapeLook(shape.points, shape.eyes)))
   }
   return out
 }
@@ -33,13 +35,13 @@ export function tables() {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const table = tables()
   const body = Object.entries(table)
-    .map(([name, room]) => `  ${name}: [${room.join(', ')}]`)
+    .map(([name, look]) => `  ${name}: { face: [${look.face.join(', ')}], size: ${look.size}, fit: [${look.fit.join(', ')}] }`)
     .join(',\n')
   const source = fs.readFileSync(shapesPath, 'utf8')
   const next = source.replace(
-    /\/\/ BEGIN GAZE ROOM\n[\s\S]*?\/\/ END GAZE ROOM/,
-    `// BEGIN GAZE ROOM\nvar GAZE_ROOM = {\n${body}\n}\n// END GAZE ROOM`
+    /\/\/ BEGIN LOOK\n[\s\S]*?\/\/ END LOOK/,
+    `// BEGIN LOOK\nvar LOOK = {\n${body}\n}\n// END LOOK`
   )
   fs.writeFileSync(shapesPath, next)
-  console.log(`wrote ${Object.keys(table).length} gaze room tables`)
+  console.log(`wrote ${Object.keys(table).length} look tables`)
 }
