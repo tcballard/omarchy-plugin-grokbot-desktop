@@ -1214,3 +1214,10 @@ test('a conversation hides the other bots behind the header switch', () => {
   assert.equal((panel.match(/onActivated: bubble\.pickBot\(modelData\.id\)/g) || []).length, 2)
   assert.match(panel, /visible: bubble\.extraBots\.length > 0 && !bubble\.inThread/)
 })
+
+test('the appearance page says what Dodge does', () => {
+  const page = read('SettingsPanel.qml')
+  assert.match(page, /"Dodge is on: as the pointer comes near, " \+ app\.botLabel\(\) \+ " fades and lets clicks through/)
+  assert.match(page, /"Dodge is off: " \+ app\.botLabel\(\) \+ " stays solid and takes clicks/)
+  assert.match(page, /label: "Dodge: fade and let clicks through when the pointer comes near"/)
+})
