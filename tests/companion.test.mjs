@@ -397,8 +397,45 @@ test('webhook mode posts the four fields and keeps the key off argv', async () =
   assert.doesNotMatch(rejected.stderr, new RegExp(key))
 })
 
+test('a webhook error is reported, not shown as the bot\'s reply', async () => {
+  const replies = [[200, '{"code":"error","message":"Invalid API key"}'], [401, '{"code":"error","message":"Invalid API key"}']]
+  let next = 0
+  const server = http.createServer((req, res) => {
+    req.resume()
+    req.on('end', () => {
+      const [status, body] = replies[next++]
+      res.statusCode = status
+      res.setHeader('content-type', 'application/json')
+      res.end(body)
+    })
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'grokbot-err-'))
+  const config = path.join(home, '.config', 'omarchy')
+  fs.mkdirSync(config, { recursive: true })
+  fs.writeFileSync(path.join(config, 'grokbot-desktop.json'), JSON.stringify({
+    dispatch: 'webhook',
+    webhookUrl: `http://127.0.0.1:${server.address().port}/automations/webhook/routine`
+  }))
+  fs.writeFileSync(path.join(config, 'grokbot-webhook.key'), 'crsr_wrong\n', { mode: 0o600 })
+  const results = []
+  for (let i = 0; i < replies.length; i++) {
+    results.push(await spawnCollected(['python3', path.join(root, 'bin/grokbot-ask')], {
+      input: JSON.stringify({ botId: 'e0195a7d-f804-4688-9191-e2cf3574a6d1', botName: 'Bob', prompt: 'hi' }),
+      env: { ...process.env, HOME: home, XDG_CONFIG_HOME: path.join(home, '.config'), GROKBOT_WEBHOOK_KEY: '' }
+    }))
+  }
+  server.close()
+  assert.equal(results[0].status, 4)
+  assert.equal(results[0].stdout, '')
+  assert.equal(results[0].stderr.trim(), 'webhook error: Invalid API key')
+  assert.equal(results[1].status, 4)
+  assert.equal(results[1].stderr.trim(), 'webhook status 401: Invalid API key')
+  for (const result of results) assert.equal(result.stderr.includes('crsr_wrong'), false)
+})
+
 test('a webhook that only acknowledges the ask says it was sent', async () => {
-  const bodies = ['', '{"ok":true,"runId":"run_123"}', '[]', 'Plain answer']
+  const bodies = ['', '{"ok":true,"runId":"run_123","error":null}', '[]', 'Plain answer']
   let next = 0
   const server = http.createServer((req, res) => {
     req.resume()

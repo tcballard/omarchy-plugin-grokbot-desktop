@@ -245,6 +245,27 @@ def extract_reply(raw):
     return stripped[:4000]
 
 
+def webhook_error(raw):
+    """The message of an error-shaped JSON body such as
+    {"code": "error", "message": "Invalid API key"}, or ""."""
+    try:
+        data = json.loads(raw.decode("utf-8", errors="replace").strip() or "null")
+    except json.JSONDecodeError:
+        return ""
+    if not isinstance(data, dict):
+        return ""
+    failed = data.get("code") == "error" or data.get("status") == "error" or data.get("ok") is False or bool(data.get("error"))
+    if not failed:
+        return ""
+    for key in ("message", "error", "detail"):
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            return plain(value, 180)
+        if isinstance(value, dict) and isinstance(value.get("message"), str):
+            return plain(value["message"], 180)
+    return "error"
+
+
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
@@ -258,8 +279,8 @@ def post_webhook(url, key, payload):
         with opener.open(request, timeout=WEBHOOK_TIMEOUT) as response:
             raw = response.read(STDOUT_CEILING + 1)
     except urllib.error.HTTPError as exc:
-        detail = exc.read(240).decode("utf-8", errors="replace")
-        detail = plain(detail, 180)
+        body = exc.read(2048)
+        detail = webhook_error(body) or plain(body.decode("utf-8", errors="replace"), 180)
         print(f"webhook status {exc.code}" + (f": {detail}" if detail else ""), file=sys.stderr)
         return 4
     except urllib.error.URLError:
@@ -268,6 +289,11 @@ def post_webhook(url, key, payload):
     if len(raw) > STDOUT_CEILING:
         print("webhook reply too long", file=sys.stderr)
         return EXIT_OVERFLOW
+    # Some services report a failure with a success status.
+    failure = webhook_error(raw)
+    if failure:
+        print(f"webhook error: {failure}", file=sys.stderr)
+        return 4
     reply = extract_reply(raw)
     if reply is None:
         reply = f"Sent to {payload['botName']}. The webhook accepted it but sent no reply back."
