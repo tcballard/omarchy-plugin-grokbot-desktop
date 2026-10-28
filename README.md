@@ -42,10 +42,10 @@ The companion sits in a corner. Clicks outside the mark pass through, and they k
 | Enter, or the send arrow (the waveform button turns into it once you type) | Sends the prompt. A leading "Hey <Bot>" selects that bot first. Long prompts wrap and the field grows to six lines before it scrolls; Shift+Enter starts a new line |
 | Waveform button on an empty field | Focuses the field and toggles Superwhisper or Voxtype |
 | Stop button while asking | Cancels the ask in flight |
-| `+` | Starts a new conversation |
+| `+` | Starts a new conversation with the bot on screen |
 | Escape | Steps back: closes the menu, then leaves the appearance page, then closes the bubble |
 | Tab, then Enter or Space | Moves between the bubble's controls and presses the focused one |
-| Switch Bot | Morphs into that Bot's shape and colour when sync is on, and routes the next ask there. Before a conversation the bots sit in a row under the header; once one starts the row folds away and the header pill (the bot's name and chevron; its role slides out on hover) is the switch button, which unfolds every bot until you pick one |
+| Switch Bot | Morphs into that Bot's shape and colour when sync is on, and routes the next ask there. Each bot keeps its own conversation and unsent draft for the session (never written to disk); a reply to a bot you have switched away from waits in its conversation with a dot on its chip. One ask runs at a time. Before a conversation the bots sit in a row under the header; once one starts the row folds away and the header pill (the bot's name and chevron; its role slides out on hover) is the switch button, which unfolds every bot until you pick one |
 | Pointer nearby, dodge on | Fades the closer the pointer gets (down to 28%) and lets clicks through. Rest on the mark and it fades back in over about 0.4s, then takes clicks |
 | Pointer idle for 2 minutes | The capsule eyes close into lid lines |
 

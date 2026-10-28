@@ -913,7 +913,7 @@ test('thinking and sleeping read at a glance', () => {
   assert.match(main, /property real thinkLook: root\.expression === "think" \? 1 : 0/)
   assert.match(main, /Math\.sin\(root\.thinkAngle \* 0\.5\) \* 3 \* root\.thinkLook/)
   assert.match(main, /running: root\.present && !root\.dragging && root\.liveMotion !== "calm" && root\.expression === "sleep"/)
-  assert.match(read('BubblePanel.qml'), /visible: app\.asking && app\.bubbleBody === ""/)
+  assert.match(read('BubblePanel.qml'), /visible: app\.askingHere && app\.bubbleBody === ""/)
 })
 
 test('the mark answers hover and lifts while dragged', () => {
@@ -1198,7 +1198,7 @@ test('the eyes follow the pointer across the screen and stay inside the shape', 
 
 test('a conversation hides the other bots behind the header switch', () => {
   const panel = read('BubblePanel.qml')
-  assert.match(panel, /readonly property bool inThread: app \? \(app\.asking \|\| app\.askedText !== "" \|\| app\.bubbleBody !== ""/)
+  assert.match(panel, /readonly property bool inThread: app \? \(app\.askingHere \|\| app\.askedText !== "" \|\| app\.bubbleBody !== ""/)
   assert.match(panel, /readonly property bool rosterShown: !bubble\.inThread \|\| \(app \? app\.rosterExpanded : false\)/)
   // The row folds smoothly rather than vanishing.
   assert.match(panel, /height: rosterBlock\.shown \* \(pinRow\.height/)
@@ -1254,7 +1254,7 @@ test('while asking, the mark looks around as Bob does while Working', () => {
   assert.match(main, /readonly property var workLooks: \[/)
   assert.match(main, /\[-0\.54, -0\.13, 560, "blink"\]/)
   assert.match(main, /easing\.bezierCurve: \[0\.4, 0, 0\.2, 1, 1, 1\]/)
-  assert.match(main, /running: root\.present && root\.asking && !root\.reduceMotion/)
+  assert.match(main, /running: root\.present && root\.askingHere && !root\.reduceMotion/)
   assert.match(main, /gazeX: \(root\.gazeX \* \(1 - root\.workBlend\) \+ root\.workX \* root\.workBlend\)/)
   const face = loadLibrary('qml/face.js')
   assert.deepEqual(JSON.parse(JSON.stringify(face.pose('work'))), { tilt: 0, height: 1, open: 1 })
@@ -1273,4 +1273,29 @@ test('the header pill names the bot and shows its role only on hover or focus', 
   assert.match(panel, /width: reveal \* Math\.max\(0, Math\.min\(implicitWidth, headerRow\.roleRoom\)\)/)
   assert.match(panel, /visible: reveal > 0\.01/)
   assert.match(panel, /HoverArea \{\s*id: pillArea/)
+})
+
+test('each bot keeps its own conversation, and a reply lands with the bot asked', () => {
+  // Switching puts the conversation on screen away under its bot and brings
+  // the next one's back; nothing is written to disk.
+  const select = qmlFunction(main, 'selectBot')
+  assert.match(select, /if \(changed\) root\.stashThread\(root\.threadBotId\)/)
+  assert.match(select, /root\.loadThread\(id\)/)
+  assert.match(qmlFunction(main, 'stashThread'), /\{ asked: root\.askedText, body: root\.bubbleBody, links: root\.noticeLinks, draft: root\.promptDraft \}/)
+  assert.doesNotMatch(qmlFunction(main, 'saveSettings'), /threads/)
+  // The ask remembers its bot; its reply is shown there or kept unread.
+  assert.match(qmlFunction(main, 'launchAsk'), /root\.askBotId = root\.threadBotId/)
+  const deliver = qmlFunction(main, 'deliver')
+  assert.match(deliver, /if \(id === "" \|\| id === root\.threadBotId\)/)
+  assert.match(deliver, /root\.unreadBots = root\.unreadBots\.concat\(\[id\]\)/)
+  assert.match(main, /var here = root\.deliver\(root\.askBotId, ok \? out :/)
+  assert.match(qmlFunction(main, 'stopAsk'), /root\.deliver\(root\.askBotId, "Stopped\."\)/)
+  // Only the bot asking shows the dots, stop button, and work loop.
+  assert.match(main, /readonly property bool askingHere: root\.asking && root\.askBotId === root\.threadBotId/)
+  assert.match(main, /property real workBlend: root\.askingHere && !root\.reduceMotion/)
+  const panel = read('BubblePanel.qml')
+  assert.match(panel, /readonly property bool asking: app \? app\.askingHere : false/)
+  assert.match(panel, /"Waiting for " \+ app\.askingLabel\(\) \+ " to answer…"/)
+  assert.equal((panel.match(/visible: app\.unreadBots\.indexOf\(modelData\.id\) >= 0/g) || []).length, 2)
+  assert.match(panel, /opacity: mode === "send" && app && app\.asking && !app\.askingHere \? 0\.45 : 1/)
 })

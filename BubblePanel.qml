@@ -35,7 +35,7 @@ Rectangle {
   // order so chips do not reshuffle as you switch between them.
   // Once a conversation has started the bot row folds away; the header pill
   // becomes the switch button and unfolds every bot until one is picked.
-  readonly property bool inThread: app ? (app.asking || app.askedText !== "" || app.bubbleBody !== "" || app.noticeLinks.length > 0) : false
+  readonly property bool inThread: app ? (app.askingHere || app.askedText !== "" || app.bubbleBody !== "" || app.noticeLinks.length > 0) : false
   readonly property bool rosterShown: !bubble.inThread || (app ? app.rosterExpanded : false)
 
   function pickBot(id) {
@@ -361,6 +361,18 @@ Rectangle {
               font.family: app.fontFamily
               textFormat: Text.PlainText
             }
+            // A reply from this bot that has not been seen yet.
+            Rectangle {
+              visible: app.unreadBots.indexOf(modelData.id) >= 0
+              width: 9
+              height: 9
+              radius: 4.5
+              x: parent.width - 9
+              y: 0
+              color: Theme.text
+              border.width: 2
+              border.color: Theme.surface
+            }
             HoverArea {
               label: modelData.label
               onActivated: bubble.pickBot(modelData.id)
@@ -437,6 +449,18 @@ Rectangle {
               font.family: app.fontFamily
               textFormat: Text.PlainText
             }
+            // A reply from this bot that has not been seen yet.
+            Rectangle {
+              visible: app.unreadBots.indexOf(modelData.id) >= 0
+              width: 9
+              height: 9
+              radius: 4.5
+              x: parent.width - 9
+              y: 0
+              color: Theme.text
+              border.width: 2
+              border.color: Theme.surface
+            }
             HoverArea {
               label: modelData.label
               onActivated: bubble.pickBot(modelData.id)
@@ -487,7 +511,7 @@ Rectangle {
       id: typing
       width: parent.width
       height: 18
-      visible: app.asking && app.bubbleBody === ""
+      visible: app.askingHere && app.bubbleBody === ""
       property real phase: 0
       FrameAnimation {
         running: typing.visible && !(app && app.reduceMotion)
@@ -614,7 +638,7 @@ Rectangle {
       // stop while an ask is running; its icons crossfade between modes.
       Rectangle {
         id: plusButton
-        readonly property bool usable: app ? !app.asking && (app.askedText !== "" || app.bubbleBody !== "" || app.noticeLinks.length > 0) : false
+        readonly property bool usable: app ? !app.askingHere && (app.askedText !== "" || app.bubbleBody !== "" || app.noticeLinks.length > 0) : false
         anchors.bottom: parent.bottom
         width: 42
         height: 42
@@ -650,7 +674,7 @@ Rectangle {
         readonly property bool dictating: app ? app.dictating : false
         property real wave: 0
         property string ink: dictating ? Theme.recording : Theme.text
-        readonly property bool asking: app ? app.asking : false
+        readonly property bool asking: app ? app.askingHere : false
         readonly property string mode: asking ? "stop" : (promptField.text.trim() !== "" ? "send" : "voice")
         width: 42
         height: 42
@@ -658,6 +682,9 @@ Rectangle {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         color: mode === "send" ? Theme.text : Theme.selected
+        // Another bot's ask is running; this one's send waits for it.
+        opacity: mode === "send" && app && app.asking && !app.askingHere ? 0.45 : 1
+        Behavior on opacity { NumberAnimation { duration: bubble.ms(140) } }
         border.width: dictating && mode === "voice" ? 1.5 : 1
         border.color: mode === "send" ? Theme.text : (dictating ? (app ? app.accent : Theme.recording) : Theme.edgeStrong)
         Behavior on color { ColorAnimation { duration: bubble.ms(120) } }
@@ -737,7 +764,7 @@ Rectangle {
           tint: voiceButton.mode !== "send"
           onActivated: {
             if (!app) return
-            if (app.asking) {
+            if (app.askingHere) {
               app.stopAsk()
               return
             }
@@ -785,7 +812,8 @@ Rectangle {
             leftPadding: 0
             rightPadding: 6
             wrapMode: TextArea.Wrap
-            placeholderText: app.asking ? "Asking…" : ("Ask " + app.botLabel())
+            // One ask runs at a time; another bot's draft waits for it.
+            placeholderText: app.askingHere ? "Asking…" : (app.asking ? ("Waiting for " + app.askingLabel() + " to answer…") : ("Ask " + app.botLabel()))
             placeholderTextColor: Theme.textFaint
             font.family: app.fontFamily
             text: app.promptDraft

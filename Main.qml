@@ -143,6 +143,19 @@ Item {
   property string bubbleBody: ""
   property string promptDraft: ""
   property var noticeLinks: []
+  // Each bot keeps its own conversation. The one on screen lives in
+  // askedText, bubbleBody, noticeLinks, and promptDraft; switching bots puts
+  // it away under its bot and brings the next bot's back. They are kept for
+  // the session only and never written to disk.
+  property var threads: ({})
+  // The bot whose ask is running, and bots with a reply not yet seen.
+  property string askBotId: ""
+  property var unreadBots: []
+  readonly property string threadBotId: {
+    var bot = root.currentBot()
+    return bot ? bot.id : root.defaultBotId
+  }
+  readonly property bool askingHere: root.asking && root.askBotId === root.threadBotId
   property string pendingJson: ""
   property string themeAccent: ""
   property string themeForeground: ""
@@ -403,7 +416,10 @@ Item {
   }
 
   function botLabel() {
-    var bot = root.currentBot()
+    return root.labelOf(root.currentBot())
+  }
+
+  function labelOf(bot) {
     if (!bot) return "Bob"
     var shortName = String(bot.shortName || "")
     if (shortName !== "") return shortName
@@ -430,6 +446,11 @@ Item {
     id: switchTagTimer
     interval: 1400
     onTriggered: root.switchTag = ""
+  }
+
+  // The name of the bot whose ask is running.
+  function askingLabel() {
+    return root.labelOf(root.findBot(root.askBotId))
   }
 
   function botTag() {
@@ -628,10 +649,47 @@ Item {
     onTriggered: root.saveSettings()
   }
 
+  function stashThread(id) {
+    var next = Object.assign({}, root.threads)
+    next[id] = { asked: root.askedText, body: root.bubbleBody, links: root.noticeLinks, draft: root.promptDraft }
+    root.threads = next
+  }
+
+  function loadThread(id) {
+    var thread = root.threads[id] || {}
+    root.askedText = thread.asked || ""
+    root.bubbleBody = thread.body || ""
+    root.noticeLinks = thread.links || []
+    root.promptDraft = thread.draft || ""
+    root.unreadBots = root.unreadBots.filter(function (other) { return other !== id })
+  }
+
+  // A reply or status for the bot `id`: shown if its conversation is on
+  // screen, otherwise kept with it and marked unread.
+  function deliver(id, body) {
+    if (id === "" || id === root.threadBotId) {
+      root.bubbleBody = body
+      return true
+    }
+    var next = Object.assign({}, root.threads)
+    var thread = Object.assign({}, next[id] || {})
+    thread.body = body
+    next[id] = thread
+    root.threads = next
+    if (root.unreadBots.indexOf(id) < 0) root.unreadBots = root.unreadBots.concat([id])
+    root.hop()
+    return false
+  }
+
   function selectBot(id) {
     if (!root.findBot(id)) return "unknown bot"
-    var changed = id !== root.chosenBotId
+    var changed = id !== root.threadBotId
+    if (changed) root.stashThread(root.threadBotId)
     root.chosenBotId = id
+    if (changed) {
+      root.loadThread(id)
+      if (root.expression === "work" || root.expression === "idle") root.expression = root.askingHere ? "work" : "idle"
+    }
     root.recentBots = [id].concat(root.recentBots.filter(function (other) { return other !== id })).slice(0, 6)
     if (changed && !root.bubbleOpen) root.showSwitchTag()
     root.switcherOpen = false
@@ -894,7 +952,7 @@ Item {
   // While an ask is running the field stays editable for the next prompt,
   // and Enter leaves the draft alone instead of throwing it away.
   function newConversation() {
-    if (root.asking) return
+    if (root.askingHere) return
     root.askedText = ""
     root.bubbleBody = ""
     root.noticeLinks = []
@@ -1011,6 +1069,7 @@ Item {
       prompt: prompt,
       host: ""
     })
+    root.askBotId = root.threadBotId
     root.asking = true
     root.expression = "work"
     askProc.command = ["/usr/bin/setpriv", "--pdeathsig", "TERM", "/usr/bin/python3", "-I", root.askHelper]
@@ -1030,7 +1089,7 @@ Item {
   function stopAsk() {
     if (!root.asking) return
     root.cancelAsk()
-    root.bubbleBody = "Stopped."
+    root.deliver(root.askBotId, "Stopped.")
     root.expression = "idle"
   }
 
@@ -1056,15 +1115,15 @@ Item {
       root.asking = false
       var out = root.cleanText(askOut.text, 4000)
       var err = root.cleanText(askErr.text, 400)
-      if (code === 0 && out !== "") {
-        root.bubbleBody = out
+      var ok = code === 0 && out !== ""
+      var here = root.deliver(root.askBotId, ok ? out : (err !== "" ? err : "The ask didn't return a reply."))
+      if (here && ok) {
         root.flashExpression("happy", 1600)
         syllableAnim.restart()
       } else {
-        root.bubbleBody = err !== "" ? err : "The ask didn't return a reply."
         root.expression = "idle"
       }
-      root.replyLanded()
+      if (here) root.replyLanded()
     }
   }
 
@@ -1073,9 +1132,8 @@ Item {
     interval: 180000
     onTriggered: {
       root.cancelAsk()
-      root.bubbleBody = "That took too long, so I stopped waiting."
+      if (root.deliver(root.askBotId, "That took too long, so I stopped waiting.")) root.replyLanded()
       root.expression = "idle"
-      root.replyLanded()
     }
   }
 
@@ -1247,7 +1305,7 @@ Item {
   Timer {
     id: expressionTimer
     onTriggered: {
-      if (root.asking) root.expression = "work"
+      if (root.askingHere) root.expression = "work"
       else if (root.sleepHold || Date.now() - root.lastMoveAt > 120000) root.expression = "sleep"
       else root.expression = "idle"
     }
@@ -1270,7 +1328,7 @@ Item {
     id: blinkTimer
     interval: 3200
     repeat: true
-    running: root.present && root.expression === "idle" && !root.asking && root.liveMotion !== "calm"
+    running: root.present && root.expression === "idle" && !root.askingHere && root.liveMotion !== "calm"
     onTriggered: {
       root.blinkTwice = Math.random() < 0.35
       blinkAnim.restart()
@@ -1321,14 +1379,14 @@ Item {
   property int workStep: 0
   property real workX: 0
   property real workY: 0
-  property real workBlend: root.asking && !root.reduceMotion ? 1 : 0
+  property real workBlend: root.askingHere && !root.reduceMotion ? 1 : 0
   Behavior on workX { NumberAnimation { duration: root.ms(root.workMoveMs); easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0, 0.2, 1, 1, 1] } }
   Behavior on workY { NumberAnimation { duration: root.ms(root.workMoveMs); easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0, 0.2, 1, 1, 1] } }
   Behavior on workBlend { NumberAnimation { duration: root.ms(root.workMoveMs); easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0, 0.2, 1, 1, 1] } }
 
   Timer {
     id: workTimer
-    running: root.present && root.asking && !root.reduceMotion
+    running: root.present && root.askingHere && !root.reduceMotion
     repeat: true
     triggeredOnStart: true
     onRunningChanged: if (running) root.workStep = 0
@@ -1374,7 +1432,7 @@ Item {
   Timer {
     interval: 2600
     repeat: true
-    running: root.liveMotion === "hyper" && root.present && !root.dragging && !root.asking
+    running: root.liveMotion === "hyper" && root.present && !root.dragging && !root.askingHere
     onTriggered: root.hop()
   }
 
