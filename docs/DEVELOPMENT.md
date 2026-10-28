@@ -24,7 +24,7 @@ Before a public release, document the exact verified install command and the ins
 - Dodge and `idleMotion: false` behave as described in the README.
 - Theme changes update an `omarchy` colour without a shell restart beyond what the host already does.
 - With the bubble open, clicks elsewhere on the desktop reach the window underneath, and Esc steps back from the menu to the appearance page to closing the bubble.
-- Opening the bubble, starting a drag, and closing the bubble again do not make the mark jump while the window grows from its compact corner box to the full output and back.
+- Opening the bubble, starting a drag, and closing the bubble again leave the mark exactly where it was: the window covers the output and never resizes.
 - `omarchy toggle animations` stops the breathing and bob and makes morphs and panel changes instant.
 - The mark and eyes stay crisp on a 1.5× or 2× output.
 - Motion is judged from a 60fps capture (for example `wf-recorder -r 60`); a 30fps recording cannot show frame pacing.

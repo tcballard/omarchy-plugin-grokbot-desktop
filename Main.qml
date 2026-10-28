@@ -233,7 +233,8 @@ Item {
 
   readonly property bool surfacesOpen: root.bubbleOpen || root.menuOpen
 
-  // Mark placement in output coordinates, and the compact window around it.
+  // Mark placement in output coordinates. The window covers the output, so
+  // these are also window coordinates.
   readonly property int screenW: win.screen ? win.screen.width : 0
   readonly property int screenH: win.screen ? win.screen.height : 0
   readonly property real stageW: root.shownSize + 24
@@ -246,19 +247,6 @@ Item {
     var edge = root.anchorFromBottom ? root.screenH - root.stageH - root.posBottom : root.posBottom
     return Math.max(0, Math.min(root.screenH - root.stageH, edge))
   }
-  // Room around the mark for hops, orbit, lean, and the name tag.
-  readonly property int compactPadX: 28
-  readonly property int compactPadY: 64
-  readonly property int compactX0: Math.max(0, Math.floor(root.stageScreenX - root.compactPadX))
-  readonly property int compactX1: Math.min(root.screenW, Math.ceil(root.stageScreenX + root.stageW + root.compactPadX))
-  readonly property int compactY0: Math.max(0, Math.floor(root.stageScreenY - root.compactPadY))
-  readonly property int compactY1: Math.min(root.screenH, Math.ceil(root.stageScreenY + root.stageH + root.compactPadY))
-  readonly property bool expanded: root.bubbleOpen || root.menuOpen || bubblePanel.opacity > 0.01 || menuCard.opacity > 0.01 || root.dragging || cornerAnim.running
-  // Placement follows the size the compositor has actually given the
-  // window, so the mark stays put while a resize is in flight.
-  readonly property bool fullWindow: win.width >= root.screenW - 0.5 && win.height >= root.screenH - 0.5
-  readonly property real originX: root.fullWindow ? 0 : root.compactX0
-  readonly property real originY: root.fullWindow ? 0 : root.compactY0
 
   function tomlColor(text, key) {
     var lines = String(text || "").split("\n")
@@ -574,10 +562,10 @@ Item {
     layerRuleProc.running = true
   }
 
-  // Hyprland animates layer surfaces, so the window growing from its compact
-  // corner box to the whole output (and back) slid the mark toward the middle
-  // of the screen and popped it back. Omarchy turns that off for its own
-  // shell surfaces with a layer rule; the companion adds the same rule for its
+  // Hyprland animates layer surfaces as they map, which would pop the
+  // companion in from the middle of the screen when it is shown again after
+  // hide. Omarchy turns that off for its own shell surfaces with a layer
+  // rule; the companion adds the same rule for its
   // namespace before its window first maps, and again after a config reload,
   // which drops rules added at runtime. The rule matches only this namespace
   // and is gone at the next reload once the plugin is removed.
@@ -1113,8 +1101,8 @@ Item {
   function updateGazeTarget() {
     if (!root.cursorKnown || !win.screen) return
     var local = mark.mapToItem(win.contentItem, mark.width / 2, mark.height / 2)
-    var dx = root.cursorX - (win.screen.x + root.originX + local.x)
-    var dy = root.cursorY - (win.screen.y + root.originY + local.y)
+    var dx = root.cursorX - (win.screen.x + local.x)
+    var dy = root.cursorY - (win.screen.y + local.y)
     var dist = Math.sqrt(dx * dx + dy * dy)
     if (dist < 1) {
       root.gazeTargetX = 0
@@ -1178,8 +1166,8 @@ Item {
     if (!win.screen) return null
     var point = stage.mapToItem(win.contentItem, 0, 0)
     return {
-      x: win.screen.x + root.originX + point.x,
-      y: win.screen.y + root.originY + point.y,
+      x: win.screen.x + point.x,
+      y: win.screen.y + point.y,
       w: stage.width,
       h: stage.height
     }
@@ -1538,24 +1526,16 @@ Item {
     id: win
     screen: root.targetScreen
     visible: root.present && root.targetScreen !== null && root.layerRuleTried
-    // Idle, the window is a small box around the mark in its corner, so
-    // breathing and bobbing redraw a few hundred pixels instead of the whole
-    // output. It covers the output while the card or menu is showing, during
-    // a drag, and while the mark changes corners.
+    // The window always covers the whole output and never changes size, so
+    // the mark cannot move when the card opens or closes: a layer surface
+    // that grows or shrinks is re-placed (and animated) by the compositor.
+    // The mask below keeps the rest of the desktop clickable.
     anchors {
-      top: root.expanded || !root.anchorFromBottom
-      bottom: root.expanded || root.anchorFromBottom
-      left: root.expanded || !root.anchorFromRight
-      right: root.expanded || root.anchorFromRight
+      top: true
+      bottom: true
+      left: true
+      right: true
     }
-    margins {
-      top: root.expanded ? 0 : root.compactY0
-      bottom: root.expanded ? 0 : root.screenH - root.compactY1
-      left: root.expanded ? 0 : root.compactX0
-      right: root.expanded ? 0 : root.screenW - root.compactX1
-    }
-    implicitWidth: Math.max(1, root.compactX1 - root.compactX0)
-    implicitHeight: Math.max(1, root.compactY1 - root.compactY0)
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.namespace: root.layerNamespace
@@ -1594,7 +1574,7 @@ Item {
       app: root
       readonly property bool shown: root.bubbleOpen
       growsUp: y < stage.y
-      visible: opacity > 0.01 && root.fullWindow
+      visible: opacity > 0.01
       opacity: shown ? 1 : 0
       scale: shown ? 1 : 0.94
       transformOrigin: {
@@ -1625,7 +1605,7 @@ Item {
 
     Rectangle {
       id: menuCard
-      visible: opacity > 0.01 && root.fullWindow
+      visible: opacity > 0.01
       opacity: root.menuOpen ? 1 : 0
       scale: root.menuOpen ? 1 : 0.92
       transformOrigin: x < stage.x ? (root.anchorFromBottom ? Item.BottomRight : Item.TopRight) : (root.anchorFromBottom ? Item.BottomLeft : Item.TopLeft)
@@ -1701,8 +1681,8 @@ Item {
       }
       width: root.stageW
       height: root.stageH
-      x: root.stageScreenX - root.originX
-      y: root.stageScreenY - root.originY
+      x: root.stageScreenX
+      y: root.stageScreenY
 
       // Soft contact shadow. It shrinks and fades as the mark lifts off the
       // floor, so bobbing and hopping read as height rather than sliding.
@@ -1851,11 +1831,10 @@ Item {
         cursorShape: root.dragging ? Qt.ClosedHandCursor : Qt.PointingHandCursor
         property point pressAt: Qt.point(0, 0)
         property bool moved: false
-        // Output coordinates, which stay stable while the window grows from
-        // its compact box to the full output at the start of a drag.
+        // Output coordinates, which stay put while the mark moves under
+        // the pointer.
         function windowPoint(mouse) {
-          var p = mapToItem(win.contentItem, mouse.x, mouse.y)
-          return Qt.point(p.x + root.originX, p.y + root.originY)
+          return mapToItem(win.contentItem, mouse.x, mouse.y)
         }
         onPressed: function (mouse) {
           pressAt = windowPoint(mouse)

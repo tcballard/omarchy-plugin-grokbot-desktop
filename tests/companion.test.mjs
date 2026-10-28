@@ -1079,14 +1079,15 @@ test('every control gives hover, cursor, keyboard, and accessible feedback', () 
   assert.match(main, /sequence: "Escape"/)
 })
 
-test('the idle window is a compact box around the mark', () => {
-  assert.match(main, /readonly property bool expanded: root\.bubbleOpen \|\| root\.menuOpen/)
-  assert.match(main, /top: root\.expanded \|\| !root\.anchorFromBottom/)
-  assert.match(main, /implicitWidth: Math\.max\(1, root\.compactX1 - root\.compactX0\)/)
-  assert.match(main, /readonly property bool fullWindow: win\.width >= root\.screenW/)
-  assert.match(qmlFunction(main, 'stageRect'), /root\.originX/)
-  assert.match(qmlFunction(main, 'updateGazeTarget'), /root\.originX/)
-  assert.doesNotMatch(main, /anchors \{ top: true; bottom: true; left: true; right: true \}/)
+test('the window covers the output and never resizes, so the mark never moves', () => {
+  assert.match(main, /anchors \{\s*top: true\s*bottom: true\s*left: true\s*right: true\s*\}/)
+  for (const gone of ['compactX0', 'originX', 'fullWindow', 'readonly property bool expanded', 'margins {', 'implicitWidth: Math.max(1']) {
+    assert.equal(main.includes(gone), false, `${gone} would resize or offset the window`)
+  }
+  // Stage, cursor, and drag all use output coordinates directly.
+  assert.match(main, /x: root\.stageScreenX\n\s*y: root\.stageScreenY/)
+  assert.match(qmlFunction(main, 'updateGazeTarget'), /root\.cursorX - \(win\.screen\.x \+ local\.x\)/)
+  assert.match(qmlFunction(main, 'stageRect'), /x: win\.screen\.x \+ point\.x/)
 })
 
 test('Hyprland does not animate the window growing to the output and back', () => {
