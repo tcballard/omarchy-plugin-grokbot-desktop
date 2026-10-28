@@ -338,7 +338,7 @@ function spawnCollected(args, options) {
   })
 }
 
-test('webhook mode posts the four fields and keeps the key off argv', async () => {
+test('webhook mode posts the routine\'s fields with the key in both headers, never on argv', async () => {
   const key = `wk_${Math.random().toString(16).slice(2)}`
   let seen = null
   let cmdline = ''
@@ -380,10 +380,14 @@ test('webhook mode posts the four fields and keeps the key off argv', async () =
   assert.equal(child.stdout.includes(key), false)
   assert.equal(child.stderr.includes(key), false)
   assert.equal(cmdline.includes(key), false)
-  assert.deepEqual(Object.keys(seen.body).sort(), ['botId', 'botName', 'host', 'prompt'])
+  // What Grok Bot's "Omarchy desktop companion" routine takes: prompt,
+  // botName, and source, plus botId to route without matching names.
+  assert.deepEqual(Object.keys(seen.body).sort(), ['botId', 'botName', 'prompt', 'source'])
   assert.equal(seen.body.botName, 'Bob')
   assert.equal(seen.body.prompt, "What's on my calendar?")
+  assert.match(seen.body.source, /^Omarchy desktop companion \([A-Za-z0-9._-]+\)$/)
   assert.equal(seen.headers.authorization, `Bearer ${key}`)
+  assert.equal(seen.headers['x-automation-key'], key)
 
   fs.writeFileSync(path.join(config, 'grokbot-desktop.json'), JSON.stringify({
     dispatch: 'webhook',

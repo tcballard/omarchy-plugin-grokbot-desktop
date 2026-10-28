@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 """Dispatch one companion prompt.
 
-Webhook mode POSTs {"botId","botName","prompt","host"} to the configured
+Webhook mode POSTs {"prompt","botName","botId","source"} to the configured
 Omarchy desktop companion URL. The bearer key is read from
 ~/.config/omarchy/grokbot-webhook.key or GROKBOT_WEBHOOK_KEY. It is never
 taken from argv.
@@ -199,12 +199,16 @@ def read_key(path):
 
 
 def webhook_parts(url, key, payload):
+    # The body and headers Grok Bot's "Omarchy desktop companion" routine
+    # takes: the prompt, the bot to hand it to by name, and where it came
+    # from, with the routine's Sender key in both auth headers. botId is
+    # kept so a routine can route without matching names.
     body = json.dumps(
         {
-            "botId": payload["botId"],
-            "botName": payload["botName"],
             "prompt": payload["prompt"],
-            "host": payload["host"],
+            "botName": payload["botName"],
+            "botId": payload["botId"],
+            "source": f"Omarchy desktop companion ({payload['host']})",
         },
         separators=(",", ":"),
     ).encode("utf-8")
@@ -212,6 +216,7 @@ def webhook_parts(url, key, payload):
         "Content-Type": "application/json",
         "Accept": "application/json, text/plain",
         "Authorization": f"Bearer {key}",
+        "X-Automation-Key": key,
         "User-Agent": "grokbot-desktop/0.1.0",
     }
     return url, headers, body
