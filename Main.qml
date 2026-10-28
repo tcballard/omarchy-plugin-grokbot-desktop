@@ -690,7 +690,10 @@ Item {
   function selectBot(id) {
     if (!root.findBot(id)) return "unknown bot"
     var changed = id !== root.threadBotId
-    if (changed) root.stashThread(root.threadBotId)
+    if (changed) {
+      root.clearedThread = null
+      root.stashThread(root.threadBotId)
+    }
     root.chosenBotId = id
     if (changed) {
       root.loadThread(id)
@@ -944,6 +947,7 @@ Item {
 
   // Moves the latest exchange into the history, so a new one can start.
   function archiveExchange() {
+    root.clearedThread = null
     if (root.askedText === "" && root.bubbleBody === "" && root.noticeLinks.length === 0) return
     root.history = root.history.concat([{ asked: root.askedText, body: root.bubbleBody, links: root.noticeLinks }]).slice(-root.historyLimit)
     root.askedText = ""
@@ -964,16 +968,39 @@ Item {
     return "ok"
   }
 
-  // While an ask is running the field stays editable for the next prompt,
-  // and Enter leaves the draft alone instead of throwing it away.
-  function newConversation() {
-    if (root.askingHere) return
+  // Clearing a bot's conversation keeps it for a few seconds behind an
+  // Undo chip. Switching bots, a new ask, or the timeout lets it go.
+  property var clearedThread: null
+  readonly property bool undoShown: root.clearedThread !== null && root.clearedThread.botId === root.threadBotId
+  readonly property bool canClear: !root.askingHere && (root.history.length > 0 || root.askedText !== "" || root.bubbleBody !== "" || root.noticeLinks.length > 0)
+
+  function clearConversation() {
+    if (!root.canClear) return "nothing to clear"
+    root.clearedThread = { botId: root.threadBotId, history: root.history, asked: root.askedText, body: root.bubbleBody, links: root.noticeLinks }
     root.history = []
     root.askedText = ""
     root.bubbleBody = ""
     root.noticeLinks = []
-    root.promptDraft = ""
-    Qt.callLater(function () { if (bubblePanel) bubblePanel.focusPrompt() })
+    undoTimer.restart()
+    root.openBubble()
+    return "ok"
+  }
+
+  function undoClear() {
+    var cleared = root.clearedThread
+    if (!cleared || cleared.botId !== root.threadBotId) return
+    root.history = cleared.history
+    root.askedText = cleared.asked
+    root.bubbleBody = cleared.body
+    root.noticeLinks = cleared.links
+    root.clearedThread = null
+    undoTimer.stop()
+  }
+
+  Timer {
+    id: undoTimer
+    interval: 8000
+    onTriggered: root.clearedThread = null
   }
 
   function submitPrompt(value) {
@@ -1595,6 +1622,7 @@ Item {
     function hide(): string { root.hideCompanion(); return "ok" }
     function toggle(): string { root.toggleBubble(); return "ok" }
     function settings(): string { root.openSettings(); return "ok" }
+    function clear(): string { return root.clearConversation() }
     function ask(prompt: string): string {
       var text = root.plainLine(prompt, 4000)
       if (text === "") return "empty"
@@ -1747,10 +1775,10 @@ Item {
         width: parent.width - 16
         spacing: 4
         Repeater {
-          model: [
+          model: (root.canClear ? [{ "label": "Clear conversation", "action": "clear" }] : []).concat([
             { "label": "Appearance & bots", "action": "settings" },
             { "label": "Hide companion", "action": "hide" }
-          ]
+          ])
           delegate: Rectangle {
             required property var modelData
             width: menuColumn.width
@@ -1771,7 +1799,10 @@ Item {
               label: modelData.label
               tint: false
               onActivated: {
-                if (modelData.action === "settings") root.openSettings()
+                if (modelData.action === "clear") {
+                  root.menuOpen = false
+                  root.clearConversation()
+                } else if (modelData.action === "settings") root.openSettings()
                 else root.hideCompanion()
               }
             }

@@ -555,6 +555,47 @@ Rectangle {
       }
     }
 
+    // After a conversation is cleared, a chip offers it back for a few
+    // seconds.
+    Rectangle {
+      id: undoChip
+      readonly property bool shown: app ? app.undoShown : false
+      anchors.horizontalCenter: parent.horizontalCenter
+      width: undoText.implicitWidth + undoAction.implicitWidth + 40
+      height: shown ? 30 : 0
+      visible: shown
+      radius: 15
+      color: Theme.raised
+      border.width: 1
+      border.color: Theme.edge
+      Text {
+        id: undoText
+        x: 14
+        anchors.verticalCenter: parent.verticalCenter
+        text: "Conversation cleared"
+        color: Theme.textMuted
+        font.pixelSize: 12
+        font.family: app.fontFamily
+        textFormat: Text.PlainText
+      }
+      Text {
+        id: undoAction
+        anchors.left: undoText.right
+        anchors.leftMargin: 12
+        anchors.verticalCenter: parent.verticalCenter
+        text: "Undo"
+        color: Theme.link
+        font.pixelSize: 12
+        font.weight: Font.DemiBold
+        font.family: app.fontFamily
+        textFormat: Text.PlainText
+      }
+      HoverArea {
+        label: "Undo clearing the conversation"
+        onActivated: app.undoClear()
+      }
+    }
+
     Item {
       id: composer
       width: parent.width
@@ -563,42 +604,9 @@ Rectangle {
       height: fieldHeight
       Behavior on height { NumberAnimation { duration: bubble.ms(120); easing.type: Easing.OutCubic } }
 
-      // The left button starts a new conversation. The right button is
-      // dictation while the field is empty, send while it has text, and
-      // stop while an ask is running; its icons crossfade between modes.
-      Rectangle {
-        id: plusButton
-        readonly property bool usable: app ? !app.askingHere && bubble.hasThread : false
-        anchors.bottom: parent.bottom
-        width: 42
-        height: 42
-        radius: 21
-        color: Theme.raised
-        border.width: 1
-        border.color: Theme.edgeField
-        opacity: usable ? 1 : 0.45
-        Behavior on opacity { NumberAnimation { duration: bubble.ms(140) } }
-        Rectangle {
-          width: 14
-          height: 1.6
-          radius: 1
-          anchors.centerIn: parent
-          color: Theme.iconSoft
-        }
-        Rectangle {
-          width: 1.6
-          height: 14
-          radius: 1
-          anchors.centerIn: parent
-          color: Theme.iconSoft
-        }
-        HoverArea {
-          enabled: plusButton.usable
-          label: "New conversation"
-          onActivated: app.newConversation()
-        }
-      }
-
+      // The right button is dictation while the field is empty, send while
+      // it has text, and stop while an ask is running; its icons crossfade
+      // between modes.
       Rectangle {
         id: voiceButton
         readonly property bool dictating: app ? app.dictating : false
@@ -711,9 +719,8 @@ Rectangle {
       }
 
       Rectangle {
-        anchors.left: plusButton.right
+        anchors.left: parent.left
         anchors.right: voiceButton.left
-        anchors.leftMargin: 8
         anchors.rightMargin: 8
         anchors.bottom: parent.bottom
         height: composer.fieldHeight

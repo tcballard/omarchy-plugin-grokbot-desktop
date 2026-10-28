@@ -1279,7 +1279,7 @@ test('each bot keeps its own conversation, and a reply lands with the bot asked'
   // Switching puts the conversation on screen away under its bot and brings
   // the next one's back; nothing is written to disk.
   const select = qmlFunction(main, 'selectBot')
-  assert.match(select, /if \(changed\) root\.stashThread\(root\.threadBotId\)/)
+  assert.match(select, /if \(changed\) \{\s*root\.clearedThread = null\s*root\.stashThread\(root\.threadBotId\)/)
   assert.match(select, /root\.loadThread\(id\)/)
   assert.match(qmlFunction(main, 'stashThread'), /\{ history: root\.history, asked: root\.askedText, body: root\.bubbleBody, links: root\.noticeLinks, draft: root\.promptDraft \}/)
   assert.doesNotMatch(qmlFunction(main, 'saveSettings'), /threads/)
@@ -1306,7 +1306,6 @@ test('each bot keeps a scrolling history of its conversation', () => {
   assert.match(archive, /root\.history = root\.history\.concat\(\[\{ asked: root\.askedText, body: root\.bubbleBody, links: root\.noticeLinks \}\]\)\.slice\(-root\.historyLimit\)/)
   assert.match(qmlFunction(main, 'launchAsk'), /root\.archiveExchange\(\)\n\s*root\.askedText = String\(prompt \|\| ""\)/)
   assert.match(qmlFunction(main, 'sayNotice'), /root\.archiveExchange\(\)/)
-  assert.match(qmlFunction(main, 'newConversation'), /root\.history = \[\]/)
   assert.match(qmlFunction(main, 'loadThread'), /root\.history = thread\.history \|\| \[\]/)
   // One scrolling view: the history, then the latest exchange.
   const panel = read('BubblePanel.qml')
@@ -1315,4 +1314,22 @@ test('each bot keeps a scrolling history of its conversation', () => {
   assert.match(panel, /Exchange \{\s*id: latest/)
   assert.match(panel, /contentY = Math\.min\(end, Math\.max\(0, latest\.y\)\)/)
   assert.match(panel, /readonly property real cap: Math\.max\(140, bubble\.maxHeight - 28 - header\.height/)
+})
+
+test('the composer has no + and clearing a conversation can be undone', () => {
+  const panel = read('BubblePanel.qml')
+  assert.doesNotMatch(panel, /plusButton|newConversation/)
+  assert.doesNotMatch(main, /function newConversation/)
+  // Clearing keeps the conversation behind an Undo chip for a few seconds.
+  const clear = qmlFunction(main, 'clearConversation')
+  assert.match(clear, /root\.clearedThread = \{ botId: root\.threadBotId, history: root\.history, asked: root\.askedText, body: root\.bubbleBody, links: root\.noticeLinks \}/)
+  assert.match(clear, /undoTimer\.restart\(\)/)
+  assert.match(qmlFunction(main, 'undoClear'), /root\.history = cleared\.history/)
+  assert.match(main, /readonly property bool undoShown: root\.clearedThread !== null && root\.clearedThread\.botId === root\.threadBotId/)
+  assert.match(qmlFunction(main, 'archiveExchange'), /root\.clearedThread = null/)
+  assert.match(panel, /readonly property bool shown: app \? app\.undoShown : false/)
+  assert.match(panel, /onActivated: app\.undoClear\(\)/)
+  // It lives in the right-click menu and on IPC, not in the composer.
+  assert.match(main, /root\.canClear \? \[\{ "label": "Clear conversation", "action": "clear" \}\]/)
+  assert.match(main, /function clear\(\): string \{ return root\.clearConversation\(\) \}/)
 })
