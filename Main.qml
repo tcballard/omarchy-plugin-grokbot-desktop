@@ -510,8 +510,10 @@ Item {
   }
 
   function startMorph(nextShape, nextColor) {
+    // The picker-pose contour and eyes, before the desktop mark turns its
+    // face: the header and other plain marks share this snapshot.
     var face = mark.blended.points
-    var eyesNow = mark.restEyes
+    var eyesNow = mark.blended.eyes
     root.stemFrom = mark.stemLevel
     root.stemTo = Shapes.resolve(nextShape) === Shapes.STEM_SHAPE ? 1 : 0
     root.morphToEyes = Shapes.eyes(nextShape)

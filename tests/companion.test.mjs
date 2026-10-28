@@ -1259,3 +1259,10 @@ test('while asking, the mark looks around as Bob does while Working', () => {
   const face = loadLibrary('qml/face.js')
   assert.deepEqual(JSON.parse(JSON.stringify(face.pose('work'))), { tilt: 0, height: 1, open: 1 })
 })
+
+test('a bot switch snapshots the picker-pose eyes, not the turned face', () => {
+  const morph = qmlFunction(main, 'startMorph')
+  assert.match(morph, /var eyesNow = mark\.blended\.eyes/)
+  assert.doesNotMatch(morph, /mark\.restEyes/)
+  assert.match(morph, /var face = mark\.blended\.points/)
+})
