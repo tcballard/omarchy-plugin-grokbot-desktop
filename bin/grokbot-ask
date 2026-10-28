@@ -218,13 +218,17 @@ def webhook_parts(url, key, payload):
 
 
 def extract_reply(raw):
+    """The reply text in a webhook response, or None when the response only
+    acknowledges the request: an empty body, or JSON with no reply field.
+    Grok Bot's routine webhooks start a run and answer at once, before the
+    bot has replied."""
     text = raw.decode("utf-8", errors="replace")
     text = text.replace("\x00", "")
     if len(text) > STDOUT_CEILING:
         text = text[:STDOUT_CEILING]
     stripped = text.strip()
     if not stripped:
-        return ""
+        return None
     if stripped[0] in "{[":
         try:
             data = json.loads(stripped)
@@ -235,6 +239,9 @@ def extract_reply(raw):
                 value = data.get(key)
                 if isinstance(value, str) and value.strip():
                     return reply_text(value, 4000)
+            return None
+        if isinstance(data, list):
+            return None
     return stripped[:4000]
 
 
@@ -262,9 +269,8 @@ def post_webhook(url, key, payload):
         print("webhook reply too long", file=sys.stderr)
         return EXIT_OVERFLOW
     reply = extract_reply(raw)
-    if not reply:
-        print("webhook returned an empty reply", file=sys.stderr)
-        return 4
+    if reply is None:
+        reply = f"Sent to {payload['botName']}. The webhook accepted it but sent no reply back."
     sys.stdout.write(reply)
     if not reply.endswith("\n"):
         sys.stdout.write("\n")

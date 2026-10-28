@@ -397,6 +397,42 @@ test('webhook mode posts the four fields and keeps the key off argv', async () =
   assert.doesNotMatch(rejected.stderr, new RegExp(key))
 })
 
+test('a webhook that only acknowledges the ask says it was sent', async () => {
+  const bodies = ['', '{"ok":true,"runId":"run_123"}', '[]', 'Plain answer']
+  let next = 0
+  const server = http.createServer((req, res) => {
+    req.resume()
+    req.on('end', () => {
+      const body = bodies[next++]
+      res.setHeader('content-type', body.startsWith('{') || body.startsWith('[') ? 'application/json' : 'text/plain')
+      res.end(body)
+    })
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'grokbot-ack-'))
+  const config = path.join(home, '.config', 'omarchy')
+  fs.mkdirSync(config, { recursive: true })
+  fs.writeFileSync(path.join(config, 'grokbot-desktop.json'), JSON.stringify({
+    dispatch: 'webhook',
+    webhookUrl: `http://127.0.0.1:${server.address().port}/automations/webhook/routine`
+  }))
+  fs.writeFileSync(path.join(config, 'grokbot-webhook.key'), 'crsr_test\n', { mode: 0o600 })
+  const outputs = []
+  for (let i = 0; i < bodies.length; i++) {
+    const child = await spawnCollected(['python3', path.join(root, 'bin/grokbot-ask')], {
+      input: JSON.stringify({ botId: 'e0195a7d-f804-4688-9191-e2cf3574a6d1', botName: 'Bob', prompt: 'hi' }),
+      env: { ...process.env, HOME: home, XDG_CONFIG_HOME: path.join(home, '.config'), GROKBOT_WEBHOOK_KEY: '' }
+    })
+    assert.equal(child.status, 0, child.stderr)
+    outputs.push(child.stdout)
+  }
+  server.close()
+  for (const output of outputs.slice(0, 3)) {
+    assert.equal(output, 'Sent to Bob. The webhook accepted it but sent no reply back.\n')
+  }
+  assert.equal(outputs[3], 'Plain answer\n')
+})
+
 const BOB = 'e0195a7d-f804-4688-9191-e2cf3574a6d1'
 const OMA = 'd0357ba3-1642-47bd-9b0c-95000cb33992'
 const INBOX = 'bed72fb0-0323-4349-81df-dfd08c1f25f6'
