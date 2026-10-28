@@ -98,9 +98,9 @@ function clearance(points, eyes, sx, sy) {
 //   two thirds of that length and three fifths of that width, and the pair
 //   closes to 0.43 apart; looking up or down moves it 0.31 and 0.29 and
 //   barely shrinks it;
-// - the face rolls by up to 20 degrees with the turn, and the eyes roll with
+// - the face rolls by up to 25 degrees with the turn, and the eyes roll with
 //   it.
-// Bob's picker pose is that face looking up and to the right, rolled -20
+// Bob's picker pose is that face looking up and to the right, rolled -25
 // degrees; the picker outlines are taken to carry that roll. Other shapes
 // use the same proportions, scaled by their measured eye size, with the face
 // placed where the eyes have room (shapeLook below).
@@ -111,12 +111,17 @@ var FRONT_SEP = 0.56
 var FRONT_LENGTH = 0.72
 var FRONT_WIDTH = 0.36
 var PICKER_GAZE = [1, -1]
-var PICKER_ROLL = -20
+var PICKER_ROLL = -25
 // The mean eye length of the picker's teardrop, which the recording is of.
 var PICKER_LENGTH = 0.493
 
+// The roll for a look, in degrees, from the app's tip angles relative to
+// facing you: about -25 looking up and to either side, -5 straight up, -10
+// to the right, +3 to the left, and none looking down.
 function lookRoll(gx, gy) {
-  return -14 * gx - 6 * gx * Math.max(0, -gy)
+  var up = Math.max(0, -gy)
+  var side = gx > 0 ? -10 * gx : gx < 0 ? -3 * gx : 0
+  return -5 * up - 20 * up * Math.abs(gx) + side * (1 - up)
 }
 
 function rotate(x, y, deg) {
@@ -167,8 +172,19 @@ function shapeLook(points, pickerEyes) {
   var c = centroid(points)
   var facing = rotatePoints(points, -PICKER_ROLL, c)
   var size = (pickerEyes[0].length + pickerEyes[1].length) / 2 / PICKER_LENGTH
-  // Put the face where the facing eyes have the most room, a little above
-  // that if there is room to spare, as Bob's sit.
+  // Where the face must sit for its look up and to the right to be the
+  // picker's pose. That is used when the eyes have room there facing you;
+  // otherwise the face goes where they have the most room.
+  var px = (pickerEyes[0].x + pickerEyes[1].x) / 2
+  var py = (pickerEyes[0].y + pickerEyes[1].y) / 2
+  var back = rotate(px - c[0], py - c[1], -PICKER_ROLL)
+  var pickerFace = [back[0] - size * LOOK_X * PICKER_GAZE[0], back[1] - size * LOOK_UP * PICKER_GAZE[1]]
+  // The picker-consistent face is kept only if it leaves the eyes room to
+  // look most of the way in every direction.
+  if (clearance(facing, frontEyes(c, pickerFace, size), 0, 0) >= GAZE_MARGIN * 2) {
+    var kept = lookParams(points, facing, c, pickerFace, size)
+    if (Math.min(fitAt(kept.fit, -1, 0), fitAt(kept.fit, 1, 0), fitAt(kept.fit, 0, -1), fitAt(kept.fit, 0, 1)) >= 0.75) return kept
+  }
   var best = null
   var x
   var y
@@ -178,9 +194,13 @@ function shapeLook(points, pickerEyes) {
       if (!best || room > best.room) best = { room: room, face: [x, y] }
     }
   }
+  return lookParams(points, facing, c, best.face, size)
+}
+
+function lookParams(points, facing, c, face, size) {
   // Eyes too big for a narrow shape are scaled down until they fit.
-  while (size > 0.4 && clearance(facing, frontEyes(c, best.face, size), 0, 0) < GAZE_MARGIN * 2) size *= 0.95
-  var params = { face: [round3(best.face[0]), round3(best.face[1])], size: round3(size), fit: [] }
+  while (size > 0.4 && clearance(facing, frontEyes(c, face, size), 0, 0) < GAZE_MARGIN * 2) size *= 0.95
+  var params = { face: [round3(face[0]), round3(face[1])], size: round3(size), fit: [] }
   var front = clearance(facing, frontEyes(c, params.face, params.size), 0, 0)
   var need = Math.min(GAZE_MARGIN, front)
   var i
@@ -251,7 +271,7 @@ function look(points, params, gx, gy, centre) {
   var half = rotate(sep / 2, 0, roll)
   var length = k * FRONT_LENGTH * (1 - 0.33 * Math.abs(x)) * (1 - 0.07 * Math.abs(y))
   var width = k * FRONT_WIDTH * (1 - 0.42 * Math.abs(x))
-  var angle = 90 + 1.3 * roll
+  var angle = 90 + 1.05 * roll
   var eyes = []
   var side
   for (side = -1; side <= 1; side += 2) {

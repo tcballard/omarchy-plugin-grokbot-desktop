@@ -1235,7 +1235,10 @@ test('the desktop mark turns its face as Grok Bot moves Bob', async () => {
   assert.ok(pairX(right) - pairX(left) > 0.7, 'eyes travel at least 0.7 of the body radius side to side')
   assert.ok(front.eyes[0].length > right.eyes[0].length * 1.4, 'eyes shrink as the face turns away')
   assert.equal(front.eyes[0].angle, 90)
-  assert.ok(Math.abs(right.roll) >= 14, 'the face rolls with the turn')
+  // The face rolls with the turn as Bob's does: facing you upright, up and to
+  // either side by about 25 degrees.
+  assert.equal(front.roll, 0)
+  assert.equal(face.look(bob.points, shapes.LOOK.teardrop, -1, -1).roll, -25)
   // The table in shapes.js is what tools/look-table.mjs computes.
   const { tables } = await import('../tools/look-table.mjs')
   const sample = ['teardrop', 'wedge', 'hex']
