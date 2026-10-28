@@ -256,9 +256,16 @@ Rectangle {
             font.family: app.fontFamily
             textFormat: Text.PlainText
           }
+          // The pill names the bot; its role slides out only while the
+          // pointer or keyboard focus is on the pill.
           Text {
+            readonly property real shown: pillArea.containsMouse || pillArea.activeFocus ? 1 : 0
+            property real reveal: shown
+            Behavior on reveal { NumberAnimation { duration: bubble.ms(180); easing.type: Easing.OutCubic } }
             y: 11
-            width: Math.max(0, Math.min(implicitWidth, headerRow.roleRoom))
+            visible: reveal > 0.01
+            opacity: reveal
+            width: reveal * Math.max(0, Math.min(implicitWidth, headerRow.roleRoom))
             text: "· " + app.botTag()
             color: Theme.textMuted
             font.pixelSize: 12
@@ -289,6 +296,7 @@ Rectangle {
         }
 
         HoverArea {
+          id: pillArea
           label: bubble.inThread ? (app.rosterExpanded ? "Hide bots" : "Switch bot") : (app.rosterExpanded ? "Show fewer bots" : "Show all bots")
           onActivated: app.rosterExpanded = !app.rosterExpanded
         }

@@ -1040,7 +1040,7 @@ test('chrome colours come from one token file and text is set like Grok Bot\'s a
     const source = read(file)
     assert.doesNotMatch(source, /"#[0-9A-Fa-f]{6,8}"/, `${file} uses qml/theme.js`)
     for (const element of source.matchAll(/textFormat: (Text|TextEdit)\.PlainText/g)) {
-      const before = source.slice(Math.max(0, element.index - 600), element.index)
+      const before = source.slice(Math.max(0, element.index - 900), element.index)
       const start = Math.max(before.lastIndexOf('Text {'), before.lastIndexOf('TextEdit {'), before.lastIndexOf('TextArea {'))
       assert.match(before.slice(start), /font\.family:/, `${file} text without a family`)
     }
@@ -1265,4 +1265,12 @@ test('a bot switch snapshots the picker-pose eyes, not the turned face', () => {
   assert.match(morph, /var eyesNow = mark\.blended\.eyes/)
   assert.doesNotMatch(morph, /mark\.restEyes/)
   assert.match(morph, /var face = mark\.blended\.points/)
+})
+
+test('the header pill names the bot and shows its role only on hover or focus', () => {
+  const panel = read('BubblePanel.qml')
+  assert.match(panel, /readonly property real shown: pillArea\.containsMouse \|\| pillArea\.activeFocus \? 1 : 0/)
+  assert.match(panel, /width: reveal \* Math\.max\(0, Math\.min\(implicitWidth, headerRow\.roleRoom\)\)/)
+  assert.match(panel, /visible: reveal > 0\.01/)
+  assert.match(panel, /HoverArea \{\s*id: pillArea/)
 })

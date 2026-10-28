@@ -45,7 +45,7 @@ The companion sits in a corner. Clicks outside the mark pass through, and they k
 | `+` | Starts a new conversation |
 | Escape | Steps back: closes the menu, then leaves the appearance page, then closes the bubble |
 | Tab, then Enter or Space | Moves between the bubble's controls and presses the focused one |
-| Switch Bot | Morphs into that Bot's shape and colour when sync is on, and routes the next ask there. Before a conversation the bots sit in a row under the header; once one starts the row folds away and the header pill (the bot's name and chevron) is the switch button, which unfolds every bot until you pick one |
+| Switch Bot | Morphs into that Bot's shape and colour when sync is on, and routes the next ask there. Before a conversation the bots sit in a row under the header; once one starts the row folds away and the header pill (the bot's name and chevron; its role slides out on hover) is the switch button, which unfolds every bot until you pick one |
 | Pointer nearby, dodge on | Fades the closer the pointer gets (down to 28%) and lets clicks through. Rest on the mark and it fades back in over about 0.4s, then takes clicks |
 | Pointer idle for 2 minutes | The capsule eyes close into lid lines |
 
