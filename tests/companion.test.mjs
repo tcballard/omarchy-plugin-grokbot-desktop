@@ -1201,7 +1201,9 @@ test('a conversation hides the other bots behind the header switch', () => {
   assert.match(panel, /readonly property bool inThread: app \? \(app\.askingHere \|\| bubble\.hasThread\)/)
   assert.match(panel, /readonly property bool rosterShown: !bubble\.inThread \|\| \(app \? app\.rosterExpanded : false\)/)
   // The row folds smoothly rather than vanishing.
-  assert.match(panel, /height: rosterBlock\.shown \* \(pinRow\.height/)
+  // The row carries its own gap, so folding away never snaps the card.
+  assert.match(panel, /height: rosterBlock\.shown \* \(12 \+ pinRow\.height/)
+  assert.match(panel, /Column \{\s*id: headerGroup\s*width: parent\.width\s*spacing: 0/)
   assert.match(panel, /Behavior on shown \{ NumberAnimation/)
   // The header pill is the switch button in a thread.
   assert.match(panel, /label: bubble\.inThread \? \(app\.rosterExpanded \? "Hide bots" : "Switch bot"\)/)
@@ -1448,4 +1450,21 @@ test('the companion steps aside while Omarchy\'s screensaver runs', () => {
   // A missed close event is caught by a periodic check while hidden.
   assert.match(main, /running: root\.screensaverUp\n\s*onTriggered: if \(!screensaverCheck\.running\) screensaverCheck\.running = true/)
   assert.match(main, /"\/usr\/bin\/hyprctl -j clients; echo; \/usr\/bin\/hyprctl -j layers"/)
+})
+
+test('the chat and appearance pages crossfade, pinned to the edge the card grows from', () => {
+  const panel = read('BubblePanel.qml')
+  // One curve and duration for the page change and the card's height.
+  assert.match(panel, /readonly property int pageMs: 260/)
+  assert.match(panel, /Behavior on pageT \{ NumberAnimation \{ duration: bubble\.ms\(bubble\.pageMs\); easing\.type: Easing\.BezierSpline; easing\.bezierCurve: bubble\.pageCurve \} \}/)
+  assert.match(panel, /Behavior on shownHeight \{[\s\S]*?duration: bubble\.ms\(bubble\.pageMs\); easing\.type: Easing\.BezierSpline; easing\.bezierCurve: bubble\.pageCurve/)
+  // The page leaving fades out before the one arriving fades in; a short drift, not a full slide.
+  assert.match(panel, /opacity: Math\.max\(0, 1 - bubble\.pageT \/ 0\.65\)/)
+  assert.match(panel, /opacity: Math\.max\(0, \(bubble\.pageT - 0\.35\) \/ 0\.65\)/)
+  assert.match(panel, /x: 16 - 24 \* bubble\.pageT/)
+  assert.match(panel, /x: 16 \+ 24 \* \(1 - bubble\.pageT\)/)
+  // Each page is placed by its own height, never by the other page's.
+  assert.match(panel, /y: bubble\.pageY\(implicitHeight\)/)
+  assert.match(panel, /y: bubble\.pageY\(height\)/)
+  assert.doesNotMatch(panel, /growOffset/)
 })
