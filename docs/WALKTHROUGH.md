@@ -3,7 +3,7 @@
 A guided tour of the companion, from a fresh install through every feature. It takes about 40 minutes. It doubles as:
 
 - **A live test.** Tick each box, and note anything that looks off. The results are what [RELEASE.md](RELEASE.md) asks you to record in `ACCEPTANCE.json`.
-- **A demo.** Each part opens with a **Show:** line, which is the point to make if someone is watching. Parts 2–11 run in order as a demo; parts 12–14 are housekeeping.
+- **A demo.** Each part opens with a **Show:** line, which is the point to make if someone is watching. Parts 2–12 run in order as a demo; parts 13–15 are housekeeping.
 
 ## 0. Before you start
 
@@ -18,11 +18,13 @@ A guided tour of the companion, from a fresh install through every feature. It t
   ```
 
   The first line should print a path. The second names the agent that answers; if it isn't `grok`, that agent answers instead.
-- **Agent mode.** If `~/.config/omarchy/grokbot-desktop.json` has a `webhookUrl`, every ask goes to the webhook instead. Unless the webhook works, add this key, keeping any others in the file:
+- **Start in agent mode.** Part 7 connects Bob's Grok Bot routine. Until then, asks should go to the local agent. If you connected the webhook earlier, switch back after installing in part 1:
 
-  ```json
-  { "dispatch": "agent" }
+  ```bash
+  "$D/bin/grokbot-connect" --off
   ```
+
+- **For part 7:** the routine's Webhook URL and Sender key, from Grok Bot. Click Bob in the chat header, open Routines, then "Omarchy desktop companion".
 
 - **Props:** an image (a photo or screenshot) and a non-image file, such as a PDF or text file, somewhere easy to find, like `~/Pictures` and `~/Documents`.
 
@@ -113,7 +115,17 @@ Put him somewhere comfortable for the rest of the tour, for example a little way
 - [ ] Ask OmaBot something, then switch to Bob straight away. When OmaBot's reply arrives, its chip in the pill's list shows a dot. Switch to OmaBot: the reply is there, and the dot clears.
 - [ ] In the field, type `Hey Poteto, what should I cook tonight?` and press Enter. It switches to Poteto and asks.
 
-## 7. Show it things
+## 7. Ask the real Bob
+
+**Show:** Bob himself answers on the desktop, through his Grok Bot routine.
+
+- [ ] Run `"$D/bin/grokbot-connect"`. Paste the routine's Webhook URL, then its Sender key, which isn't shown as you type. It sends Bob a short test message, then says "Connected." A wrong key is refused with a reason, and nothing is saved.
+- [ ] `"$D/bin/grokbot-connect" --status` says asks go to Grok Bot.
+- [ ] Ask Bob something from the bubble. The question keeps its typing dots and Bob looks around while the routine works. His answer appears under the question, as with the local agent, not as a separate message.
+- [ ] Ask Bob again, then switch to OmaBot straight away. When Bob answers, his chip in the pill's list shows a dot, and his answer is under his question when you switch back.
+- [ ] Run `"$D/bin/grokbot-connect" --off`. Asks go to the local agent again for the rest of the tour.
+
+## 8. Show it things
 
 **Show:** paste a screenshot or attach any file to a question.
 
@@ -126,13 +138,13 @@ Put him somewhere comfortable for the rest of the tour, for example a little way
 - [ ] Attach an image and ask "What's in this picture?" The thumbnail goes up with your question. Note whether the answer shows Grok actually saw it. How well that works depends on the agent.
 - [ ] Attach a file and send without typing anything. It asks "Have a look at this."
 
-## 8. Clear and undo
+## 9. Clear and undo
 
 - [ ] Right-click Bob and choose **Clear conversation**. The thread folds away and a "Conversation cleared · Undo" chip eases in.
 - [ ] Click **Undo** within 8 seconds. The conversation comes back.
 - [ ] Clear again and wait. The chip leaves by itself after 8 seconds.
 
-## 9. Make it yours
+## 10. Make it yours
 
 **Show:** every shape and colour from the Grok Bot app's avatar picker.
 
@@ -151,7 +163,7 @@ Put him somewhere comfortable for the rest of the tour, for example a little way
 - [ ] Size: Small, Medium and Large ease between sizes.
 - [ ] Dodge off: Bob no longer fades as the pointer comes near. Turn it back on.
 
-## 10. Hide and bring back
+## 11. Hide and bring back
 
 **Show:** out of the way in one click, and back in one.
 
@@ -164,7 +176,7 @@ Put him somewhere comfortable for the rest of the tour, for example a little way
 
   Super+Alt+B now hides Bob, and pressing it again brings him back.
 
-## 11. Tricks for scripts and routines
+## 12. Tricks for scripts and routines
 
 **Show:** anything on the desktop can drive it, from a keybinding to a Grok Bot routine.
 
@@ -187,18 +199,18 @@ $C ask "What's on my calendar today?"
 
 Afterwards, open the appearance page and press **Reset to default**.
 
-## 12. Plays nicely with Omarchy
+## 13. Plays nicely with Omarchy
 
 - [ ] Run `omarchy-launch-screensaver force`. Bob is not drawn over the screensaver. Dismiss it, and Bob is back.
 - [ ] Run `omarchy toggle animations`. Opening the bubble, page changes and bot switches happen at once, and Bob holds still. Run it again to restore.
 - [ ] Optional: pick **Theme accent** as the colour, then change the Omarchy theme. Bob takes on the new accent.
 
-## 13. Voice (optional)
+## 14. Voice (optional)
 
 - [ ] With the field empty, the waveform button lights up and starts Omarchy's dictation (Superwhisper or Voxtype, whichever Omarchy is set to). The transcript lands in the field.
 - [ ] Wake phrases such as "Hey OmaBot, …" need the one-time setup in the README's Dictation section.
 
-## 14. Remove (optional, last)
+## 15. Remove (optional, last)
 
 - [ ] `omarchy plugin remove io.github.tcballard.grokbot-desktop` removes Bob. `ls ~/.config/omarchy | grep grokbot` still lists your files.
 - [ ] Reinstall with the command from part 1.

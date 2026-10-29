@@ -12,7 +12,7 @@ Any change to QML, `qml/*.js`, `bin/*`, `data/`, `assets/`, `preview.png` or the
 
 Follow [WALKTHROUGH.md](WALKTHROUGH.md) from a fresh install, after everything for the release is merged into `main`. It installs with the README's own command, checks every feature, and lists what to record. A failure means a fix, a new commit, and the walkthrough again on that commit.
 
-- **Webhook (optional):** with the routine's Sender key, an ask in webhook mode reaches Grok Bot. If it still returns 401, it ships as a known limitation.
+- **Webhook:** part 7 of the walkthrough connects Bob's routine with `bin/grokbot-connect` and checks that his answers come back into the bubble.
 - **Pictures:** new images and video go under `docs/media/`, so they don't count as runtime changes. The existing `preview.png` and demo video stay as the 27 October record.
 
 ## 4. Record, tag, release
@@ -46,9 +46,10 @@ Follow [WALKTHROUGH.md](WALKTHROUGH.md) from a fresh install, after everything f
 > ```
 >
 > **Good to know**
-> - Asks run through your local coding agent (Grok, Claude, Codex and others) answering as the bot, or through a Grok Bot routine webhook. *[Delete or keep after the webhook check.]* The webhook has not yet completed an ask from the companion.
+> - **Ask the real Bob.** Run `bin/grokbot-connect`, paste your Grok Bot routine's Webhook URL and Sender key, and asks go to Bob himself. His answers come back into the bubble, under the question they answer. Without it, your local coding agent (Grok, Claude, Codex and others) answers in the bot's name.
 > - Conversations live in memory only and are gone after a shell restart.
-> - Attachments go to agents, not the webhook.
+> - Attachments go to the local agent, not the webhook.
+> - When an ask fails, the bubble says why: no connection, a wrong key, or no answer in time.
 > - Tested live on *[XPS model, Omarchy version, scale]*.
 >
 > **Remove**

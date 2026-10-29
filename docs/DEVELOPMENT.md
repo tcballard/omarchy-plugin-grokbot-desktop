@@ -21,7 +21,8 @@ Before a public release, document the exact verified install command and the ins
 - Switching to OmaBot, Poteto, or another roster bot morphs the mark when sync is on.
 - `omarchy-shell io.github.tcballard.grokbot-desktop summon` opens the bubble.
 - Hide companion in the menu sends a notification that brings the companion back when clicked, and `toggleVisible` shows and hides it.
-- An ask in webhook mode and in agent mode returns text into the bubble, or a plain error.
+- An ask in agent mode returns text into the bubble, or a plain error saying why it failed.
+- `bin/grokbot-connect` connects the webhook only after its test ask is accepted. In webhook mode a question waits with typing dots until the routine answers with `reply`, or a `say` titled with the bot's name, and the answer lands under that question, in that bot's conversation.
 - Dodge and `idleMotion: false` behave as described in the README.
 - Theme changes update an `omarchy` colour without a shell restart beyond what the host already does.
 - With the bubble open, clicks elsewhere on the desktop reach the window underneath, and Esc steps back from the menu to the appearance page to closing the bubble.
