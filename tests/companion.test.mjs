@@ -178,7 +178,7 @@ test('bundled roster is the fifteen live bots, with Bob first', () => {
 })
 
 test('QML exposes the speech-bubble IPC and keeps outside text plain', () => {
-  for (const name of ['summon', 'show', 'hide', 'toggle', 'settings', 'ask', 'dictate', 'bot', 'appearance', 'animate', 'say', 'sayLink', 'sayLinks', 'dismiss']) {
+  for (const name of ['summon', 'show', 'hide', 'toggleVisible', 'toggle', 'settings', 'ask', 'dictate', 'bot', 'appearance', 'animate', 'say', 'sayLink', 'sayLinks', 'dismiss']) {
     assert.match(main, new RegExp(`function ${name}\\(`))
   }
   assert.match(main, /target:\s*"io\.github\.tcballard\.grokbot-desktop"/)
@@ -191,6 +191,19 @@ test('QML exposes the speech-bubble IPC and keeps outside text plain', () => {
   assert.doesNotMatch(main, /GROKBOT_WEBHOOK_KEY/)
   assert.match(read('BubblePanel.qml'), /Text\.PlainText/)
   assert.match(read('SettingsPanel.qml'), /Text\.PlainText/)
+})
+
+test('hiding from the menu says how to bring the companion back, and a shortcut can toggle it', () => {
+  const toggle = qmlFunction(main, 'toggleVisible')
+  assert.match(toggle, /if \(root\.present\) root\.hideCompanion\(\)\n\s*else root\.showCompanion\(\)/)
+  const announce = qmlFunction(main, 'announceHidden')
+  // Omarchy's own helper, never notify-send; the click runs the IPC show.
+  assert.match(announce, /omarchy-notification-send 'Grok Bot is hidden' 'Click to bring it back\.' --action Show omarchy-shell io\.github\.tcballard\.grokbot-desktop show/)
+  assert.match(announce, /command -v omarchy-notification-send >\/dev\/null 2>&1 \|\| exit 0/)
+  assert.doesNotMatch(main, /notify-send/)
+  // Only the menu announces it; a script or shortcut that hides it already knows.
+  assert.match(main, /root\.hideCompanion\(\)\n\s*root\.announceHidden\(\)/)
+  assert.doesNotMatch(qmlFunction(main, 'hideCompanion'), /announceHidden/)
 })
 
 test('cursor helper refuses an unsanitized Hyprland socket path', () => {

@@ -20,6 +20,7 @@ Before a public release, document the exact verified install command and the ins
 - Dragging updates only this plugin's `marginX` and `marginY`.
 - Switching to OmaBot, Poteto, or another roster bot morphs the mark when sync is on.
 - `omarchy-shell io.github.tcballard.grokbot-desktop summon` opens the bubble.
+- Hide companion in the menu sends a notification that brings the companion back when clicked, and `toggleVisible` shows and hides it.
 - An ask in webhook mode and in agent mode returns text into the bubble, or a plain error.
 - Dodge and `idleMotion: false` behave as described in the README.
 - Theme changes update an `omarchy` colour without a shell restart beyond what the host already does.
@@ -27,7 +28,13 @@ Before a public release, document the exact verified install command and the ins
 - Opening the bubble, starting a drag, and closing the bubble again leave the mark exactly where it was: the window covers the output and never resizes.
 - `omarchy toggle animations` stops the breathing and bob and makes morphs and panel changes instant.
 - The mark and eyes stay crisp on a 1.5× or 2× output.
-- Motion is judged from a 60fps capture (for example `wf-recorder -r 60`); a 30fps recording cannot show frame pacing.
+- The mark hides while Omarchy's screensaver runs and returns after it.
+- Each bot keeps its own conversation; Clear conversation and Undo work from the right-click menu.
+- Paste image, Ctrl+V, Choose a file… (`omarchy-file-select`) and dropping a file all attach, and an agent-mode ask can use them.
+- Every bubble change (page switch, thread, attach menu, tray, note, Undo chip) eases with no jump, and the card opens without overshoot.
+- Motion is judged from a 60fps capture. Omarchy's own recorder (Alt+Print, or `omarchy capture screenrecording`) records at 60fps; a 30fps recording cannot show frame pacing.
+
+[WALKTHROUGH.md](WALKTHROUGH.md) covers all of this as a guided tour from a fresh install.
 
 ## Removal
 
