@@ -20,6 +20,7 @@ Before a public release, document the exact verified install command and the ins
 - Dragging updates only this plugin's `marginX` and `marginY`.
 - Switching to OmaBot, Poteto, or another roster bot morphs the mark when sync is on.
 - `omarchy-shell io.github.tcballard.grokbot-desktop summon` opens the bubble.
+- Hide companion in the menu sends a notification that brings the companion back when clicked, and `toggleVisible` shows and hides it.
 - An ask in webhook mode and in agent mode returns text into the bubble, or a plain error.
 - Dodge and `idleMotion: false` behave as described in the README.
 - Theme changes update an `omarchy` colour without a shell restart beyond what the host already does.

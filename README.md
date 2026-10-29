@@ -32,9 +32,16 @@ hl.unbind("SUPER + W")
 o.bind("SUPER + W", "Close window / Grok Bot", "grokbot-desktop-close")
 ```
 
+A shortcut to show and hide the companion. Super+Alt+B is free in Omarchy's own bindings; pick another if you use it:
+
+```lua
+-- ~/.config/hypr/bindings.lua
+o.bind("SUPER + ALT + B", "Show or hide Grok Bot", "omarchy-shell io.github.tcballard.grokbot-desktop toggleVisible")
+```
+
 ## Use
 
-The companion sits in a corner. Clicks outside the mark pass through, and they keep passing through while the bubble is open, so you can work beside a reply. Close the bubble with its minimize button, Esc, or a click on the mark. Drag it, or hold Super and drag, and the corner margins are written back to its own `plugins[]` entry. The sliders button in the bubble, Right-click > Appearance & bots, or `settings` crossfades the bubble to its appearance page. The back chevron returns to the chat. The appearance page is laid out like Grok Bot's avatar picker: its fourteen shapes in the chosen colour with a ring around the current one, its eleven colours plus the Omarchy theme accent, and Reset to default, which goes back to the bot's own look.
+The companion sits in a corner. Clicks outside the mark pass through, and they keep passing through while the bubble is open, so you can work beside a reply. Close the bubble with its minimize button, Esc, or a click on the mark. Drag the mark anywhere on the screen; where you drop it is written back to its own `plugins[]` entry, as margins from the corner chosen on the appearance page. That corner also decides which way the bubble and the menu open first. Hold no modifier while dragging: Omarchy binds Super and drag to moving windows. The sliders button in the bubble, Right-click > Appearance & bots, or `settings` crossfades the bubble to its appearance page. The back chevron returns to the chat. The appearance page is laid out like Grok Bot's avatar picker: its fourteen shapes in the chosen colour with a ring around the current one, its eleven colours plus the Omarchy theme accent, and Reset to default, which goes back to the bot's own look.
 
 | Action | Result |
 | --- | --- |
@@ -44,6 +51,7 @@ The companion sits in a corner. Clicks outside the mark pass through, and they k
 | Waveform button on an empty field | Focuses the field and toggles Superwhisper or Voxtype |
 | Stop button while asking | Cancels the ask in flight |
 | Right-click > Clear conversation, or `clear` | Clears the conversation with the bot on screen; an Undo chip offers it back for 8 seconds |
+| Right-click > Hide companion | Hides the companion. A notification says it is hidden, and clicking it brings it back. `show`, `summon`, `toggle`, and `toggleVisible` bring it back too, as does restarting the shell |
 | Escape | Steps back: closes the menu, then leaves the appearance page, then closes the bubble |
 | Tab, then Enter or Space | Moves between the bubble's controls and presses the focused one |
 | Switch Bot | Morphs into that Bot's shape and colour when sync is on, and routes the next ask there. Each bot keeps its own conversation, as a scrolling history of up to 40 exchanges, and its unsent draft for the session (never written to disk); a reply to a bot you have switched away from waits in its conversation with a dot on its chip. One ask runs at a time. Before a conversation the bots sit in a row under the header; once one starts the row folds away and the header pill (the bot's name and chevron; its role slides out on hover) is the switch button, which unfolds every bot until you pick one |
@@ -58,6 +66,7 @@ Bob (`e0195a7d-f804-4688-9191-e2cf3574a6d1`, teardrop, orange) is the default. A
 omarchy-shell io.github.tcballard.grokbot-desktop summon
 omarchy-shell io.github.tcballard.grokbot-desktop toggle
 omarchy-shell io.github.tcballard.grokbot-desktop hide
+omarchy-shell io.github.tcballard.grokbot-desktop toggleVisible
 omarchy-shell io.github.tcballard.grokbot-desktop show
 omarchy-shell io.github.tcballard.grokbot-desktop settings
 omarchy-shell io.github.tcballard.grokbot-desktop clear

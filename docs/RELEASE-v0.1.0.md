@@ -40,7 +40,10 @@ Note anything that fails or looks off. A failure means a fix, a new commit, and 
 - [ ] Bob appears in the corner; clicks around the mark reach the window underneath.
 - [ ] The eyes follow the pointer across the screen, and the face turns toward it.
 - [ ] With the pointer right on Bob, the eyes face forward at a normal size.
-- [ ] Dragging moves the mark and it stays where it is dropped.
+- [ ] Dragging moves the mark anywhere on the screen, not just near a corner, and it stays where it is dropped, also after `omarchy restart shell`.
+- [ ] Super and drag on the mark: note what happens. Omarchy binds it to moving windows, so the README now says to drag without Super.
+- [ ] Right-click > Hide companion hides it and shows a "Grok Bot is hidden" notification; clicking the notification brings it back.
+- [ ] With the README's Super+Alt+B binding added to `~/.config/hypr/bindings.lua`, the shortcut hides and shows it.
 - [ ] Opening and closing the bubble leaves the mark exactly where it was.
 - [ ] Bob is hidden while the screensaver runs and comes back after it.
 
@@ -95,7 +98,7 @@ New pictures go under `docs/media/` so they don't count as runtime changes. The 
 > - **Your bots, as they look in Grok Bot.** All fourteen avatar shapes and eleven colours, measured from the app. Switching bots morphs the companion into that bot, and it turns its head toward your pointer the way Bob does.
 > - **A conversation per bot.** Each bot keeps a scrolling history and an unsent draft for the session. A reply from a bot you've switched away from waits with a dot on its chip. Clearing has an Undo.
 > - **Files and images in a question.** Paste an image, press Ctrl+V, choose files in Omarchy's file chooser, or drop them on the bubble.
-> - **Stays out of the way.** Clicks around it reach your windows, even with the bubble open. It fades as the pointer comes near, hides under the screensaver, and follows `omarchy toggle animations`.
+> - **Stays out of the way.** Clicks around it reach your windows, even with the bubble open. Drag it anywhere on the screen. It fades as the pointer comes near, hides under the screensaver, and follows `omarchy toggle animations`. Hide it from its menu and a notification brings it back with a click, or bind Super+Alt+B to show and hide it.
 > - **Talk to it.** After a one-time setup, saying "Hey Bob" or "Hey OmaBot" through Superwhisper or Voxtype selects that bot and asks it.
 >
 > **Install**

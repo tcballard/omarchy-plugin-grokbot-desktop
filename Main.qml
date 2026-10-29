@@ -951,6 +951,17 @@ Item {
     root.present = true
   }
 
+  // Hidden from its own menu, the companion says how to bring it back: an
+  // Omarchy notification whose click shows it again. An Omarchy helper
+  // without action buttons still gets the command to run; with no helper,
+  // nothing is sent. Every word is a fixed literal.
+  function announceHidden() {
+    Quickshell.execDetached(["/usr/bin/sh", "-c",
+      "command -v omarchy-notification-send >/dev/null 2>&1 || exit 0; " +
+      "omarchy-notification-send 'Grok Bot is hidden' 'Click to bring it back.' --action Show omarchy-shell io.github.tcballard.grokbot-desktop show 2>/dev/null || " +
+      "omarchy-notification-send 'Grok Bot is hidden' 'Bring it back with: omarchy-shell io.github.tcballard.grokbot-desktop show'"])
+  }
+
   // Closing never cancels an ask. A reply that lands while the bubble is
   // closed leaves a dot on the mark until the bubble is opened again.
   function dismissSurfaces() {
@@ -1782,6 +1793,12 @@ Item {
     function summon(): string { root.summon(); return "ok" }
     function show(): string { root.showCompanion(); return "ok" }
     function hide(): string { root.hideCompanion(); return "ok" }
+    // For a show/hide shortcut.
+    function toggleVisible(): string {
+      if (root.present) root.hideCompanion()
+      else root.showCompanion()
+      return root.present ? "shown" : "hidden"
+    }
     function toggle(): string { root.toggleBubble(); return "ok" }
     function settings(): string { root.openSettings(); return "ok" }
     function clear(): string { return root.clearConversation() }
@@ -1968,7 +1985,10 @@ Item {
                   root.menuOpen = false
                   root.clearConversation()
                 } else if (modelData.action === "settings") root.openSettings()
-                else root.hideCompanion()
+                else {
+                  root.hideCompanion()
+                  root.announceHidden()
+                }
               }
             }
           }
