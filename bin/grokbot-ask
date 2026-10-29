@@ -12,7 +12,11 @@ of -p instead, its only headless form. An agent Omarchy has not installed
 yet is reported, not installed. The shell launches this
 file as /usr/bin/python3 -I so site and user environment modules are ignored.
 
-Stdin is a JSON object: {"botId","botName","prompt","host"?}.
+Stdin is a JSON object: {"botId","botName","prompt","host"?,"attachments"?}.
+Attachments are images saved by grokbot-attach; only those inside its
+private runtime directory are accepted. Agent mode runs the agent in that
+directory and names the files in the prompt (Codex also gets --image);
+webhook mode refuses them, since no webhook image format is known.
 """
 from __future__ import annotations
 
@@ -63,6 +67,12 @@ PROMPT_AS_ARGUMENT = {"grok"}
 # the agent with mise on first run. An ask must not install software, so such
 # a launcher is followed to the real binary or reported as not installed.
 MISE_WRAPPER = re.compile(rb"mise (use|x) ")
+
+# Agents with a documented flag for attaching an image to a one-shot prompt.
+IMAGE_FLAGS = {"codex": "--image"}
+MAX_ATTACHMENTS = 4
+ATTACHMENT_LIMIT = 10 * 1024 * 1024
+IMAGE_NAME = re.compile(r"^[A-Za-z0-9._-]{1,80}\.(png|jpg|webp|gif)$")
 
 AGENT_CREDENTIALS = {
     "claude": ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"],
@@ -521,7 +531,15 @@ def _kill_group(pgid):
         return
 
 
-def run_agent(argv, stdin_text, env, label="agent"):
+def with_attachments(prompt, attachments):
+    if not attachments:
+        return prompt
+    names = ", ".join(os.path.basename(path) for path in attachments)
+    noun = "image is" if len(attachments) == 1 else "images are"
+    return f"{prompt}\n\nThe attached {noun} in the current directory: {names}. Look at them before answering."
+
+
+def run_agent(argv, stdin_text, env, label="agent", cwd=None):
     try:
         proc = subprocess.Popen(
             argv,
@@ -529,6 +547,7 @@ def run_agent(argv, stdin_text, env, label="agent"):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=env,
+            cwd=cwd,
             start_new_session=True,
         )
     except OSError:
@@ -603,6 +622,47 @@ def run_agent(argv, stdin_text, env, label="agent"):
     return code if code else 1
 
 
+def attachment_dir():
+    runtime = os.environ.get("XDG_RUNTIME_DIR", "")
+    if not re.fullmatch(r"/run/user/\d{1,10}", runtime):
+        return ""
+    return os.path.join(runtime, "grokbot-desktop", "attachments")
+
+
+def image_ok(path):
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return False
+    if not stat.S_ISREG(st.st_mode) or st.st_uid != os.geteuid() or st.st_size > ATTACHMENT_LIMIT:
+        return False
+    try:
+        with open(path, "rb") as handle:
+            head = handle.read(16)
+    except OSError:
+        return False
+    return (head.startswith(b"\x89PNG\r\n\x1a\n") or head.startswith(b"\xff\xd8\xff")
+            or head[:6] in (b"GIF87a", b"GIF89a") or (head[:4] == b"RIFF" and head[8:12] == b"WEBP"))
+
+
+def parse_attachments(value):
+    """Paths of attached images, or None when any is not one of ours."""
+    if value in (None, []):
+        return []
+    if not isinstance(value, list) or len(value) > MAX_ATTACHMENTS:
+        return None
+    base = attachment_dir()
+    out = []
+    for item in value:
+        path = str(item or "")
+        if not base or os.path.dirname(path) != base or not IMAGE_NAME.fullmatch(os.path.basename(path)):
+            return None
+        if not image_ok(path):
+            return None
+        out.append(path)
+    return out
+
+
 def parse_request(raw):
     try:
         data = json.loads(raw)
@@ -616,11 +676,15 @@ def parse_request(raw):
     bot_id = str(data.get("botId") or "")
     if not SAFE_ID.fullmatch(bot_id):
         return None
+    attachments = parse_attachments(data.get("attachments"))
+    if attachments is None:
+        return None
     return {
         "botId": bot_id,
         "botName": plain(data.get("botName"), 120) or "Bob",
         "prompt": prompt,
         "host": host_name(data.get("host")),
+        "attachments": attachments,
     }
 
 
@@ -640,7 +704,7 @@ def main(argv=None):
         return 2
     payload = parse_request(raw)
     if not payload:
-        print("expected a JSON prompt", file=sys.stderr)
+        print("expected a JSON prompt with valid attachments", file=sys.stderr)
         return 2
     entry = plugin_entry()
     desktop = desktop_config()
@@ -648,6 +712,9 @@ def main(argv=None):
     if mode == "webhook":
         if not url:
             print("webhook URL is missing or not https", file=sys.stderr)
+            return 2
+        if payload["attachments"]:
+            print("images can't be sent through the webhook yet; ask without them, or use agent mode", file=sys.stderr)
             return 2
         key = read_key(key_file_path(entry, desktop))
         if not key:
@@ -658,10 +725,17 @@ def main(argv=None):
     if not argv:
         print(problem, file=sys.stderr)
         return 127
-    text = agent_stdin(payload["prompt"], payload["botName"], custom)
+    attachments = payload["attachments"]
+    text = agent_stdin(with_attachments(payload["prompt"], attachments), payload["botName"], custom)
+    if attachments and not custom and agent in IMAGE_FLAGS:
+        for path in attachments:
+            argv = [*argv, IMAGE_FLAGS[agent], path]
     if not custom and agent in PROMPT_AS_ARGUMENT:
         argv, text = [*argv, text], ""
-    return run_agent(argv, text, child_env(agent, custom), agent or "agent command")
+    # With images, the agent works in their directory so its file tools
+    # can open them without reaching outside it.
+    cwd = attachment_dir() if attachments else None
+    return run_agent(argv, text, child_env(agent, custom), agent or "agent command", cwd)
 
 
 if __name__ == "__main__":

@@ -104,6 +104,32 @@ Rectangle {
     promptField.selectAll()
   }
 
+  // Ctrl+V attaches an image when the clipboard holds one; otherwise the
+  // helper reports none and the text is pasted as usual.
+  function pasteText() {
+    promptField.forceActiveFocus()
+    promptField.paste()
+  }
+
+  property bool attachMenuOpen: false
+
+  // Image files dropped on the card are attached.
+  DropArea {
+    anchors.fill: parent
+    keys: ["text/uri-list"]
+    onDropped: function (drop) {
+      var i
+      for (i = 0; i < drop.urls.length; i++) {
+        var url = String(drop.urls[i])
+        if (/^file:\/\/.+\.(png|jpe?g|webp|gif)$/i.test(url)) {
+          app.attach("file", decodeURIComponent(url.slice(7)))
+          drop.accept()
+          return
+        }
+      }
+    }
+  }
+
   function activePin(id) {
     return app && id === app.chosenBotId
   }
@@ -508,6 +534,7 @@ Rectangle {
             delegate: Exchange {
               required property var modelData
               asked: modelData.asked || ""
+              images: modelData.images || []
               body: modelData.body || ""
               links: modelData.links || []
             }
@@ -516,6 +543,7 @@ Rectangle {
           Exchange {
             id: latest
             asked: app ? app.askedText : ""
+            images: app ? app.askedImages : []
             body: app ? app.bubbleBody : ""
             links: app ? app.noticeLinks : []
             typing: app ? app.askingHere && app.bubbleBody === "" : false
@@ -551,6 +579,103 @@ Rectangle {
         gradient: Gradient {
           GradientStop { position: 0; color: Theme.surfaceClear }
           GradientStop { position: 1; color: Theme.surface }
+        }
+      }
+    }
+
+    // Images waiting to go with the next ask, each with a remove button,
+    // and a line when attaching did not work.
+    Item {
+      width: parent.width
+      height: pendingRow.height
+      visible: app ? app.pendingImages.length > 0 : false
+      Row {
+        id: pendingRow
+        spacing: 8
+        Repeater {
+          model: app ? app.pendingImages : []
+          delegate: Item {
+            required property string modelData
+            required property int index
+            width: 52
+            height: 52
+            Thumb {
+              y: 4
+              source: modelData
+              size: 48
+            }
+            Rectangle {
+              x: 34
+              width: 18
+              height: 18
+              radius: 9
+              color: Theme.raised
+              border.width: 1
+              border.color: Theme.edgeStrong
+              Text {
+                anchors.centerIn: parent
+                text: "×"
+                color: Theme.text
+                font.pixelSize: 12
+                font.family: app.fontFamily
+                textFormat: Text.PlainText
+              }
+              HoverArea {
+                label: "Remove image"
+                onActivated: app.removeImage(index)
+              }
+            }
+          }
+        }
+      }
+    }
+
+    Text {
+      width: parent.width
+      visible: app ? app.attachNote !== "" : false
+      text: app ? app.attachNote : ""
+      color: Theme.textMuted
+      font.pixelSize: 12
+      wrapMode: Text.WordWrap
+      font.family: app.fontFamily
+      textFormat: Text.PlainText
+    }
+
+    // The + opens these two ways to attach an image.
+    Column {
+      id: attachMenu
+      width: parent.width
+      spacing: 4
+      visible: bubble.attachMenuOpen
+      Repeater {
+        model: [
+          { label: "Screenshot an area", mode: "screenshot" },
+          { label: "Paste image from clipboard", mode: "paste" }
+        ]
+        delegate: Rectangle {
+          required property var modelData
+          width: attachMenu.width
+          height: 34
+          radius: 10
+          color: Theme.raised
+          border.width: 1
+          border.color: Theme.edge
+          Text {
+            x: 14
+            anchors.verticalCenter: parent.verticalCenter
+            text: modelData.label
+            color: Theme.text
+            font.pixelSize: 13
+            font.family: app.fontFamily
+            textFormat: Text.PlainText
+          }
+          HoverArea {
+            label: modelData.label
+            onActivated: {
+              bubble.attachMenuOpen = false
+              app.attach(modelData.mode)
+            }
+          }
         }
       }
     }
@@ -604,16 +729,51 @@ Rectangle {
       height: fieldHeight
       Behavior on height { NumberAnimation { duration: bubble.ms(120); easing.type: Easing.OutCubic } }
 
-      // The right button is dictation while the field is empty, send while
-      // it has text, and stop while an ask is running; its icons crossfade
-      // between modes.
+      // The left button attaches an image. The right button is dictation
+      // while the field is empty, send while it has text, and stop while an
+      // ask is running; its icons crossfade between modes.
+      Rectangle {
+        id: attachButton
+        readonly property bool usable: app ? !app.askingHere && !app.attaching && app.pendingImages.length < app.imageLimit : false
+        anchors.bottom: parent.bottom
+        width: 42
+        height: 42
+        radius: 21
+        color: bubble.attachMenuOpen ? Theme.selected : Theme.raised
+        border.width: 1
+        border.color: Theme.edgeField
+        opacity: usable ? 1 : 0.45
+        Behavior on opacity { NumberAnimation { duration: bubble.ms(140) } }
+        Rectangle {
+          width: 14
+          height: 1.6
+          radius: 1
+          anchors.centerIn: parent
+          color: Theme.iconSoft
+        }
+        Rectangle {
+          width: 1.6
+          height: 14
+          radius: 1
+          anchors.centerIn: parent
+          color: Theme.iconSoft
+          rotation: bubble.attachMenuOpen ? 90 : 0
+          Behavior on rotation { NumberAnimation { duration: bubble.ms(160); easing.type: Easing.OutCubic } }
+        }
+        HoverArea {
+          enabled: attachButton.usable
+          label: "Attach an image"
+          onActivated: bubble.attachMenuOpen = !bubble.attachMenuOpen
+        }
+      }
+
       Rectangle {
         id: voiceButton
         readonly property bool dictating: app ? app.dictating : false
         property real wave: 0
         property string ink: dictating ? Theme.recording : Theme.text
         readonly property bool asking: app ? app.askingHere : false
-        readonly property string mode: asking ? "stop" : (promptField.text.trim() !== "" ? "send" : "voice")
+        readonly property string mode: asking ? "stop" : (promptField.text.trim() !== "" || (app && app.pendingImages.length > 0) ? "send" : "voice")
         width: 42
         height: 42
         radius: 21
@@ -706,7 +866,7 @@ Rectangle {
               app.stopAsk()
               return
             }
-            if (promptField.text.trim() !== "") {
+            if (promptField.text.trim() !== "" || app.pendingImages.length > 0) {
               app.dictating = false
               app.submitPrompt(promptField.text)
               return
@@ -719,8 +879,9 @@ Rectangle {
       }
 
       Rectangle {
-        anchors.left: parent.left
+        anchors.left: attachButton.right
         anchors.right: voiceButton.left
+        anchors.leftMargin: 8
         anchors.rightMargin: 8
         anchors.bottom: parent.bottom
         height: composer.fieldHeight
@@ -775,6 +936,12 @@ Rectangle {
               else if (r.y + r.height + bottomPadding > promptFlick.contentY + promptFlick.height)
                 promptFlick.contentY = r.y + r.height + bottomPadding - promptFlick.height
             }
+            Keys.onPressed: function (event) {
+              if (event.key === Qt.Key_V && (event.modifiers & Qt.ControlModifier) && !(event.modifiers & Qt.ShiftModifier)) {
+                event.accepted = true
+                if (app.attach("paste", "quiet") !== "ok") promptField.paste()
+              }
+            }
             Keys.onReturnPressed: function (event) { promptField.returnKey(event) }
             Keys.onEnterPressed: function (event) { promptField.returnKey(event) }
             Keys.onEscapePressed: app.stepBack()
@@ -793,17 +960,64 @@ Rectangle {
     }
   }
 
+  // An attached image, cropped square inside a rounded frame. The image is
+  // inset far enough that its square corners stay inside the frame's
+  // curve, so no masking layer is needed.
+  component Thumb: Rectangle {
+    id: thumb
+    property string source: ""
+    property real size: 44
+    width: size
+    height: size
+    radius: 8
+    color: Theme.field
+    border.width: 1
+    border.color: Theme.edge
+    Image {
+      anchors.fill: parent
+      anchors.margins: 3
+      source: thumb.source !== "" ? "file://" + thumb.source : ""
+      fillMode: Image.PreserveAspectCrop
+      asynchronous: true
+      cache: false
+      smooth: true
+      mipmap: true
+      sourceSize.width: thumb.size * 2
+      sourceSize.height: thumb.size * 2
+    }
+  }
+
   // One exchange: what was asked, on the right, then the reply or notice as
   // selectable plain text with its link buttons. While an ask runs and
   // nothing has come back, three dots pulse where the reply will land.
   component Exchange: Column {
     id: exchange
     property string asked: ""
+    property var images: []
     property string body: ""
     property var links: []
     property bool typing: false
     width: parent ? parent.width : 0
     spacing: 10
+
+    // Images that went with the question, above it on the right.
+    Item {
+      width: parent.width
+      height: 64
+      visible: exchange.images.length > 0
+      Row {
+        anchors.right: parent.right
+        spacing: 6
+        Repeater {
+          model: exchange.images
+          delegate: Thumb {
+            required property string modelData
+            source: modelData
+            size: 64
+          }
+        }
+      }
+    }
 
     Item {
       width: parent.width

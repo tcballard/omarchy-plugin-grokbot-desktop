@@ -43,6 +43,7 @@ Item {
   readonly property string cursorHelper: root.localPath(Qt.resolvedUrl("bin/grokbot-cursor"))
   readonly property string askHelper: root.localPath(Qt.resolvedUrl("bin/grokbot-ask"))
   readonly property string dictateHelper: root.localPath(Qt.resolvedUrl("bin/grokbot-dictate"))
+  readonly property string attachHelper: root.localPath(Qt.resolvedUrl("bin/grokbot-attach"))
 
   property bool ready: false
   property bool present: true
@@ -143,9 +144,17 @@ Item {
   property string bubbleBody: ""
   property string promptDraft: ""
   property var noticeLinks: []
+  // Images waiting to go with the next ask, as paths grokbot-attach saved,
+  // and those that went with the latest ask.
+  property var pendingImages: []
+  property var askedImages: []
+  readonly property int imageLimit: 4
+  property bool attaching: false
+  property string attachNote: ""
   // Earlier exchanges with the bot on screen, oldest first, each
-  // { asked, body, links }; the latest stays in askedText, bubbleBody, and
-  // noticeLinks. A new ask or notice moves the latest here.
+  // { asked, images, body, links }; the latest stays in askedText,
+  // askedImages, bubbleBody, and noticeLinks. A new ask or notice moves the
+  // latest here.
   property var history: []
   readonly property int historyLimit: 40
   // Each bot keeps its own conversation. The one on screen lives in
@@ -656,7 +665,7 @@ Item {
 
   function stashThread(id) {
     var next = Object.assign({}, root.threads)
-    next[id] = { history: root.history, asked: root.askedText, body: root.bubbleBody, links: root.noticeLinks, draft: root.promptDraft }
+    next[id] = { history: root.history, asked: root.askedText, images: root.askedImages, body: root.bubbleBody, links: root.noticeLinks, draft: root.promptDraft, pending: root.pendingImages }
     root.threads = next
   }
 
@@ -664,6 +673,8 @@ Item {
     var thread = root.threads[id] || {}
     root.history = thread.history || []
     root.askedText = thread.asked || ""
+    root.askedImages = thread.images || []
+    root.pendingImages = thread.pending || []
     root.bubbleBody = thread.body || ""
     root.noticeLinks = thread.links || []
     root.promptDraft = thread.draft || ""
@@ -949,8 +960,9 @@ Item {
   function archiveExchange() {
     root.clearedThread = null
     if (root.askedText === "" && root.bubbleBody === "" && root.noticeLinks.length === 0) return
-    root.history = root.history.concat([{ asked: root.askedText, body: root.bubbleBody, links: root.noticeLinks }]).slice(-root.historyLimit)
+    root.history = root.history.concat([{ asked: root.askedText, images: root.askedImages, body: root.bubbleBody, links: root.noticeLinks }]).slice(-root.historyLimit)
     root.askedText = ""
+    root.askedImages = []
     root.bubbleBody = ""
     root.noticeLinks = []
   }
@@ -976,9 +988,10 @@ Item {
 
   function clearConversation() {
     if (!root.canClear) return "nothing to clear"
-    root.clearedThread = { botId: root.threadBotId, history: root.history, asked: root.askedText, body: root.bubbleBody, links: root.noticeLinks }
+    root.clearedThread = { botId: root.threadBotId, history: root.history, asked: root.askedText, images: root.askedImages, body: root.bubbleBody, links: root.noticeLinks }
     root.history = []
     root.askedText = ""
+    root.askedImages = []
     root.bubbleBody = ""
     root.noticeLinks = []
     undoTimer.restart()
@@ -991,6 +1004,7 @@ Item {
     if (!cleared || cleared.botId !== root.threadBotId) return
     root.history = cleared.history
     root.askedText = cleared.asked
+    root.askedImages = cleared.images
     root.bubbleBody = cleared.body
     root.noticeLinks = cleared.links
     root.clearedThread = null
@@ -1005,6 +1019,8 @@ Item {
 
   function submitPrompt(value) {
     var prompt = root.plainPrompt(value, 4000)
+    // Images can go on their own, as in a chat app.
+    if (prompt === "" && root.pendingImages.length > 0) prompt = "Have a look at this."
     if (prompt === "" || root.asking) return
     var route = Dictation.route(prompt, root.bots, root.defaultBotId)
     if (route.matched) {
@@ -1047,6 +1063,59 @@ Item {
       return "error"
     Quickshell.execDetached(["/usr/bin/python3", root.dictateHelper])
     return "ok"
+  }
+
+  // Attaching an image runs grokbot-attach, which saves a private copy and
+  // prints its path. A screenshot hides the card while an area is picked.
+  property string attachMode: ""
+  // Ctrl+V tries for an image quietly and falls back to pasting text.
+  property bool attachQuiet: false
+
+  function attach(mode, path) {
+    if (attachProc.running || root.askingHere) return "busy"
+    if (root.pendingImages.length >= root.imageLimit) {
+      root.attachNote = "Up to " + root.imageLimit + " images per ask."
+      return "full"
+    }
+    if (root.attachHelper.indexOf("/bin/grokbot-attach") < 0 || root.attachHelper.indexOf("..") >= 0) return "error"
+    var args = ["/usr/bin/python3", "-I", root.attachHelper, mode]
+    if (mode === "file") args.push(String(path || ""))
+    root.attachMode = mode
+    root.attachQuiet = mode === "paste" && path === "quiet"
+    root.attachNote = ""
+    root.attaching = true
+    attachProc.command = args
+    attachProc.running = true
+    return "ok"
+  }
+
+  function removeImage(index) {
+    root.pendingImages = root.pendingImages.filter(function (item, i) { return i !== index })
+  }
+
+  Process {
+    id: attachProc
+    clearEnvironment: true
+    environment: ({
+      XDG_RUNTIME_DIR: Quickshell.env("XDG_RUNTIME_DIR") || "",
+      WAYLAND_DISPLAY: Quickshell.env("WAYLAND_DISPLAY") || "",
+      HYPRLAND_INSTANCE_SIGNATURE: Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE") || ""
+    })
+    stdout: StdioCollector { id: attachOut }
+    stderr: StdioCollector { id: attachErr }
+    onExited: function (code) {
+      root.attaching = false
+      var path = String(attachOut.text || "").trim()
+      if (code === 0 && /^\/run\/user\/\d+\/grokbot-desktop\/attachments\/[A-Za-z0-9._-]+$/.test(path)) {
+        root.pendingImages = root.pendingImages.concat([path]).slice(0, root.imageLimit)
+      } else if (code === 4) {
+        if (root.attachQuiet && bubblePanel) bubblePanel.pasteText()
+        else root.attachNote = "There's no image on the clipboard."
+      } else if (code !== 3) {
+        root.attachNote = root.cleanText(attachErr.text, 160) || "The image couldn't be attached."
+      }
+      if (!root.bubbleOpen) root.openBubble()
+    }
   }
 
   function trustedBin(path) {
@@ -1092,6 +1161,10 @@ Item {
     root.openBubble()
     root.archiveExchange()
     root.askedText = String(prompt || "")
+    root.askedImages = root.pendingImages
+    root.pendingImages = []
+    root.attachNote = ""
+    if (bubblePanel) bubblePanel.attachMenuOpen = false
     if (!root.trustedBin("/usr/bin/setpriv") || !root.trustedBin("/usr/bin/python3")) {
       root.failAsk("Couldn't find trusted setpriv and python3.")
       return "error"
@@ -1105,7 +1178,8 @@ Item {
       botId: bot ? bot.id : root.defaultBotId,
       botName: root.botLabel(),
       prompt: prompt,
-      host: ""
+      host: "",
+      attachments: root.askedImages
     })
     root.askBotId = root.threadBotId
     root.asking = true
@@ -1711,7 +1785,8 @@ Item {
     BubblePanel {
       id: bubblePanel
       app: root
-      readonly property bool shown: root.bubbleOpen
+      // Out of the way while a screenshot area is picked.
+      readonly property bool shown: root.bubbleOpen && !(root.attaching && root.attachMode === "screenshot")
       growsUp: y < stage.y
       visible: opacity > 0.01
       opacity: shown ? 1 : 0

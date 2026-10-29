@@ -1281,7 +1281,7 @@ test('each bot keeps its own conversation, and a reply lands with the bot asked'
   const select = qmlFunction(main, 'selectBot')
   assert.match(select, /if \(changed\) \{\s*root\.clearedThread = null\s*root\.stashThread\(root\.threadBotId\)/)
   assert.match(select, /root\.loadThread\(id\)/)
-  assert.match(qmlFunction(main, 'stashThread'), /\{ history: root\.history, asked: root\.askedText, body: root\.bubbleBody, links: root\.noticeLinks, draft: root\.promptDraft \}/)
+  assert.match(qmlFunction(main, 'stashThread'), /\{ history: root\.history, asked: root\.askedText, images: root\.askedImages, body: root\.bubbleBody, links: root\.noticeLinks, draft: root\.promptDraft, pending: root\.pendingImages \}/)
   assert.doesNotMatch(qmlFunction(main, 'saveSettings'), /threads/)
   // The ask remembers its bot; its reply is shown there or kept unread.
   assert.match(qmlFunction(main, 'launchAsk'), /root\.askBotId = root\.threadBotId/)
@@ -1303,7 +1303,7 @@ test('each bot keeps its own conversation, and a reply lands with the bot asked'
 test('each bot keeps a scrolling history of its conversation', () => {
   // A new ask or notice moves the latest exchange into the history.
   const archive = qmlFunction(main, 'archiveExchange')
-  assert.match(archive, /root\.history = root\.history\.concat\(\[\{ asked: root\.askedText, body: root\.bubbleBody, links: root\.noticeLinks \}\]\)\.slice\(-root\.historyLimit\)/)
+  assert.match(archive, /root\.history = root\.history\.concat\(\[\{ asked: root\.askedText, images: root\.askedImages, body: root\.bubbleBody, links: root\.noticeLinks \}\]\)\.slice\(-root\.historyLimit\)/)
   assert.match(qmlFunction(main, 'launchAsk'), /root\.archiveExchange\(\)\n\s*root\.askedText = String\(prompt \|\| ""\)/)
   assert.match(qmlFunction(main, 'sayNotice'), /root\.archiveExchange\(\)/)
   assert.match(qmlFunction(main, 'loadThread'), /root\.history = thread\.history \|\| \[\]/)
@@ -1316,13 +1316,13 @@ test('each bot keeps a scrolling history of its conversation', () => {
   assert.match(panel, /readonly property real cap: Math\.max\(140, bubble\.maxHeight - 28 - header\.height/)
 })
 
-test('the composer has no + and clearing a conversation can be undone', () => {
+test('clearing a conversation is in the menu, not the composer, and can be undone', () => {
   const panel = read('BubblePanel.qml')
   assert.doesNotMatch(panel, /plusButton|newConversation/)
   assert.doesNotMatch(main, /function newConversation/)
   // Clearing keeps the conversation behind an Undo chip for a few seconds.
   const clear = qmlFunction(main, 'clearConversation')
-  assert.match(clear, /root\.clearedThread = \{ botId: root\.threadBotId, history: root\.history, asked: root\.askedText, body: root\.bubbleBody, links: root\.noticeLinks \}/)
+  assert.match(clear, /root\.clearedThread = \{ botId: root\.threadBotId, history: root\.history, asked: root\.askedText, images: root\.askedImages, body: root\.bubbleBody, links: root\.noticeLinks \}/)
   assert.match(clear, /undoTimer\.restart\(\)/)
   assert.match(qmlFunction(main, 'undoClear'), /root\.history = cleared\.history/)
   assert.match(main, /readonly property bool undoShown: root\.clearedThread !== null && root\.clearedThread\.botId === root\.threadBotId/)
@@ -1332,4 +1332,106 @@ test('the composer has no + and clearing a conversation can be undone', () => {
   // It lives in the right-click menu and on IPC, not in the composer.
   assert.match(main, /root\.canClear \? \[\{ "label": "Clear conversation", "action": "clear" \}\]/)
   assert.match(main, /function clear\(\): string \{ return root\.clearConversation\(\) \}/)
+})
+
+const PNG = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex')
+
+function runtimeDir() {
+  const dir = `/run/user/${process.getuid()}`
+  try {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
+    return dir
+  } catch {
+    return ''
+  }
+}
+
+test('grokbot-attach keeps only real images, as private copies', (t) => {
+  const runtime = runtimeDir()
+  if (!runtime) return t.skip('no /run/user directory here')
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'grokbot-attach-'))
+  const env = { PATH: '/usr/bin:/bin', XDG_RUNTIME_DIR: runtime }
+  const attach = (...args) => spawnSync('/usr/bin/python3', ['-I', path.join(root, 'bin/grokbot-attach'), ...args], { encoding: 'utf8', env })
+  const png = path.join(work, 'shot.png')
+  fs.writeFileSync(png, PNG)
+  const ok = attach('file', `file://${png}`)
+  assert.equal(ok.status, 0, ok.stderr)
+  const saved = ok.stdout.trim()
+  assert.match(saved, new RegExp(`^${runtime}/grokbot-desktop/attachments/[0-9-]+-[0-9a-f]{8}\\.png$`))
+  assert.deepEqual(fs.readFileSync(saved), PNG)
+  assert.equal(fs.statSync(saved).mode & 0o777, 0o600)
+  assert.equal(fs.statSync(path.dirname(saved)).mode & 0o777, 0o700)
+  fs.unlinkSync(saved)
+  // Not an image, a link, or too big: refused with a reason.
+  fs.writeFileSync(path.join(work, 'notes.png'), 'not really a picture')
+  const text = attach('file', path.join(work, 'notes.png'))
+  assert.equal(text.status, 2)
+  assert.match(text.stderr, /not a PNG, JPEG, WebP, or GIF image/)
+  fs.symlinkSync(png, path.join(work, 'link.png'))
+  assert.match(attach('file', path.join(work, 'link.png')).stderr, /only regular image files/)
+  fs.writeFileSync(path.join(work, 'huge.png'), Buffer.concat([PNG, Buffer.alloc(11 * 1024 * 1024)]))
+  assert.match(attach('file', path.join(work, 'huge.png')).stderr, /larger than 10 MB/)
+  assert.equal(attach('bogus').status, 2)
+})
+
+test('attached images reach the agent in their own directory, and never the webhook', (t) => {
+  const runtime = runtimeDir()
+  if (!runtime) return t.skip('no /run/user directory here')
+  const dir = path.join(runtime, 'grokbot-desktop', 'attachments')
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
+  const image = path.join(dir, 'test-0000-abcd.png')
+  fs.writeFileSync(image, PNG, { mode: 0o600 })
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'grokbot-img-'))
+  const config = path.join(home, '.config', 'omarchy')
+  fs.mkdirSync(config, { recursive: true })
+  const env = { PATH: '/usr/bin:/bin', HOME: home, XDG_CONFIG_HOME: path.join(home, '.config'), XDG_RUNTIME_DIR: runtime }
+  const ask = (attachments) => runPython('bin/grokbot-ask', [], {
+    input: JSON.stringify({ botId: 'e0195a7d-f804-4688-9191-e2cf3574a6d1', botName: 'Bob', prompt: 'what is this?', attachments }),
+    env
+  })
+  fs.writeFileSync(path.join(config, 'grokbot-desktop.json'), JSON.stringify({
+    dispatch: 'agent',
+    command: ['/usr/bin/python3', '-c', 'import os,sys; print(os.getcwd()); print(sys.stdin.read())']
+  }))
+  const seen = ask([image])
+  assert.equal(seen.status, 0, seen.stderr)
+  assert.equal(seen.stdout.split('\n')[0], dir)
+  assert.match(seen.stdout, /The attached image is in the current directory: test-0000-abcd\.png/)
+  // Paths outside the attachment directory, or not images, are refused.
+  assert.equal(ask(['/etc/passwd']).status, 2)
+  fs.writeFileSync(path.join(dir, 'test-0000-fake.png'), 'text', { mode: 0o600 })
+  assert.equal(ask([path.join(dir, 'test-0000-fake.png')]).status, 2)
+  // Codex is given the image with its --image flag.
+  const bin = path.join(home, '.local', 'bin')
+  fs.mkdirSync(bin, { recursive: true, mode: 0o755 })
+  fs.writeFileSync(path.join(bin, 'codex'), '#!/usr/bin/python3\nimport json,sys\nprint(json.dumps(sys.argv[1:]))\n', { mode: 0o755 })
+  fs.writeFileSync(path.join(config, 'grokbot-desktop.json'), JSON.stringify({ dispatch: 'agent', agent: 'codex' }))
+  const codex = ask([image])
+  assert.equal(codex.status, 0, codex.stderr)
+  assert.deepEqual(JSON.parse(codex.stdout), ['exec', '--skip-git-repo-check', '--image', image])
+  // The webhook refuses images rather than mangling them into the prompt.
+  fs.writeFileSync(path.join(config, 'grokbot-desktop.json'), JSON.stringify({ dispatch: 'webhook', webhookUrl: 'https://example.invalid/hook' }))
+  const hook = ask([image])
+  assert.equal(hook.status, 2)
+  assert.match(hook.stderr, /images can't be sent through the webhook yet/)
+  for (const name of ['test-0000-abcd.png', 'test-0000-fake.png']) fs.unlinkSync(path.join(dir, name))
+})
+
+test('the composer attaches screenshots, pasted images, and dropped files', () => {
+  const panel = read('BubblePanel.qml')
+  assert.match(panel, /id: attachButton/)
+  assert.match(panel, /\{ label: "Screenshot an area", mode: "screenshot" \}/)
+  assert.match(panel, /\{ label: "Paste image from clipboard", mode: "paste" \}/)
+  assert.match(panel, /if \(app\.attach\("paste", "quiet"\) !== "ok"\) promptField\.paste\(\)/)
+  assert.match(main, /if \(root\.attachQuiet && bubblePanel\) bubblePanel\.pasteText\(\)\n\s*else root\.attachNote = "There's no image on the clipboard\."/)
+  // No masking layer in thumbnails: it stalls the scene when a hidden card returns.
+  assert.doesNotMatch(panel, /MultiEffect/)
+  assert.match(panel, /onDropped: function \(drop\)/)
+  assert.match(panel, /component Thumb: Rectangle/)
+  assert.match(panel, /images: app \? app\.askedImages : \[\]/)
+  assert.match(main, /attachments: root\.askedImages/)
+  assert.match(main, /readonly property bool shown: root\.bubbleOpen && !\(root\.attaching && root\.attachMode === "screenshot"\)/)
+  assert.match(qmlFunction(main, 'submitPrompt'), /if \(prompt === "" && root\.pendingImages\.length > 0\) prompt = "Have a look at this\."/)
+  // The helper's output is trusted only as a path in its own directory.
+  assert.match(main, /\\\/run\\\/user\\\/\\d\+\\\/grokbot-desktop\\\/attachments\\\//)
 })
