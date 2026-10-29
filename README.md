@@ -170,7 +170,7 @@ That removes the plugin checkout and its `shell.json` entry. The companion's run
 ./tests/run
 ```
 
-[Build, run and remove](docs/DEVELOPMENT.md) · [Architecture](ARCHITECTURE.md) · [Release process](docs/RELEASE.md)
+[Build, run and remove](docs/DEVELOPMENT.md) · [Architecture](ARCHITECTURE.md) · [Release process](docs/RELEASE.md) · [Roadmap](docs/ROADMAP.md)
 
 ## Compatibility
 
