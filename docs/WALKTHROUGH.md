@@ -77,7 +77,7 @@ omarchy plugin validate "$D"
 
 - [ ] Rest on Bob until he's solid, then drag him to the middle of the screen. He stays exactly where you drop him.
 - [ ] Drag him against an edge. He stops at the screen's edge.
-- [ ] Hold Super and drag on Bob, and note what happens. Omarchy uses Super and drag to move windows, so expect nothing, or a window moving.
+- [ ] Hold Super and drag Bob. He moves as soon as you press, and letting go doesn't open the bubble. A Super+click on Bob doesn't open it either.
 - [ ] Run `omarchy restart shell`. Bob comes back where you left him.
 
 Put him somewhere comfortable for the rest of the tour, for example a little way in from the bottom-right corner.
