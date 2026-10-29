@@ -1,17 +1,19 @@
 #!/usr/bin/python3
-"""Capture or collect one image to attach to the next ask.
+"""Collect files to attach to the next ask.
 
-  grokbot-attach screenshot   pick an area with slurp and capture it with grim
-  grokbot-attach paste        save the image on the Wayland clipboard
-  grokbot-attach file PATH    copy a dropped image file
+  grokbot-attach paste            save the image on the Wayland clipboard
+  grokbot-attach file PATH...     copy files picked in the chooser or dropped
 
 Each saves a private copy under $XDG_RUNTIME_DIR/grokbot-desktop/attachments
-(mode 0700, cleared at logout) and prints its path. Only PNG, JPEG, WebP, and
-GIF images up to 10 MB are kept; anything else is refused with a reason on
-stderr. Copies older than a day are removed on each run.
+(mode 0700, cleared at logout) and prints its path, one per line. A pasted
+image must be PNG, JPEG, WebP, or GIF; a file may be anything regular up to
+25 MB, and keeps its name after a unique prefix. Anything refused is named
+on stderr with the reason. Copies older than a day are removed on each run.
 
 The shell starts it as /usr/bin/python3 -I with a cleared environment that
 holds only XDG_RUNTIME_DIR, WAYLAND_DISPLAY, and HYPRLAND_INSTANCE_SIGNATURE.
+Files are chosen with Omarchy's own omarchy-file-select (the desktop's
+portal file chooser) before they reach this.
 """
 from __future__ import annotations
 
@@ -23,7 +25,8 @@ import subprocess
 import sys
 import time
 
-LIMIT = 10 * 1024 * 1024
+LIMIT = 25 * 1024 * 1024
+UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
 MAX_AGE = 24 * 3600
 TRUSTED = ("/usr/bin", "/bin")
 EXIT_CANCELLED = 3
@@ -74,15 +77,21 @@ def prune(directory):
                 pass
 
 
-def save(directory, data):
+def safe_name(name):
+    stem = UNSAFE.sub("-", os.path.basename(name)).strip(".-")[:80]
+    return stem or "file"
+
+
+def save(directory, data, name=""):
     ext = kind(data[:16])
-    if not ext:
+    if not ext and not name:
         print("that is not a PNG, JPEG, WebP, or GIF image", file=sys.stderr)
         return 2
     if len(data) > LIMIT:
-        print("that image is larger than 10 MB", file=sys.stderr)
+        print(f"{name or 'that image'} is larger than 25 MB", file=sys.stderr)
         return 2
-    path = os.path.join(directory, f"{time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(4)}.{ext}")
+    prefix = f"{time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(4)}"
+    path = os.path.join(directory, f"{prefix}-{safe_name(name)}" if name else f"{prefix}.{ext}")
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     with os.fdopen(fd, "wb") as handle:
         handle.write(data)
@@ -107,23 +116,6 @@ def child_env():
     return env
 
 
-def screenshot(directory):
-    slurp = tool("slurp")
-    grim = tool("grim")
-    if not slurp or not grim:
-        print("screenshots need slurp and grim", file=sys.stderr)
-        return 127
-    picked = subprocess.run([slurp], capture_output=True, env=child_env(), timeout=120)
-    geometry = picked.stdout.decode("utf-8", errors="replace").strip()
-    if picked.returncode != 0 or not re.fullmatch(r"-?\d+,-?\d+ \d+x\d+", geometry):
-        return EXIT_CANCELLED
-    shot = subprocess.run([grim, "-g", geometry, "-t", "png", "-"], capture_output=True, env=child_env(), timeout=30)
-    if shot.returncode != 0 or not shot.stdout:
-        print("the screenshot failed", file=sys.stderr)
-        return 1
-    return save(directory, shot.stdout[: LIMIT + 1])
-
-
 def paste(directory):
     wl_paste = tool("wl-paste")
     if not wl_paste:
@@ -141,26 +133,27 @@ def paste(directory):
 
 def from_file(directory, path):
     path = path[7:] if path.startswith("file://") else path
+    name = os.path.basename(path)
     try:
         st = os.lstat(path)
     except OSError:
-        print("that file could not be read", file=sys.stderr)
+        print(f"{name} could not be read", file=sys.stderr)
         return 2
     if not stat.S_ISREG(st.st_mode):
-        print("only regular image files can be attached", file=sys.stderr)
+        print(f"{name} is not a regular file", file=sys.stderr)
         return 2
     if st.st_size > LIMIT:
-        print("that image is larger than 10 MB", file=sys.stderr)
+        print(f"{name} is larger than 25 MB", file=sys.stderr)
         return 2
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
     with os.fdopen(fd, "rb") as handle:
         data = handle.read(LIMIT + 1)
-    return save(directory, data)
+    return save(directory, data, name)
 
 
 def main(argv):
-    if not argv or argv[0] not in ("screenshot", "paste", "file") or (argv[0] == "file") != (len(argv) == 2):
-        print("usage: grokbot-attach screenshot | paste | file PATH", file=sys.stderr)
+    if not argv or argv[0] not in ("paste", "file") or (argv[0] == "file") != (len(argv) >= 2) or len(argv) > 9:
+        print("usage: grokbot-attach paste | file PATH...", file=sys.stderr)
         return 2
     directory = store_dir()
     if not directory:
@@ -168,11 +161,10 @@ def main(argv):
         return 1
     prune(directory)
     try:
-        if argv[0] == "screenshot":
-            return screenshot(directory)
         if argv[0] == "paste":
             return paste(directory)
-        return from_file(directory, argv[1])
+        codes = [from_file(directory, path) for path in argv[1:]]
+        return 0 if 0 in codes else max(codes)
     except (OSError, subprocess.SubprocessError):
         print("the image could not be saved", file=sys.stderr)
         return 1

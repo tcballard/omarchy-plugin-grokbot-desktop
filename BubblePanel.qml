@@ -123,20 +123,20 @@ Rectangle {
 
   property bool attachMenuOpen: false
 
-  // Image files dropped on the card are attached.
+  // Files dropped on the card are attached.
   DropArea {
     anchors.fill: parent
     keys: ["text/uri-list"]
     onDropped: function (drop) {
+      var paths = []
       var i
       for (i = 0; i < drop.urls.length; i++) {
         var url = String(drop.urls[i])
-        if (/^file:\/\/.+\.(png|jpe?g|webp|gif)$/i.test(url)) {
-          app.attach("file", decodeURIComponent(url.slice(7)))
-          drop.accept()
-          return
-        }
+        if (url.indexOf("file:///") === 0) paths.push(decodeURIComponent(url.slice(7)))
       }
+      if (paths.length === 0) return
+      app.attach("file", paths)
+      drop.accept()
     }
   }
 
@@ -553,7 +553,7 @@ Rectangle {
             delegate: Exchange {
               required property var modelData
               asked: modelData.asked || ""
-              images: modelData.images || []
+              files: modelData.files || []
               body: modelData.body || ""
               links: modelData.links || []
             }
@@ -562,7 +562,7 @@ Rectangle {
           Exchange {
             id: latest
             asked: app ? app.askedText : ""
-            images: app ? app.askedImages : []
+            files: app ? app.askedFiles : []
             body: app ? app.bubbleBody : ""
             links: app ? app.noticeLinks : []
             typing: app ? app.askingHere && app.bubbleBody === "" : false
@@ -602,29 +602,31 @@ Rectangle {
       }
     }
 
-    // Images waiting to go with the next ask, each with a remove button,
+    // Files waiting to go with the next ask, each with a remove button,
     // and a line when attaching did not work.
     Item {
       width: parent.width
       height: pendingRow.height
-      visible: app ? app.pendingImages.length > 0 : false
-      Row {
+      visible: app ? app.pendingFiles.length > 0 : false
+      Flow {
         id: pendingRow
+        width: parent.width
         spacing: 8
         Repeater {
-          model: app ? app.pendingImages : []
+          model: app ? app.pendingFiles : []
           delegate: Item {
             required property string modelData
             required property int index
-            width: 52
+            width: pending.width + 4
             height: 52
-            Thumb {
+            Attachment {
+              id: pending
               y: 4
               source: modelData
               size: 48
             }
             Rectangle {
-              x: 34
+              x: pending.width - 14
               width: 18
               height: 18
               radius: 9
@@ -640,8 +642,8 @@ Rectangle {
                 textFormat: Text.PlainText
               }
               HoverArea {
-                label: "Remove image"
-                onActivated: app.removeImage(index)
+                label: "Remove " + app.fileLabel(modelData)
+                onActivated: app.removeFile(index)
               }
             }
           }
@@ -660,7 +662,7 @@ Rectangle {
       textFormat: Text.PlainText
     }
 
-    // The + opens these two ways to attach an image.
+    // The + opens these two ways to attach something.
     Column {
       id: attachMenu
       width: parent.width
@@ -668,8 +670,8 @@ Rectangle {
       visible: bubble.attachMenuOpen
       Repeater {
         model: [
-          { label: "Screenshot an area", mode: "screenshot" },
-          { label: "Paste image from clipboard", mode: "paste" }
+          { label: "Paste image", mode: "paste" },
+          { label: "Choose a file…", mode: "choose" }
         ]
         delegate: Rectangle {
           required property var modelData
@@ -753,7 +755,7 @@ Rectangle {
       // ask is running; its icons crossfade between modes.
       Rectangle {
         id: attachButton
-        readonly property bool usable: app ? !app.askingHere && !app.attaching && app.pendingImages.length < app.imageLimit : false
+        readonly property bool usable: app ? !app.askingHere && !app.attaching && !app.choosingFiles && app.pendingFiles.length < app.fileLimit : false
         anchors.bottom: parent.bottom
         width: 42
         height: 42
@@ -781,7 +783,7 @@ Rectangle {
         }
         HoverArea {
           enabled: attachButton.usable
-          label: "Attach an image"
+          label: "Attach a file or image"
           onActivated: bubble.attachMenuOpen = !bubble.attachMenuOpen
         }
       }
@@ -792,7 +794,7 @@ Rectangle {
         property real wave: 0
         property string ink: dictating ? Theme.recording : Theme.text
         readonly property bool asking: app ? app.askingHere : false
-        readonly property string mode: asking ? "stop" : (promptField.text.trim() !== "" || (app && app.pendingImages.length > 0) ? "send" : "voice")
+        readonly property string mode: asking ? "stop" : (promptField.text.trim() !== "" || (app && app.pendingFiles.length > 0) ? "send" : "voice")
         width: 42
         height: 42
         radius: 21
@@ -885,7 +887,7 @@ Rectangle {
               app.stopAsk()
               return
             }
-            if (promptField.text.trim() !== "" || app.pendingImages.length > 0) {
+            if (promptField.text.trim() !== "" || app.pendingFiles.length > 0) {
               app.dictating = false
               app.submitPrompt(promptField.text)
               return
@@ -979,14 +981,15 @@ Rectangle {
     }
   }
 
-  // An attached image, cropped square inside a rounded frame. The image is
-  // inset far enough that its square corners stay inside the frame's
-  // curve, so no masking layer is needed.
-  component Thumb: Rectangle {
+  // An attachment: an image cropped square inside a rounded frame (inset
+  // far enough that its square corners stay inside the frame's curve, so no
+  // masking layer is needed), or any other file as a chip with its name.
+  component Attachment: Rectangle {
     id: thumb
     property string source: ""
     property real size: 44
-    width: size
+    readonly property bool image: app ? app.isImageFile(thumb.source) : false
+    width: image ? size : Math.min(200, fileName.implicitWidth + 40)
     height: size
     radius: 8
     color: Theme.field
@@ -995,7 +998,8 @@ Rectangle {
     Image {
       anchors.fill: parent
       anchors.margins: 3
-      source: thumb.source !== "" ? "file://" + thumb.source : ""
+      visible: thumb.image
+      source: thumb.image && thumb.source !== "" ? "file://" + thumb.source : ""
       fillMode: Image.PreserveAspectCrop
       asynchronous: true
       cache: false
@@ -1003,6 +1007,31 @@ Rectangle {
       mipmap: true
       sourceSize.width: thumb.size * 2
       sourceSize.height: thumb.size * 2
+    }
+    // A folded-corner page for a file that is not an image.
+    Rectangle {
+      visible: !thumb.image
+      x: 12
+      anchors.verticalCenter: parent.verticalCenter
+      width: 12
+      height: 15
+      radius: 2
+      color: "transparent"
+      border.width: 1.4
+      border.color: Theme.iconSoft
+    }
+    Text {
+      id: fileName
+      visible: !thumb.image
+      x: 30
+      width: Math.min(implicitWidth, 160)
+      anchors.verticalCenter: parent.verticalCenter
+      text: app ? app.fileLabel(thumb.source) : ""
+      elide: Text.ElideMiddle
+      color: Theme.text
+      font.pixelSize: 12
+      font.family: app.fontFamily
+      textFormat: Text.PlainText
     }
   }
 
@@ -1012,24 +1041,24 @@ Rectangle {
   component Exchange: Column {
     id: exchange
     property string asked: ""
-    property var images: []
+    property var files: []
     property string body: ""
     property var links: []
     property bool typing: false
     width: parent ? parent.width : 0
     spacing: 10
 
-    // Images that went with the question, above it on the right.
+    // Files that went with the question, above it on the right.
     Item {
       width: parent.width
       height: 64
-      visible: exchange.images.length > 0
+      visible: exchange.files.length > 0
       Row {
         anchors.right: parent.right
         spacing: 6
         Repeater {
-          model: exchange.images
-          delegate: Thumb {
+          model: exchange.files
+          delegate: Attachment {
             required property string modelData
             source: modelData
             size: 64
