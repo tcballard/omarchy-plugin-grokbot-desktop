@@ -1239,7 +1239,12 @@ test('the desktop mark turns its face as Grok Bot moves Bob', async () => {
   const front = face.look(bob.points, shapes.LOOK.teardrop, 0, 0)
   const pairX = (look) => (look.eyes[0].x + look.eyes[1].x) / 2
   assert.ok(pairX(right) - pairX(left) > 0.7, 'eyes travel at least 0.7 of the body radius side to side')
-  assert.ok(front.eyes[0].length > right.eyes[0].length * 1.4, 'eyes shrink as the face turns away')
+  assert.ok(front.eyes[0].length > right.eyes[0].length * 1.1, 'eyes shrink as the face turns away')
+  // Facing you, as when the pointer rests on the mark, the eyes stay close
+  // to the picker's size instead of staring.
+  const pickerLength = (bob.eyes[0].length + bob.eyes[1].length) / 2
+  assert.ok(front.eyes[0].length < pickerLength * 1.25, 'facing eyes stay near the picker size')
+  assert.match(main, /attention: 1\n/)
   assert.equal(front.eyes[0].angle, 90)
   // The face rolls with the turn as Bob's does: facing you upright, up and to
   // either side by about 25 degrees.

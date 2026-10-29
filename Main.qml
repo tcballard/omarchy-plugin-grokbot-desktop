@@ -2054,9 +2054,9 @@ Item {
         }
         opacity: root.dodgeOpacity
         scale: root.breathe * root.talkScale * root.morphPop * root.hoverScale * root.cornerScale * (1 + 0.06 * root.dragLift)
-        attention: root.hovering ? 1.12 : 1
+        // Hovering lifts the mark a little; the eyes keep their size.
+        attention: 1
         reduceMotion: root.reduceMotion
-        Behavior on attention { NumberAnimation { duration: root.ms(160); easing.type: Easing.OutCubic } }
         transformOrigin: Item.Bottom
         transform: [
           Scale {

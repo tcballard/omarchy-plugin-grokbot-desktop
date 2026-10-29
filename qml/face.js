@@ -107,9 +107,14 @@ function clearance(points, eyes, sx, sy) {
 var LOOK_X = 0.41
 var LOOK_UP = 0.31
 var LOOK_DOWN = 0.29
-var FRONT_SEP = 0.56
-var FRONT_LENGTH = 0.72
-var FRONT_WIDTH = 0.36
+// The app's header draws a small avatar, and its eyes are larger in
+// proportion there (0.72 long and 0.36 wide facing you); at desktop size that
+// read as staring, so facing you the eyes are about a fifth larger than the
+// picker's rather than half again, and shrink less as the face turns, which
+// keeps the look up and to the right at the picker's size.
+var FRONT_SEP = 0.5
+var FRONT_LENGTH = 0.6
+var FRONT_WIDTH = 0.29
 var PICKER_GAZE = [1, -1]
 var PICKER_ROLL = -25
 // The mean eye length of the picker's teardrop, which the recording is of.
@@ -267,10 +272,10 @@ function look(points, params, gx, gy, centre) {
   var roll = lookRoll(x, y)
   var o = [k * LOOK_X * x, k * (y < 0 ? LOOK_UP : LOOK_DOWN) * y]
   var pair = rotate(params.face[0] + o[0], params.face[1] + o[1], roll)
-  var sep = k * (FRONT_SEP - 0.13 * Math.abs(x))
+  var sep = k * (FRONT_SEP - 0.07 * Math.abs(x))
   var half = rotate(sep / 2, 0, roll)
-  var length = k * FRONT_LENGTH * (1 - 0.33 * Math.abs(x)) * (1 - 0.07 * Math.abs(y))
-  var width = k * FRONT_WIDTH * (1 - 0.42 * Math.abs(x))
+  var length = k * FRONT_LENGTH * (1 - 0.12 * Math.abs(x)) * (1 - 0.07 * Math.abs(y))
+  var width = k * FRONT_WIDTH * (1 - 0.3 * Math.abs(x))
   var angle = 90 + 1.05 * roll
   var eyes = []
   var side
