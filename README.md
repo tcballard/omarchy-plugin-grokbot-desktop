@@ -79,7 +79,7 @@ omarchy-shell io.github.tcballard.grokbot-desktop reply 4f9c2a7e1b03 "Nothing on
 omarchy-shell io.github.tcballard.grokbot-desktop sayLink "PR Merged" "omarchy-spaces #27 merged." "Open PR" "https://github.com/tornikegomareli/omarchy-spaces/pull/27"
 ```
 
-`animate` accepts `wave`, `think`, `happy`, `celebrate`, `alert`, `sleep`, `hop`, `spin`, and `morph`. `sayLinks` takes a second label and URL. Links must be `https`, or `http` to localhost, with no credentials. A button opens only when you click it.
+`say` with a bot's name as the title (`say "Bob" "…"`) is that bot speaking: the message goes in its own conversation, whose pill already names it, so no name line goes above it, and it keeps its line breaks, up to 4,000 characters. If another bot is on screen, the speaker's chip gets the unread dot. Any other title (`say "PR Merged" "…"`) is a one-line notice with the title above it. `animate` accepts `wave`, `think`, `happy`, `celebrate`, `alert`, `sleep`, `hop`, `spin`, and `morph`. `sayLinks` takes a second label and URL. Links must be `https`, or `http` to localhost, with no credentials. A button opens only when you click it.
 
 `bot` accepts an id, a short name (`OmaBot`, `Poteto`, `dr eggbot`), or the full profile name. `reply` answers a waiting webhook ask by its id, or the oldest waiting question of a bot named the same way; see [How a webhook ask comes back](#how-a-webhook-ask-comes-back).
 

@@ -1086,9 +1086,10 @@ Item {
 
   // An answer that belongs to no waiting question still lands in its bot's
   // conversation, as a new exchange. Returns whether it is on screen.
-  function appendReply(botId, text) {
+  function appendReply(botId, text, links) {
     if (botId === root.threadBotId) {
       root.archiveExchange()
+      root.noticeLinks = links || []
       root.bubbleBody = text
       return true
     }
@@ -1100,7 +1101,7 @@ Item {
     thread.history = past
     thread.asked = ""
     thread.files = []
-    thread.links = []
+    thread.links = links || []
     thread.wait = ""
     thread.body = text
     next[botId] = thread
@@ -1203,20 +1204,35 @@ Item {
   function sayNotice(title, text, links) {
     var body = root.plainLine(text, 300)
     if (body === "") return "empty text"
-    // A routine that answers with say rather than reply: titled with the
-    // name of a bot that is waiting, it answers that bot's question.
-    if ((links || []).length === 0) {
-      var bot = root.matchBot(root.plainLine(title, 80))
-      var waiting = bot ? root.oldestWaiting(bot.id) : ""
+    var who = root.plainLine(title, 80)
+    var bot = root.matchBot(who)
+    if (bot) {
+      // A bot speaking: a message, not a notice. It keeps its line breaks
+      // and length, and goes in that bot's own conversation, whose pill
+      // already names it, so no name goes above it. Without links it
+      // answers the bot's waiting question, if it has one, as a routine
+      // that replies with say rather than reply does.
+      var words = root.cleanText(text, 4000)
+      var waiting = (links || []).length === 0 ? root.oldestWaiting(bot.id) : ""
       if (waiting !== "") {
-        root.landReply(root.answerWaiting(waiting, root.cleanText(text, 4000)))
+        root.landReply(root.answerWaiting(waiting, words))
         return "ok"
       }
+      if (bot.id !== root.threadBotId) {
+        root.appendReply(bot.id, words, links)
+        return "ok"
+      }
+      root.summon()
+      root.archiveExchange()
+      root.noticeLinks = links || []
+      root.bubbleBody = words
+      root.flashExpression("alert", 1200)
+      syllableAnim.restart()
+      return "ok"
     }
     root.summon()
     root.archiveExchange()
     root.noticeLinks = links || []
-    var who = root.plainLine(title, 80)
     root.bubbleBody = (who !== "" ? who + "\n" : "") + body
     root.flashExpression("alert", 1200)
     syllableAnim.restart()

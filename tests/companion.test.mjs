@@ -1617,6 +1617,18 @@ test('grokbot-connect tests the URL and key before saving them, and keeps other 
   assert.deepEqual(saved, { agentsDir: '/srv/agents', webhookHeader: 'X-Routine-Token', dispatch: 'agent', webhookUrl: url })
 })
 
+test('a bot speaking through say is a message in its own conversation, not a notice', () => {
+  const say = qmlFunction(main, 'sayNotice')
+  // A bot's name as the title: whole text, line breaks kept, no name line,
+  // in that bot's conversation even when another is on screen.
+  assert.match(say, /var bot = root\.matchBot\(who\)\n\s*if \(bot\) \{/)
+  assert.match(say, /var words = root\.cleanText\(text, 4000\)/)
+  assert.match(say, /if \(bot\.id !== root\.threadBotId\) \{\n\s*root\.appendReply\(bot\.id, words, links\)/)
+  assert.match(say, /root\.bubbleBody = words\n/)
+  // Any other title stays a one-line notice with the title above it.
+  assert.match(say, /root\.bubbleBody = \(who !== "" \? who \+ "\\n" : ""\) \+ body/)
+})
+
 test('a webhook answer waits under its question and lands there, whichever bot is on screen', () => {
   // Every ask carries an id; a routine that only acknowledges it leaves the
   // question waiting rather than ending the ask with a placeholder.
@@ -1634,7 +1646,7 @@ test('a webhook answer waits under its question and lands there, whichever bot i
   const receive = qmlFunction(main, 'receiveReply')
   assert.match(receive, /if \(root\.awaiting\[key\]\)/)
   assert.match(receive, /root\.oldestWaiting\(bot\.id\)/)
-  assert.match(qmlFunction(main, 'sayNotice'), /var waiting = bot \? root\.oldestWaiting\(bot\.id\) : ""/)
+  assert.match(qmlFunction(main, 'sayNotice'), /var waiting = \(links \|\| \[\]\)\.length === 0 \? root\.oldestWaiting\(bot\.id\) : ""/)
   // A question waits ten minutes at most.
   assert.match(main, /readonly property int replyWaitMs: 600000/)
   assert.match(qmlFunction(main, 'expireWaiting'), /"'s reply will be in Grok Bot\."/)
