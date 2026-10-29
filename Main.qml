@@ -1878,15 +1878,17 @@ Item {
       growsUp: y < stage.y
       visible: opacity > 0.01
       opacity: shown ? 1 : 0
-      scale: shown ? 1 : 0.94
+      // A short settle from slightly smaller, with no overshoot, so the card
+      // lands where it stays instead of bouncing past it.
+      scale: shown ? 1 : 0.96
       transformOrigin: {
         var above = y < stage.y
         var right = stage.x + stage.width / 2 > x + width / 2
         if (above) return right ? Item.BottomRight : Item.BottomLeft
         return right ? Item.TopRight : Item.TopLeft
       }
-      Behavior on opacity { NumberAnimation { duration: root.ms(bubblePanel.shown ? 180 : 120); easing.type: bubblePanel.shown ? Easing.OutCubic : Easing.InCubic } }
-      Behavior on scale { NumberAnimation { duration: root.ms(bubblePanel.shown ? 240 : 120); easing.type: bubblePanel.shown ? Easing.OutBack : Easing.InCubic; easing.overshoot: 1.2 } }
+      Behavior on opacity { NumberAnimation { duration: root.ms(bubblePanel.shown ? 160 : 120); easing.type: bubblePanel.shown ? Easing.OutCubic : Easing.InCubic } }
+      Behavior on scale { NumberAnimation { duration: root.ms(bubblePanel.shown ? 220 : 120); easing.type: bubblePanel.shown ? Easing.OutCubic : Easing.InCubic } }
       width: Math.min(464, Math.max(320, win.width - 24))
       maxHeight: {
         var above = stage.y - 20

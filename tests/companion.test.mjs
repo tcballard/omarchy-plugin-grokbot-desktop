@@ -949,8 +949,16 @@ test('the card, menu, and roster animate in and out', () => {
   const menu = main.slice(main.indexOf('id: menuCard'), main.indexOf('id: menuCard') + 600)
   assert.match(menu, /visible: opacity > 0\.01/)
   const bubble = read('BubblePanel.qml')
-  assert.match(bubble, /Behavior on shownHeight/)
+  // Every part of the chat page eases in and out with its gap, so the card
+  // follows its content instead of chasing it with an animation of its own.
+  assert.match(bubble, /component Reveal: Item \{[\s\S]*?height: t \* \(gap \+ holder\.height\)/)
+  assert.doesNotMatch(bubble, /shownHeight/)
+  for (const id of ['dividerReveal', 'threadReveal', 'trayReveal', 'noteReveal', 'menuReveal', 'undoReveal', 'composerReveal'])
+    assert.match(bubble, new RegExp(`Reveal \\{\\s*id: ${id}`))
+  assert.match(bubble, /Behavior on fit \{\s*enabled: threadReveal\.t >= 0\.999\s*NumberAnimation \{ duration: bubble\.ms\(bubble\.pageMs\)/)
   assert.match(bubble, /Behavior on expand/)
+  // The card settles open without overshooting.
+  assert.doesNotMatch(card, /OutBack/)
 })
 
 test('size eases and corner changes pop out and back in', () => {
@@ -1319,8 +1327,8 @@ test('each bot keeps a scrolling history of its conversation', () => {
   assert.match(panel, /component Exchange: Column \{/)
   assert.match(panel, /model: app \? app\.history : \[\]\n\s*delegate: Exchange \{/)
   assert.match(panel, /Exchange \{\s*id: latest/)
-  assert.match(panel, /contentY = Math\.min\(end, Math\.max\(0, latest\.y\)\)/)
-  assert.match(panel, /readonly property real cap: Math\.max\(140, bubble\.maxHeight - 28 - header\.height/)
+  assert.match(panel, /var end = Math\.max\(0, contentHeight - Math\.min\(threadBox\.cap, contentHeight\)\)\n\s*var target = Math\.min\(end, Math\.max\(0, latest\.y\)\)/)
+  assert.match(panel, /readonly property real cap: Math\.max\(140, bubble\.maxHeight - 28 - headerGroup\.height - dividerReveal\.height/)
 })
 
 test('clearing a conversation is in the menu, not the composer, and can be undone', () => {
@@ -1334,7 +1342,7 @@ test('clearing a conversation is in the menu, not the composer, and can be undon
   assert.match(qmlFunction(main, 'undoClear'), /root\.history = cleared\.history/)
   assert.match(main, /readonly property bool undoShown: root\.clearedThread !== null && root\.clearedThread\.botId === root\.threadBotId/)
   assert.match(qmlFunction(main, 'archiveExchange'), /root\.clearedThread = null/)
-  assert.match(panel, /readonly property bool shown: app \? app\.undoShown : false/)
+  assert.match(panel, /id: undoReveal\n\s*shown: app \? app\.undoShown : false/)
   assert.match(panel, /onActivated: app\.undoClear\(\)/)
   // It lives in the right-click menu and on IPC, not in the composer.
   assert.match(main, /root\.canClear \? \[\{ "label": "Clear conversation", "action": "clear" \}\]/)
@@ -1471,7 +1479,7 @@ test('the chat and appearance pages crossfade, pinned to the edge the card grows
   // One curve and duration for the page change and the card's height.
   assert.match(panel, /readonly property int pageMs: 260/)
   assert.match(panel, /Behavior on pageT \{ NumberAnimation \{ duration: bubble\.ms\(bubble\.pageMs\); easing\.type: Easing\.BezierSpline; easing\.bezierCurve: bubble\.pageCurve \} \}/)
-  assert.match(panel, /Behavior on shownHeight \{[\s\S]*?duration: bubble\.ms\(bubble\.pageMs\); easing\.type: Easing\.BezierSpline; easing\.bezierCurve: bubble\.pageCurve/)
+  assert.match(panel, /implicitHeight: chatHeight \+ \(appearanceHeight - chatHeight\) \* pageT/)
   // The page leaving fades out before the one arriving fades in; a short drift, not a full slide.
   assert.match(panel, /opacity: Math\.max\(0, 1 - bubble\.pageT \/ 0\.65\)/)
   assert.match(panel, /opacity: Math\.max\(0, \(bubble\.pageT - 0\.35\) \/ 0\.65\)/)
