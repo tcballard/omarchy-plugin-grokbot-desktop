@@ -1,0 +1,250 @@
+#!/usr/bin/python3
+"""Connect the companion to Grok Bot's "Omarchy desktop companion" routine.
+
+  grokbot-connect                 ask for the webhook URL and Sender key, test, then save
+  grokbot-connect --header NAME   also send the routine's own header, asking for its value
+  grokbot-connect --status        say how asks are sent now
+  grokbot-connect --off           send asks to the local agent again; the URL and key stay
+
+The URL and key are tested with one short ask to Bob through bin/grokbot-ask,
+from a private temporary copy of the settings, before anything is saved. The
+key is read without echo (or as the second line of piped input) and is saved
+to ~/.config/omarchy/grokbot-webhook.key, mode 0600. Other settings in
+~/.config/omarchy/grokbot-desktop.json are kept.
+"""
+from __future__ import annotations
+
+import argparse
+import getpass
+import importlib.machinery
+import importlib.util
+import json
+import os
+import stat
+import subprocess
+import sys
+import tempfile
+import urllib.parse
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+ASK = os.path.join(HERE, "grokbot-ask")
+BOB = "e0195a7d-f804-4688-9191-e2cf3574a6d1"
+TEST_PROMPT = "Connection test from the Omarchy desktop companion. Reply with a short hello."
+PASSED_ON = (
+    "HOME", "USER", "LOGNAME", "LANG", "TZ", "SSL_CERT_FILE", "SSL_CERT_DIR",
+    "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy",
+    "GROKBOT_WEBHOOK_TIMEOUT",
+)
+WHERE = """In Grok Bot, click Bob in the chat header, open Routines, then
+"Omarchy desktop companion". It shows the Webhook URL and the Sender key."""
+
+
+def helper():
+    """grokbot-ask as a library, so its URL, key and header rules are the
+    ones used here."""
+    loader = importlib.machinery.SourceFileLoader("grokbot_ask", ASK)
+    module = importlib.util.module_from_spec(importlib.util.spec_from_loader("grokbot_ask", loader))
+    loader.exec_module(module)
+    return module
+
+
+def ask_line(prompt, secret=False):
+    if sys.stdin.isatty():
+        return getpass.getpass(prompt) if secret else input(prompt)
+    # Piped input: one answer per line, never echoed back.
+    print(prompt, end="", flush=True)
+    line = sys.stdin.readline()
+    print()
+    return line.rstrip("\n")
+
+
+def write_private(path, text, mode=0o600):
+    """Replace a file in one step, so a reader never sees half of it."""
+    directory = os.path.dirname(path)
+    os.makedirs(directory, mode=0o700, exist_ok=True)
+    fd, temp = tempfile.mkstemp(dir=directory, prefix=".grokbot-")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        os.chmod(temp, mode)
+        os.replace(temp, path)
+    except BaseException:
+        try:
+            os.unlink(temp)
+        except OSError:
+            pass
+        raise
+
+
+def load_settings(path):
+    try:
+        st = os.lstat(path)
+    except FileNotFoundError:
+        return {}, 0o600
+    if stat.S_ISLNK(st.st_mode) or not stat.S_ISREG(st.st_mode):
+        raise SystemExit(f"{path} is not a regular file; leaving it alone.")
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        raise SystemExit(f"{path} isn't valid JSON; fix or move it, then run this again.")
+    if not isinstance(data, dict):
+        raise SystemExit(f"{path} isn't a JSON object; fix or move it, then run this again.")
+    return data, stat.S_IMODE(st.st_mode)
+
+
+def save_settings(path, changes, removals=()):
+    data, mode = load_settings(path)
+    data.update(changes)
+    for key in removals:
+        data.pop(key, None)
+    write_private(path, json.dumps(data, indent=2) + "\n", mode)
+
+
+def test_ask(url, key, header):
+    """One short ask to Bob through the real helper, from a temporary copy
+    of the settings. Returns (exit code, stdout, stderr)."""
+    with tempfile.TemporaryDirectory(prefix="grokbot-connect-") as home:
+        config = os.path.join(home, "omarchy")
+        os.makedirs(config, mode=0o700)
+        settings = {"dispatch": "webhook", "webhookUrl": url}
+        if header:
+            settings["webhookHeader"] = header[0]
+            write_private(os.path.join(config, "grokbot-webhook-header.key"), header[1] + "\n")
+        write_private(os.path.join(config, "grokbot-desktop.json"), json.dumps(settings))
+        write_private(os.path.join(config, "grokbot-webhook.key"), key + "\n")
+        env = {"PATH": "/usr/bin:/bin", "XDG_CONFIG_HOME": home}
+        for name in PASSED_ON:
+            if os.environ.get(name):
+                env[name] = os.environ[name]
+        request = json.dumps({"botId": BOB, "botName": "Bob", "prompt": TEST_PROMPT})
+        try:
+            done = subprocess.run(
+                [sys.executable, "-I", ASK], input=request, capture_output=True, text=True, env=env, timeout=90
+            )
+        except subprocess.TimeoutExpired:
+            return 124, "", "the test took more than 90 seconds"
+        return done.returncode, done.stdout.strip(), done.stderr.strip()
+
+
+def explain(err):
+    if err.startswith("webhook status 401") or err.startswith("webhook status 403") or "Invalid API key" in err:
+        return "Grok Bot refused the key. Use the routine's Sender key, not an Automations token."
+    if err.startswith("webhook status 404") or err.startswith("webhook status 405"):
+        return "That address doesn't take routine asks. Copy the Webhook URL again."
+    return err or "The test ask failed."
+
+
+def overrides(module):
+    """Settings on the plugin's own shell.json entry win over the file this
+    saves to; name any that would."""
+    entry = module.plugin_entry()
+    return [key for key in ("dispatch", "webhookUrl", "webhookKeyFile", "webhookHeader", "webhookHeaderFile") if entry.get(key) not in (None, "")]
+
+
+def connect(module, header_name):
+    if header_name is not None:
+        header_name = header_name.strip()
+        if not module.HEADER_NAME.fullmatch(header_name) or header_name.lower() in module.OWN_HEADERS:
+            print(f"{header_name!r} can't be used: it must be a plain header name, and not one the companion sends itself.", file=sys.stderr)
+            return 2
+    print(WHERE)
+    print()
+    url = module.validate_webhook_url(ask_line("Webhook URL: "))
+    if not url:
+        print("That isn't an https URL (http only to this computer). Nothing was saved.", file=sys.stderr)
+        return 2
+    key = ask_line("Sender key (not shown): ", secret=True).strip()
+    if not module.secret_ok(key):
+        print("That key is empty, too long, or has control characters in it. Nothing was saved.", file=sys.stderr)
+        return 2
+    header = None
+    if header_name:
+        value = ask_line(f"{header_name} value (not shown): ", secret=True).strip()
+        if not module.secret_ok(value):
+            print("That value is empty, too long, or has control characters in it. Nothing was saved.", file=sys.stderr)
+            return 2
+        header = (header_name, value)
+
+    print("Testing with a short message to Bob…")
+    code, out, err = test_ask(url, key, header)
+    if code not in (0, module.EXIT_SENT):
+        print(f"Not saved. {explain(err)}", file=sys.stderr)
+        return 1
+
+    config = module.config_dir()
+    write_private(os.path.join(config, "grokbot-webhook.key"), key + "\n")
+    if header:
+        write_private(os.path.join(config, "grokbot-webhook-header.key"), header[1] + "\n")
+        save_settings(os.path.join(config, "grokbot-desktop.json"), {"dispatch": "webhook", "webhookUrl": url, "webhookHeader": header[0]})
+    else:
+        # Saved as tested: a header from an earlier setup is dropped.
+        save_settings(os.path.join(config, "grokbot-desktop.json"), {"dispatch": "webhook", "webhookUrl": url}, ("webhookHeader",))
+
+    if code == 0:
+        print(f"Connected. The webhook answered: {out.splitlines()[0] if out else '(empty)'}")
+    else:
+        print("Connected. Grok Bot took the test ask.")
+        print("Bob's answers come back to the bubble when his routine sends them with the companion's")
+        print("reply command (each ask names it in replyWith); otherwise they stay in Grok Bot.")
+    shadowed = overrides(module)
+    if shadowed:
+        print(f"Note: the companion's entry in shell.json also sets {', '.join(shadowed)}, and it wins over what was just saved.")
+    return 0
+
+
+def status(module):
+    entry = module.plugin_entry()
+    desktop = module.desktop_config()
+    mode, url = module.dispatch_mode(entry, desktop)
+    if mode != "webhook":
+        print("Asks go to the local agent.")
+        return 0
+    if not url:
+        print("Asks go to a webhook, but its URL is missing or not https.")
+        return 1
+    host = module.plain(urllib.parse.urlsplit(url).hostname or "", 120)
+    print(f"Asks go to Grok Bot through the webhook at {host}.")
+    key = module.read_key(module.key_file_path(entry, desktop))
+    print("Sender key: saved." if key else "Sender key: missing, or readable by other users.")
+    name, path = module.webhook_header(entry, desktop)
+    if name == "":
+        print("Extra header: the webhookHeader setting isn't a usable header name.")
+    elif name:
+        print(f"Extra header {name}: " + ("value saved." if module.read_secret(path) else "value missing, or readable by other users."))
+    shadowed = overrides(module)
+    if shadowed:
+        print(f"From the companion's shell.json entry: {', '.join(shadowed)}.")
+    return 0
+
+
+def off(module):
+    save_settings(os.path.join(module.config_dir(), "grokbot-desktop.json"), {"dispatch": "agent"})
+    print("Asks go to the local agent again. The webhook URL and key are kept; run grokbot-connect to switch back.")
+    shadowed = overrides(module)
+    if "dispatch" in shadowed:
+        print("Note: the companion's entry in shell.json sets dispatch too, and it wins.")
+    return 0
+
+
+def main(argv):
+    parser = argparse.ArgumentParser(prog="grokbot-connect", description="Connect the companion to Grok Bot's routine webhook.")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--status", action="store_true", help="say how asks are sent now")
+    group.add_argument("--off", action="store_true", help="send asks to the local agent again")
+    group.add_argument("--header", metavar="NAME", help="also send the routine's own header, asking for its value")
+    args = parser.parse_args(argv)
+    module = helper()
+    try:
+        if args.status:
+            return status(module)
+        if args.off:
+            return off(module)
+        return connect(module, args.header)
+    except (EOFError, KeyboardInterrupt):
+        print("\nNothing was saved.", file=sys.stderr)
+        return 130
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

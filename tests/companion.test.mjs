@@ -1539,6 +1539,84 @@ test('clearing a conversation is in the menu, not the composer, and can be undon
   assert.match(main, /function clear\(\): string \{ return root\.clearConversation\(\) \}/)
 })
 
+test('grokbot-connect tests the URL and key before saving them, and keeps other settings', async () => {
+  const seen = []
+  let answer = { status: 200, body: '{"success":true,"runUuid":"ac049e46-d399-485d-8a8e-b6e8954202c8"}' }
+  const server = http.createServer((req, res) => {
+    const chunks = []
+    req.on('data', (chunk) => chunks.push(chunk))
+    req.on('end', () => {
+      seen.push({ headers: req.headers, body: JSON.parse(Buffer.concat(chunks).toString('utf8')) })
+      res.statusCode = answer.status
+      res.setHeader('content-type', 'application/json')
+      res.end(answer.body)
+    })
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const url = `http://127.0.0.1:${server.address().port}/automations/webhook/routine`
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'grokbot-connect-'))
+  const config = path.join(home, '.config', 'omarchy')
+  fs.mkdirSync(config, { recursive: true })
+  const settingsFile = path.join(config, 'grokbot-desktop.json')
+  const keyFile = path.join(config, 'grokbot-webhook.key')
+  const headerFile = path.join(config, 'grokbot-webhook-header.key')
+  fs.writeFileSync(settingsFile, JSON.stringify({ agentsDir: '/srv/agents', webhookHeader: 'X-Old' }))
+  const env = { ...process.env, HOME: home, XDG_CONFIG_HOME: path.join(home, '.config'), GROKBOT_WEBHOOK_KEY: '' }
+  const connect = (args, input) => spawnCollected(['python3', path.join(root, 'bin/grokbot-connect'), ...args], { input, env })
+  const key = `crsr_${Math.random().toString(16).slice(2)}`
+  const results = {}
+  try {
+    // A refused key saves nothing.
+    answer = { status: 401, body: '{"code":"error","message":"Invalid API key"}' }
+    results.refused = await connect([], `${url}\nwrong_key\n`)
+    results.refusedSaved = fs.existsSync(keyFile)
+    // Neither does an address that isn't https, or a header name the
+    // companion sends itself; both are refused before anything is sent.
+    results.badUrl = await connect([], 'http://example.com/hook\nkey\n')
+    results.badHeader = await connect(['--header', 'Authorization'], `${url}\nkey\nvalue\n`)
+    results.sentBeforeGood = seen.length
+    answer = { status: 200, body: '{"success":true,"runUuid":"ac049e46-d399-485d-8a8e-b6e8954202c8"}' }
+    results.ok = await connect([], `${url}\n${key}\n`)
+    results.status = await connect(['--status'], '')
+    results.withHeader = await connect(['--header', 'X-Routine-Token'], `${url}\n${key}\nhv_secret\n`)
+    results.off = await connect(['--off'], '')
+  } finally {
+    server.close()
+  }
+  assert.equal(results.refused.status, 1)
+  assert.match(results.refused.stderr, /Not saved\. Grok Bot refused the key\. Use the routine's Sender key/)
+  assert.equal(results.refusedSaved, false)
+  assert.equal(results.badUrl.status, 2)
+  assert.equal(results.badHeader.status, 2)
+  assert.equal(results.sentBeforeGood, 1)
+
+  assert.equal(results.ok.status, 0, results.ok.stderr)
+  assert.match(results.ok.stdout, /Connected\. Grok Bot took the test ask\./)
+  for (const text of [results.ok.stdout, results.ok.stderr]) assert.equal(text.includes(key), false)
+  // The test went through the real helper: the test prompt, to Bob, with
+  // the key in both auth headers.
+  assert.equal(seen.length, 3)
+  const test = seen[1]
+  assert.equal(test.body.botName, 'Bob')
+  assert.match(test.body.prompt, /^Connection test from the Omarchy desktop companion\./)
+  assert.equal(test.headers['x-automation-key'], key)
+  assert.equal(results.status.status, 0, results.status.stderr)
+  assert.match(results.status.stdout, /Asks go to Grok Bot through the webhook at 127\.0\.0\.1\.\nSender key: saved\./)
+
+  // Saved as tested, with the header from --header, and other settings kept.
+  assert.equal(results.withHeader.status, 0, results.withHeader.stderr)
+  assert.equal(seen[2].headers['x-routine-token'], 'hv_secret')
+  assert.equal(fs.readFileSync(keyFile, 'utf8'), `${key}\n`)
+  assert.equal(fs.statSync(keyFile).mode & 0o777, 0o600)
+  assert.equal(fs.readFileSync(headerFile, 'utf8'), 'hv_secret\n')
+  assert.equal(fs.statSync(headerFile).mode & 0o777, 0o600)
+
+  // --off goes back to the agent and keeps the rest.
+  assert.equal(results.off.status, 0, results.off.stderr)
+  const saved = JSON.parse(fs.readFileSync(settingsFile, 'utf8'))
+  assert.deepEqual(saved, { agentsDir: '/srv/agents', webhookHeader: 'X-Routine-Token', dispatch: 'agent', webhookUrl: url })
+})
+
 test('a webhook answer waits under its question and lands there, whichever bot is on screen', () => {
   // Every ask carries an id; a routine that only acknowledges it leaves the
   // question waiting rather than ending the ask with a placeholder.
