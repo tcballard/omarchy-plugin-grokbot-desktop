@@ -1,0 +1,43 @@
+#!/usr/bin/python3
+"""Forward one IPC call to the Grok Bot companion.
+
+  grokbot-desktop-ctl dictate "Hey Bob, what's on my calendar?"
+  grokbot-desktop-ctl dictate          # text on stdin
+
+The text is one argument to `omarchy-shell`. It is not passed through a shell.
+"""
+from __future__ import annotations
+
+import os
+import re
+import shutil
+import sys
+
+TARGET = "io.github.tcballard.grokbot-desktop"
+METHOD = re.compile(r"^[A-Za-z][A-Za-z0-9]{0,31}$")
+TEXT_LIMIT = 4000
+
+
+def main(argv: list[str]) -> int:
+    if not argv or not METHOD.fullmatch(argv[0]):
+        print("Usage: grokbot-desktop-ctl <method> [args...]", file=sys.stderr)
+        return 2
+    if argv[0] == "dictate" and len(argv) == 1:
+        text = sys.stdin.read(TEXT_LIMIT + 1)[:TEXT_LIMIT]
+        if text.endswith("\n"):
+            text = text[:-1]
+        args = ["dictate", text]
+    else:
+        args = [argv[0], *argv[1:]]
+        if args[0] == "dictate" and len(args) > 1:
+            args[1] = args[1][:TEXT_LIMIT]
+    shell = shutil.which("omarchy-shell")
+    if not shell:
+        print("omarchy-shell is not on PATH", file=sys.stderr)
+        return 1
+    os.execv(shell, [shell, TARGET, *args])
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

@@ -1,3 +1,3 @@
 # Security
 
-Do not post credentials or sensitive exploit details in a public issue. Use GitHub private vulnerability reporting if enabled; otherwise ask the maintainer for a private reporting channel before sending sensitive details. No response-time commitment is implied.
+The desktop companion reads a webhook bearer token from `~/.config/omarchy/grokbot-webhook.key` or from `GROKBOT_WEBHOOK_KEY` in the helper process. It refuses a key file that other users can read. The token is not accepted on argv, and the shell launch does not forward `GROKBOT_WEBHOOK_KEY`. Prompts go to `bin/grokbot-ask` on stdin. Do not post credentials or sensitive exploit details in a public issue. Use GitHub private vulnerability reporting if enabled; otherwise ask the maintainer for a private reporting channel before sending sensitive details. No response-time commitment is implied.

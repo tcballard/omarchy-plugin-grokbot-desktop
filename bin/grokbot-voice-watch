@@ -1,0 +1,341 @@
+#!/usr/bin/python3
+"""Opt-in watcher for Superwhisper and Voxtype wake phrases.
+
+Does nothing unless you pass --enable or set GROKBOT_VOICE_WATCH=1.
+Ordinary clipboard copies are not read. The clipboard is read only in the
+few seconds after Superwhisper or Voxtype finishes a recording, and a line
+is routed only when it starts with "Hey Bot" or "Hey <BotName>".
+
+Voxtype types through its output driver. Point
+~/.config/voxtype/config.toml at `grokbot-dictation-route --filter` so a
+wake phrase is removed before wtype runs. `--print-voxtype-hook` prints
+that snippet. `--install-voxtype-hook` appends it only when Voxtype does
+not already have a post-process command.
+
+Transcript files under the Superwhisper data and config directories are
+routed the same way for both backends.
+"""
+from __future__ import annotations
+
+import importlib.machinery
+import importlib.util
+import json
+import os
+import sys
+import time
+from pathlib import Path
+
+POLL = 0.4
+TEXT_SUFFIXES = {".txt", ".md", ".json", ".vtt", ".srt"}
+
+
+def load_route():
+    path = Path(__file__).resolve().with_name("grokbot-dictation-route")
+    if not path.is_file():
+        raise RuntimeError("missing grokbot-dictation-route")
+    loader = importlib.machinery.SourceFileLoader("grokbot_dictation_route", str(path))
+    spec = importlib.util.spec_from_loader("grokbot_dictation_route", loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def config_home() -> Path:
+    raw = os.environ.get("XDG_CONFIG_HOME")
+    return Path(raw) if raw else Path.home() / ".config"
+
+
+def data_home() -> Path:
+    raw = os.environ.get("XDG_DATA_HOME")
+    return Path(raw) if raw else Path.home() / ".local" / "share"
+
+
+def voxtype_config() -> Path:
+    return config_home() / "voxtype" / "config.toml"
+
+
+def transcript_roots() -> list[Path]:
+    home = Path.home()
+    return [
+        data_home() / "superwhisper",
+        config_home() / "superwhisper",
+        home / "superwhisper" / "recordings",
+        home / "Documents" / "superwhisper" / "recordings",
+        data_home() / "voxtype",
+        config_home() / "voxtype",
+    ]
+
+
+def hook_command() -> str:
+    route = Path(__file__).resolve().with_name("grokbot-dictation-route")
+    return f"{sys.executable} {route} --filter"
+
+
+def hook_block() -> str:
+    command = json.dumps(hook_command())
+    return (
+        "\n[output.post_process]\n"
+        f"command = {command}\n"
+        "fallback_on_empty = false\n"
+        "timeout_ms = 5000\n"
+    )
+
+
+def install_voxtype_hook() -> int:
+    path = voxtype_config()
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    if "grokbot-dictation-route" in text:
+        print(f"Voxtype already calls grokbot-dictation-route ({path})")
+        return 0
+    if "[output.post_process]" in text or "post_process_command" in text:
+        print(
+            "Voxtype already has a post-process command. Add grokbot-dictation-route --filter yourself.",
+            file=sys.stderr,
+        )
+        return 2
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text + hook_block(), encoding="utf-8")
+    print(f"Added the wake-phrase filter to {path}")
+    return 0
+
+
+def read_transcript(path: Path) -> str:
+    try:
+        raw = path.read_text(encoding="utf-8", errors="replace")[:8000]
+    except OSError:
+        return ""
+    if path.suffix.lower() == ".json":
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            return raw
+        if isinstance(data, dict):
+            for key in ("text", "transcript", "result", "content"):
+                value = data.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value
+        return ""
+    return raw
+
+
+def decide(event: dict, bots: list, memory: dict, route) -> dict:
+    text = str(event.get("text") or "")
+    source = str(event.get("source") or "")
+    backend = str(event.get("backend") or "")
+    if backend not in ("superwhisper", "voxtype"):
+        backend = "superwhisper"
+    age = event.get("recordingAge")
+    now = float(event.get("now") or time.time())
+    ok, decided = route.should_deliver(text, source, age, now, memory, bots)
+    return {
+        "deliver": ok,
+        "backend": backend,
+        "source": source,
+        "matched": bool(decided.get("matched")),
+        "botId": decided.get("botId") or "",
+        "prompt": decided.get("prompt") or "",
+        "wake": decided.get("wake") or "",
+    }
+
+
+def enabled(argv: list[str]) -> bool:
+    return "--enable" in argv or os.environ.get("GROKBOT_VOICE_WATCH") == "1"
+
+
+def main(argv: list[str]) -> int:
+    if "--print-voxtype-hook" in argv:
+        sys.stdout.write(hook_block())
+        return 0
+    if "--install-voxtype-hook" in argv:
+        if not enabled(argv):
+            print("Pass --enable to edit the Voxtype config.", file=sys.stderr)
+            return 2
+        return install_voxtype_hook()
+    if not enabled(argv):
+        print("Voice watch is off. Pass --enable to watch Superwhisper and Voxtype.", file=sys.stderr)
+        return 2
+
+    route = load_route()
+    bots = route.load_bots()
+    memory: dict = {}
+
+    if "--decide-batch" in argv:
+        try:
+            events = json.loads(sys.stdin.read() or "[]")
+        except json.JSONDecodeError:
+            return 2
+        if not isinstance(events, list):
+            return 2
+        results = [decide(event, bots, memory, route) for event in events if isinstance(event, dict)]
+        json.dump(results, sys.stdout)
+        sys.stdout.write("\n")
+        return 0
+
+    if "--decide" in argv:
+        try:
+            event = json.loads(sys.stdin.read() or "{}")
+        except json.JSONDecodeError:
+            return 2
+        if not isinstance(event, dict):
+            return 2
+        result = decide(event, bots, memory, route)
+        json.dump(result, sys.stdout)
+        sys.stdout.write("\n")
+        return 0 if result["deliver"] else 1
+
+    if "--check-file" in argv:
+        index = argv.index("--check-file")
+        if index + 1 >= len(argv):
+            return 2
+        backend = "superwhisper"
+        if "--backend" in argv:
+            backend = argv[argv.index("--backend") + 1]
+        if backend not in ("superwhisper", "voxtype"):
+            return 2
+        text = read_transcript(Path(argv[index + 1]))
+        result = decide({
+            "text": text,
+            "source": "transcript",
+            "backend": backend,
+            "recordingAge": 0,
+            "now": time.time(),
+        }, bots, memory, route)
+        if result["deliver"]:
+            route.deliver(text, backend)
+        json.dump(result, sys.stdout)
+        sys.stdout.write("\n")
+        return 0 if result["deliver"] else 1
+
+    if "--once" in argv:
+        return scan_once(route, bots, memory)
+    return watch_loop(route, bots, memory)
+
+
+def scan_once(route, bots, memory) -> int:
+    started = time.time()
+    delivered = 0
+    for root in transcript_roots():
+        if not root.is_dir():
+            continue
+        for path in root.rglob("*"):
+            if not path.is_file() or path.suffix.lower() not in TEXT_SUFFIXES:
+                continue
+            if path.name == "config.toml":
+                continue
+            try:
+                if path.stat().st_mtime < started:
+                    continue
+            except OSError:
+                continue
+            text = read_transcript(path)
+            result = decide({
+                "text": text,
+                "source": "transcript",
+                "backend": "superwhisper" if "voxtype" not in str(path) else "voxtype",
+                "recordingAge": 0,
+                "now": time.time(),
+            }, bots, memory, route)
+            if result["deliver"] and route.deliver(text, result["backend"]):
+                delivered += 1
+    print(f"routed {delivered}")
+    return 0
+
+
+def watch_loop(route, bots, memory) -> int:
+    seen = {}
+    for root in transcript_roots():
+        if not root.is_dir():
+            continue
+        for path in root.rglob("*"):
+            if path.is_file():
+                try:
+                    seen[str(path)] = path.stat().st_mtime
+                except OSError:
+                    continue
+    state_path = Path(os.environ.get("XDG_RUNTIME_DIR", "")) / "voxtype" / "state"
+    previous = ""
+    finished_at = None
+    while True:
+        now = time.time()
+        if state_path.is_file():
+            try:
+                current = state_path.read_text(encoding="utf-8").strip().splitlines()[0]
+            except (OSError, IndexError):
+                current = ""
+            if route.recording_finished(previous, current):
+                finished_at = now
+            previous = current
+        for root in transcript_roots():
+            if not root.is_dir():
+                continue
+            for path in root.rglob("*"):
+                if not path.is_file() or path.suffix.lower() not in TEXT_SUFFIXES:
+                    continue
+                if path.name == "config.toml":
+                    continue
+                try:
+                    mtime = path.stat().st_mtime
+                except OSError:
+                    continue
+                key = str(path)
+                if seen.get(key) == mtime:
+                    continue
+                seen[key] = mtime
+                text = read_transcript(path)
+                backend = "voxtype" if "voxtype" in key else "superwhisper"
+                result = decide({
+                    "text": text,
+                    "source": "transcript",
+                    "backend": backend,
+                    "recordingAge": 0,
+                    "now": now,
+                }, bots, memory, route)
+                if result["deliver"]:
+                    route.deliver(text, backend)
+                    finished_at = now
+        age = None if finished_at is None else now - finished_at
+        if age is not None and 0 <= age <= route.CLIP_WINDOW:
+            clip = read_clipboard()
+            if clip:
+                result = decide({
+                    "text": clip,
+                    "source": "clipboard",
+                    "backend": active_backend(),
+                    "recordingAge": age,
+                    "now": now,
+                }, bots, memory, route)
+                if result["deliver"]:
+                    route.deliver(clip, result["backend"])
+        time.sleep(POLL)
+
+
+def active_backend() -> str:
+    path = config_home() / "omarchy" / "defaults" / "dictation"
+    try:
+        name = path.read_text(encoding="utf-8").splitlines()[0].strip().lower()
+    except (OSError, IndexError):
+        return "superwhisper"
+    return name if name in ("superwhisper", "voxtype") else "superwhisper"
+
+
+def read_clipboard() -> str:
+    paste = shutil_which("wl-paste")
+    if not paste:
+        return ""
+    import subprocess
+    proc = subprocess.run([paste, "--no-newline", "--type", "text"], check=False, capture_output=True, text=True)
+    if proc.returncode != 0:
+        return ""
+    return proc.stdout[:4000]
+
+
+def shutil_which(name: str) -> str:
+    import shutil
+    return shutil.which(name) or ""
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main(sys.argv[1:]))
+    except KeyboardInterrupt:
+        raise SystemExit(0)

@@ -1,20 +1,13 @@
 {
   "schemaVersion": 1,
-  "id": "io.github.tcballard.plugin_starter",
-  "name": "Omarchy Plugin Starter",
+  "id": "io.github.tcballard.grokbot-desktop",
+  "name": "Grok Bot Desktop Companion",
   "version": "0.1.0",
   "author": "Tom Ballard",
   "license": "MIT",
-  "description": "A small Quattro bar widget to extend into your own plugin.",
-  "kinds": ["bar-widget"],
-  "entryPoints": {"barWidget": "StarterWidget.qml"},
-  "barWidget": {
-    "displayName": "Omarchy Plugin Starter",
-    "description": "A small Quattro bar widget to extend into your own plugin.",
-    "category": "Other",
-    "allowMultiple": false,
-    "defaultSection": "right",
-    "defaults": {},
-    "schema": []
+  "description": "A floating Grok Bot companion for the Omarchy desktop. It morphs into your bots and asks them from a speech bubble.",
+  "kinds": ["service"],
+  "entryPoints": {
+    "service": "Main.qml"
   }
 }

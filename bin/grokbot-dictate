@@ -1,0 +1,64 @@
+#!/usr/bin/python3
+"""Toggle the dictation backend selected in Omarchy.
+
+`omarchy dictation toggle` reads ~/.config/omarchy/defaults/dictation and
+starts Superwhisper or Voxtype. This helper calls that when `omarchy` is on
+PATH. Otherwise it calls the configured backend directly: `superwhisper record`
+or `voxtype record toggle`. The defaults file is only accepted when it names
+one of those two backends.
+"""
+from __future__ import annotations
+
+import os
+import shutil
+import sys
+from pathlib import Path
+
+BACKENDS = {
+    "superwhisper": ["superwhisper", "record"],
+    "voxtype": ["voxtype", "record", "toggle"],
+}
+
+
+def defaults_file() -> Path:
+    config = os.environ.get("XDG_CONFIG_HOME")
+    if not config:
+        config = str(Path.home() / ".config")
+    return Path(config) / "omarchy" / "defaults" / "dictation"
+
+
+def read_backend() -> str:
+    try:
+        line = defaults_file().read_text(encoding="utf-8").splitlines()[0].strip().lower()
+    except (OSError, IndexError):
+        return ""
+    return line if line in BACKENDS else ""
+
+
+def exec_argv(argv: list[str]) -> bool:
+    path = shutil.which(argv[0])
+    if not path:
+        return False
+    os.execv(path, [path, *argv[1:]])
+    return True
+
+
+def main() -> int:
+    omarchy = shutil.which("omarchy")
+    if omarchy:
+        os.execv(omarchy, [omarchy, "dictation", "toggle"])
+    configured = read_backend()
+    order = [configured] if configured else ["superwhisper", "voxtype"]
+    for name in order:
+        if name and exec_argv(BACKENDS[name]):
+            return 0
+    if configured:
+        for name in ("superwhisper", "voxtype"):
+            if name != configured and exec_argv(BACKENDS[name]):
+                return 0
+    print("No dictation command found. Install omarchy, superwhisper, or voxtype.", file=sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Grok Bot Desktop Companion
+GenericName=Desktop Companion
+Comment=Summon the Grok Bot companion on the Omarchy desktop
+Exec=omarchy-shell io.github.tcballard.grokbot-desktop summon
+Icon=io.github.tcballard.grokbot-desktop
+Terminal=false
+Categories=Utility;
+Keywords=grok;bot;assistant;omarchy;
