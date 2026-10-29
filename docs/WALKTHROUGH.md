@@ -112,7 +112,7 @@ Put him somewhere comfortable for the rest of the tour, for example a little way
 
 - [ ] Click the pill. Every bot unfolds. Pick OmaBot. Bob morphs into OmaBot's shape and colour, OmaBot's empty conversation fades in, and the card eases to its new height.
 - [ ] Type something for OmaBot without sending it. Switch to Bob, then back to OmaBot. The draft is still there.
-- [ ] Ask OmaBot something, then switch to Bob straight away. When OmaBot's reply arrives, its chip in the pill's list shows a dot. Switch to OmaBot: the reply is there, and the dot clears.
+- [ ] Ask OmaBot something, then switch to Bob straight away. When OmaBot's reply arrives, a dot appears on the corner of the pill, and on OmaBot's chip when you open the pill's list. Switch to OmaBot: the reply is there, and the dot clears.
 - [ ] In the field, type `Hey Poteto, what should I cook tonight?` and press Enter. It switches to Poteto and asks.
 
 ## 7. Ask the real Bob
@@ -122,7 +122,7 @@ Put him somewhere comfortable for the rest of the tour, for example a little way
 - [ ] Run `"$D/bin/grokbot-connect"`. Paste the routine's Webhook URL, then its Sender key, which isn't shown as you type. It sends Bob a short test message, then says "Connected." A wrong key is refused with a reason, and nothing is saved.
 - [ ] `"$D/bin/grokbot-connect" --status` says asks go to Grok Bot.
 - [ ] Ask Bob something from the bubble. The question keeps its typing dots and Bob looks around while the routine works. His answer appears under the question, as with the local agent, not as a separate message.
-- [ ] Ask Bob again, then switch to OmaBot straight away. When Bob answers, his chip in the pill's list shows a dot, and his answer is under his question when you switch back.
+- [ ] Ask Bob again, then switch to OmaBot straight away. When Bob answers, a dot appears on the corner of the pill and on his chip in the pill's list, and his answer is under his question when you switch back. Close the bubble before he answers and the dot shows on the mark instead.
 - [ ] Run `"$D/bin/grokbot-connect" --off`. Asks go to the local agent again for the rest of the tour.
 
 ## 8. Show it things

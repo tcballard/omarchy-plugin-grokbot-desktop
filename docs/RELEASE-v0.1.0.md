@@ -20,7 +20,7 @@ Follow [WALKTHROUGH.md](WALKTHROUGH.md) from a fresh install, after everything f
 1. A documentation-only commit records the pass in `docs/ACCEPTANCE.json`:
    - status `passed`, with `input_commit` set to the SHA the walkthrough recorded
    - the date, the XPS and Omarchy version, the commands and results
-   - what was not exercised, under limitations
+   - what was not exercised, under limitations. Question expiry (a webhook question still waiting after ten minutes says the reply will be in Grok Bot) had not been seen live before the pass, because shell restarts kept clearing the waiting question; list it here unless the pass watched it happen.
    It also moves the README preview to the new capture.
 2. Tag that commit `v0.1.0` and push the tag.
 3. Run **Release source** from Actions with `v0.1.0`. It runs the tests, builds the source archive with its SHA256SUMS and opens a draft release.
