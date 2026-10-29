@@ -43,6 +43,7 @@ Before a public release, document the exact verified install command and the ins
 - `~/.config/omarchy/grokbot-desktop.json`
 - `~/.config/omarchy/grokbot-bots.json`
 - `~/.config/omarchy/grokbot-webhook.key`
+- `~/.config/omarchy/grokbot-webhook-header.key`
 
 Also leave Hyprland bindings, `~/.local/share/applications/grokbot-desktop.desktop`, and `~/.local/bin/grokbot-desktop-close` unless those copies were part of the removal the owner requested.
 

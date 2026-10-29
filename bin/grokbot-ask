@@ -4,7 +4,9 @@
 Webhook mode POSTs {"prompt","botName","botId","source"} to the configured
 Omarchy desktop companion URL. The bearer key is read from
 ~/.config/omarchy/grokbot-webhook.key or GROKBOT_WEBHOOK_KEY. It is never
-taken from argv.
+taken from argv. A routine that also wants its own header names it in
+webhookHeader; the value is read from ~/.config/omarchy/grokbot-webhook-header.key
+under the same rules as the key file.
 
 Agent mode writes the prompt to the Omarchy default agent (or a configured
 command) on stdin, with a 64 KiB stdout ceiling. Grok takes it as the value
@@ -39,6 +41,13 @@ EXIT_OVERFLOW = 125
 WEBHOOK_TIMEOUT = 45
 AGENT_TIMEOUT = 180
 KEY_NAME = "GROKBOT_WEBHOOK_KEY"
+# A header name as HTTP defines a token. The headers the helper sets itself
+# cannot be replaced by a configured one.
+HEADER_NAME = re.compile(r"^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,64}$")
+OWN_HEADERS = frozenset((
+    "accept", "authorization", "connection", "content-length", "content-type", "cookie",
+    "host", "proxy-authorization", "transfer-encoding", "user-agent", "x-automation-key",
+))
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,80}$")
 SAFE_HOST = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 AGENT_NAME = re.compile(r"^[a-z0-9][a-z0-9._-]{0,31}$")
@@ -184,12 +193,22 @@ def key_file_path(entry, desktop):
     return os.path.join(config_dir(), "grokbot-webhook.key")
 
 
+def secret_ok(token):
+    return bool(token) and len(token) <= 512 and not re.search(r"[\x00-\x1f\x7f]", token)
+
+
 def read_key(path):
     env_key = os.environ.get(KEY_NAME, "")
     if env_key:
         token = env_key.strip()
-        if token and len(token) <= 512 and "\n" not in token and "\x00" not in token:
+        if secret_ok(token):
             return token
+    return read_secret(path)
+
+
+def read_secret(path):
+    """One line from a private file: regular, not a link, and readable by
+    its owner alone. Anything else reads as missing."""
     try:
         st = os.lstat(path)
     except OSError:
@@ -203,12 +222,27 @@ def read_key(path):
             token = handle.read().strip()
     except (OSError, UnicodeError):
         return ""
-    if not token or len(token) > 512 or "\n" in token or "\x00" in token:
-        return ""
-    return token
+    return token if secret_ok(token) else ""
 
 
-def webhook_parts(url, key, payload):
+def webhook_header(entry, desktop):
+    """The routine's own extra header, if it asks for one: its name from the
+    webhookHeader setting and its value from a private file beside the key,
+    or webhookHeaderFile. Returns (name, path), (None, None) when there is
+    none, or ("", None) when the name is not allowed."""
+    name = setting(entry, desktop, "webhookHeader")
+    if name is None:
+        return None, None
+    name = str(name).strip()
+    if not HEADER_NAME.fullmatch(name) or name.lower() in OWN_HEADERS:
+        return "", None
+    configured = setting(entry, desktop, "webhookHeaderFile")
+    if isinstance(configured, str) and configured.startswith("/") and "/.." not in configured:
+        return name, configured
+    return name, os.path.join(config_dir(), "grokbot-webhook-header.key")
+
+
+def webhook_parts(url, key, payload, extra=None):
     # The body and headers Grok Bot's "Omarchy desktop companion" routine
     # takes: the prompt, the bot to hand it to by name, and where it came
     # from, with the routine's Sender key in both auth headers. botId is
@@ -229,6 +263,8 @@ def webhook_parts(url, key, payload):
         "X-Automation-Key": key,
         "User-Agent": "grokbot-desktop/0.1.0",
     }
+    if extra:
+        headers[extra[0]] = extra[1]
     return url, headers, body
 
 
@@ -286,8 +322,8 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def post_webhook(url, key, payload):
-    target, headers, body = webhook_parts(url, key, payload)
+def post_webhook(url, key, payload, extra=None):
+    target, headers, body = webhook_parts(url, key, payload, extra)
     request = urllib.request.Request(target, data=body, headers=headers, method="POST")
     opener = urllib.request.build_opener(_NoRedirect)
     try:
@@ -722,7 +758,18 @@ def main(argv=None):
         if not key:
             print("webhook key is missing or readable by other users", file=sys.stderr)
             return 3
-        return post_webhook(url, key, payload)
+        name, path = webhook_header(entry, desktop)
+        extra = None
+        if name == "":
+            print("webhookHeader must be a plain header name, and not one the companion sends itself", file=sys.stderr)
+            return 2
+        if name:
+            value = read_secret(path)
+            if not value:
+                print(f"the value for the {name} header is missing or readable by other users", file=sys.stderr)
+                return 3
+            extra = (name, value)
+        return post_webhook(url, key, payload, extra)
     argv, agent, custom, problem = agent_command(entry, desktop)
     if not argv:
         print(problem, file=sys.stderr)

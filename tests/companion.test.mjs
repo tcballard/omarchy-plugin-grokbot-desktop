@@ -487,6 +487,75 @@ test('a webhook that only acknowledges the ask says it was sent', async () => {
   assert.equal(outputs[3], 'Plain answer\n')
 })
 
+test('a routine\'s own header carries its value from a private file, beside the key', async () => {
+  const value = `hv_${Math.random().toString(16).slice(2)}`
+  const seen = []
+  let cmdline = ''
+  let pid = 0
+  const server = http.createServer((req, res) => {
+    req.resume()
+    req.on('end', () => {
+      seen.push(req.headers)
+      try { cmdline = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8') } catch { cmdline = '' }
+      res.end('ok')
+    })
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'grokbot-header-'))
+  const config = path.join(home, '.config', 'omarchy')
+  fs.mkdirSync(config, { recursive: true })
+  const settings = (extra) => fs.writeFileSync(path.join(config, 'grokbot-desktop.json'), JSON.stringify({
+    dispatch: 'webhook',
+    webhookUrl: `http://127.0.0.1:${server.address().port}/automations/webhook/routine`,
+    ...extra
+  }))
+  fs.writeFileSync(path.join(config, 'grokbot-webhook.key'), 'crsr_test\n', { mode: 0o600 })
+  const headerFile = path.join(config, 'grokbot-webhook-header.key')
+  const ask = () => spawnCollected(['python3', path.join(root, 'bin/grokbot-ask')], {
+    input: JSON.stringify({ botId: 'e0195a7d-f804-4688-9191-e2cf3574a6d1', botName: 'Bob', prompt: 'hi' }),
+    env: { ...process.env, HOME: home, XDG_CONFIG_HOME: path.join(home, '.config'), GROKBOT_WEBHOOK_KEY: '' },
+    onPid: (p) => { pid = p }
+  })
+
+  settings({ webhookHeader: 'X-Routine-Token' })
+  fs.writeFileSync(headerFile, `${value}\n`, { mode: 0o600 })
+  const sent = await ask()
+  assert.equal(sent.status, 0, sent.stderr)
+  assert.equal(seen.length, 1)
+  assert.equal(seen[0]['x-routine-token'], value)
+  // The Sender key still goes in both auth headers.
+  assert.equal(seen[0].authorization, 'Bearer crsr_test')
+  assert.equal(seen[0]['x-automation-key'], 'crsr_test')
+  for (const text of [sent.stdout, sent.stderr, cmdline]) assert.equal(text.includes(value), false)
+
+  // Without a private value nothing is sent: a missing file, a file others
+  // can read, or a value that would start another header line.
+  fs.rmSync(headerFile)
+  const missing = await ask()
+  assert.equal(missing.status, 3)
+  assert.equal(missing.stderr.trim(), 'the value for the X-Routine-Token header is missing or readable by other users')
+  fs.writeFileSync(headerFile, `${value}\n`, { mode: 0o644 })
+  fs.chmodSync(headerFile, 0o644)
+  const open = await ask()
+  assert.equal(open.status, 3)
+  assert.equal(open.stderr.includes(value), false)
+  fs.writeFileSync(headerFile, `${value}\rX-Injected: 1\n`, { mode: 0o600 })
+  fs.chmodSync(headerFile, 0o600)
+  assert.equal((await ask()).status, 3)
+
+  // A name must be a plain header name, and cannot replace one the
+  // companion sends itself.
+  fs.writeFileSync(headerFile, `${value}\n`, { mode: 0o600 })
+  for (const name of ['Authorization', 'x-automation-key', 'Host', 'X Bad', 'X-Bad:1', 'X-Bad\r\nX-Injected']) {
+    settings({ webhookHeader: name })
+    const refused = await ask()
+    assert.equal(refused.status, 2, name)
+    assert.match(refused.stderr, /webhookHeader must be a plain header name/)
+  }
+  server.close()
+  assert.equal(seen.length, 1)
+})
+
 const BOB = 'e0195a7d-f804-4688-9191-e2cf3574a6d1'
 const OMA = 'd0357ba3-1642-47bd-9b0c-95000cb33992'
 const INBOX = 'bed72fb0-0323-4349-81df-dfd08c1f25f6'
