@@ -1492,6 +1492,10 @@ test('each bot keeps its own conversation, and a reply lands with the bot asked'
   const deliver = qmlFunction(main, 'deliver')
   assert.match(deliver, /if \(id === "" \|\| id === root\.threadBotId\)/)
   assert.match(deliver, /root\.markUnread\(id\)/)
+  // A folded row hides the chips, so the pill's chevron carries their dot.
+  const folded = read('BubblePanel.qml')
+  assert.match(folded, /readonly property bool unreadHidden: \{\n\s*var unread = app \? app\.unreadBots : \[\]\n\s*if \(unread\.length === 0\) return false\n\s*if \(!bubble\.rosterShown\) return true/)
+  assert.match(folded, /\/\/ A reply for a bot whose chip is folded away\.\n\s*Rectangle \{\n\s*visible: bubble\.unreadHidden/)
   assert.match(main, /var here = root\.deliver\(root\.askBotId, ok \? out :/)
   assert.match(qmlFunction(main, 'stopAsk'), /root\.deliver\(root\.askBotId, "Stopped\."\)/)
   // Only the bot asking shows the dots, stop button, and work loop.
