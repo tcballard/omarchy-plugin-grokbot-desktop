@@ -32,7 +32,9 @@ Before a public release, document the exact verified install command and the ins
 - Each bot keeps its own conversation; Clear conversation and Undo work from the right-click menu.
 - Paste image, Ctrl+V, Choose a file… (`omarchy-file-select`) and dropping a file all attach, and an agent-mode ask can use them.
 - Every bubble change (page switch, thread, attach menu, tray, note, Undo chip) eases with no jump, and the card opens without overshoot.
-- Motion is judged from a 60fps capture (for example `wf-recorder -r 60`); a 30fps recording cannot show frame pacing.
+- Motion is judged from a 60fps capture. Omarchy's own recorder (Alt+Print, or `omarchy capture screenrecording`) records at 60fps; a 30fps recording cannot show frame pacing.
+
+[WALKTHROUGH.md](WALKTHROUGH.md) covers all of this as a guided tour from a fresh install.
 
 ## Removal
 

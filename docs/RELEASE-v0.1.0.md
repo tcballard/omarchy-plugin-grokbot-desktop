@@ -8,79 +8,17 @@ v0.1.0 is the first tagged release. `VERSION` and `manifest.json` already say `0
 
 Any change to QML, `qml/*.js`, `bin/*`, `data/`, `assets/`, `preview.png` or the manifest after the pass means testing again. Documentation (`docs/`, `README.md`, `CREDITS.md`) can still change.
 
-## 1. Install from `main`, the way users will
+## 1–3. Install, test and capture
 
-Keep a log open in one terminal:
+Follow [WALKTHROUGH.md](WALKTHROUGH.md) from a fresh install, after everything for the release is merged into `main`. It installs with the README's own command, checks every feature, and lists what to record. A failure means a fix, a new commit, and the walkthrough again on that commit.
 
-```bash
-journalctl --user -t omarchy-shell -f
-```
-
-In another, swap the branch checkout for a clean install of `main` with the README's own command. This also exercises removal:
-
-```bash
-ID=io.github.tcballard.grokbot-desktop
-omarchy plugin remove "$ID"
-ls ~/.config/omarchy/grokbot-desktop.json ~/.config/omarchy/grokbot-bots.json ~/.config/omarchy/grokbot-webhook.key 2>&1
-omarchy plugin add https://github.com/tcballard/omarchy-plugin-grokbot-desktop --enable
-D=~/.config/omarchy/plugins/$ID
-git -C "$D" rev-parse HEAD
-omarchy-version
-omarchy plugin validate "$D"
-```
-
-- The `ls` line should still list whichever of those files you had: removal keeps your settings, roster and key.
-- Keep the output of `rev-parse`, `omarchy-version` and `validate`. They go into the acceptance record.
-
-## 2. Live checks
-
-Note anything that fails or looks off. A failure means a fix, a new commit, and this pass again on that commit.
-
-**Mark**
-- [ ] Bob appears in the corner; clicks around the mark reach the window underneath.
-- [ ] The eyes follow the pointer across the screen, and the face turns toward it.
-- [ ] With the pointer right on Bob, the eyes face forward at a normal size.
-- [ ] Dragging moves the mark anywhere on the screen, not just near a corner, and it stays where it is dropped, also after `omarchy restart shell`.
-- [ ] Super and drag on the mark: note what happens. Omarchy binds it to moving windows, so the README now says to drag without Super.
-- [ ] Right-click > Hide companion hides it and shows a "Grok Bot is hidden" notification; clicking the notification brings it back.
-- [ ] With the README's Super+Alt+B binding added to `~/.config/hypr/bindings.lua`, the shortcut hides and shows it.
-- [ ] Opening and closing the bubble leaves the mark exactly where it was.
-- [ ] Bob is hidden while the screensaver runs and comes back after it.
-
-**Bubble**
-- [ ] It opens with a short settle and no bounce.
-- [ ] The appearance page and the chat cross-fade, with the card's height following.
-- [ ] The divider, the thread, the attach menu, attachment tray, note and Undo chip ease in and out with no jumps.
-- [ ] A long prompt wraps, and Shift+Enter starts a new line.
-- [ ] The header pill shows the bot's name; its role slides out on hover.
-
-**Asking and conversations**
-- [ ] An ask through Grok in agent mode answers in the bubble, and the mark looks around while it works.
-- [ ] A second ask keeps the first exchange above it in a scrolling thread.
-- [ ] Switching bots shows each bot's own conversation, and a reply to a bot you left gets a dot.
-- [ ] Right-click > Clear conversation clears it, and Undo brings it back.
-
-**Attachments**
-- [ ] + > Paste image attaches a copied image, and Ctrl+V does the same.
-- [ ] + > Choose a file… opens Omarchy's chooser; an image and a non-image file both attach.
-- [ ] Dropping a file on the bubble attaches it.
-- [ ] An ask with an image gets an answer that shows the agent saw it.
-
-**System**
-- [ ] `omarchy toggle animations` makes panel changes and morphs instant.
-- [ ] Optional: in webhook mode with the routine's Sender key, an ask reaches Grok Bot. If it still returns 401, it ships as a known limitation.
-
-## 3. Capture
-
-- [ ] A screenshot for the README: the bubble open with a short conversation and an attachment thumbnail, plus the mark.
-- [ ] Optional: a 15–20 second clip at 60fps of the bubble opening, an ask, and a bot switch: `wf-recorder -r 60 -f ~/grokbot-v0.1.0.mp4`.
-
-New pictures go under `docs/media/` so they don't count as runtime changes. The existing `preview.png` and demo video stay as the 27 October record.
+- **Webhook (optional):** with the routine's Sender key, an ask in webhook mode reaches Grok Bot. If it still returns 401, it ships as a known limitation.
+- **Pictures:** new images and video go under `docs/media/`, so they don't count as runtime changes. The existing `preview.png` and demo video stay as the 27 October record.
 
 ## 4. Record, tag, release
 
 1. A documentation-only commit records the pass in `docs/ACCEPTANCE.json`:
-   - status `passed`, with `input_commit` set to the SHA from step 1
+   - status `passed`, with `input_commit` set to the SHA the walkthrough recorded
    - the date, the XPS and Omarchy version, the commands and results
    - what was not exercised, under limitations
    It also moves the README preview to the new capture.
