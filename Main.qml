@@ -753,8 +753,7 @@ Item {
     thread.body = body
     next[id] = thread
     root.threads = next
-    if (root.unreadBots.indexOf(id) < 0) root.unreadBots = root.unreadBots.concat([id])
-    root.hop()
+    root.markUnread(id)
     return false
   }
 
@@ -1110,8 +1109,11 @@ Item {
     return false
   }
 
+  // A bot not on screen has news: a dot on its chip, and on the mark too
+  // while the bubble is closed, or the hop would be the only sign.
   function markUnread(botId) {
     if (root.unreadBots.indexOf(botId) < 0) root.unreadBots = root.unreadBots.concat([botId])
+    if (!root.bubbleOpen) root.replyUnread = true
     root.hop()
   }
 

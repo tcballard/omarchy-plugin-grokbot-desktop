@@ -1491,7 +1491,7 @@ test('each bot keeps its own conversation, and a reply lands with the bot asked'
   assert.match(qmlFunction(main, 'launchAsk'), /root\.askBotId = root\.threadBotId/)
   const deliver = qmlFunction(main, 'deliver')
   assert.match(deliver, /if \(id === "" \|\| id === root\.threadBotId\)/)
-  assert.match(deliver, /root\.unreadBots = root\.unreadBots\.concat\(\[id\]\)/)
+  assert.match(deliver, /root\.markUnread\(id\)/)
   assert.match(main, /var here = root\.deliver\(root\.askBotId, ok \? out :/)
   assert.match(qmlFunction(main, 'stopAsk'), /root\.deliver\(root\.askBotId, "Stopped\."\)/)
   // Only the bot asking shows the dots, stop button, and work loop.
@@ -1641,6 +1641,9 @@ test('a webhook answer waits under its question and lands there, whichever bot i
   assert.match(answer, /root\.indexWaiting\(root\.history, askId\)/)
   assert.match(answer, /if \(thread\.wait === askId\) \{/)
   assert.match(answer, /root\.markUnread\(botId\)/)
+  // With the bubble closed, the mark shows the dot too, not just a hop.
+  assert.match(qmlFunction(main, 'markUnread'), /if \(!root\.bubbleOpen\) root\.replyUnread = true/)
+  assert.match(qmlFunction(main, 'deliver'), /root\.markUnread\(id\)/)
   // reply takes an ask id or a bot; say from a waiting bot counts too.
   assert.match(main, /function reply\(target: string, text: string\): string \{ return root\.receiveReply\(target, text\) \}/)
   const receive = qmlFunction(main, 'receiveReply')
