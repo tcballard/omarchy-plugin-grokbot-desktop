@@ -10,7 +10,7 @@ On a target Omarchy machine, run `omarchy plugin validate .` and record `omarchy
 
 `preview.png` is a frame from the live Try Omarchy session in `assets/grokbot-companion-demo.mp4` (`Virtual-1`, 1280×800). `tools/render-preview.py` remains a 3× supersampled offline drawing of the monochrome chrome and flat marks. When the design backdrop is present that script uses it; otherwise it paints a flat field. Regenerating with the script replaces the on-device preview, so keep the live frame unless the chrome itself has changed. The script still draws the older separate appearance drawer; the appearance settings now live on the bubble card's second page. The recorded session is in `docs/ACCEPTANCE.json`.
 
-After pulling a change into the installed checkout, run `omarchy restart shell` before checking it. The shell reloads the plugin on its own when files change, but on Omarchy 4 that reload did not pick up an edited `BubblePanel.qml`; only a restart did. The restart also clears every conversation and waiting question, since they are kept in memory.
+After pulling a change into the installed checkout, run `omarchy restart shell` before checking it. The shell reloads the plugin on its own when files change, but on Omarchy 4 that reload kept running the old QML (seen with both `Main.qml` and `BubblePanel.qml`); only a restart loaded the change. The restart also clears every conversation and waiting question, since they are kept in memory.
 
 Use the current Omarchy plugin linking workflow or Plugin Workbench after inspecting its current commands. `.omarchy-workbench.json` proposes `./tests/run`. It does not grant trust or execute that command by itself.
 
