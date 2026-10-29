@@ -8,4 +8,6 @@ The included workflow creates a **draft source release**. It never publishes a m
 4. Run **Release source** from Actions with that existing tag. The source archive preserves the complete tracked project, including development checks. Installed runtime packages must use an explicit file allowlist and exclude authoring instructions, blueprint files and workflow files.
 5. Review the draft release, write outcome-focused notes and publish when ready.
 
+The first release has its own runbook and draft notes in [RELEASE-v0.1.0.md](RELEASE-v0.1.0.md).
+
 The archive script refuses uninitialized projects, dirty checkouts, version/tag mismatches and runtime changes after recorded acceptance. For installable plugin archives, include only the declared QML/runtime dependencies, manifest and licence. For apps, build and test architecture-specific binaries separately; do not label a source tarball as an installer. For packages, record clean Arch build and install/upgrade/removal results before submission.

@@ -27,6 +27,10 @@ Before a public release, document the exact verified install command and the ins
 - Opening the bubble, starting a drag, and closing the bubble again leave the mark exactly where it was: the window covers the output and never resizes.
 - `omarchy toggle animations` stops the breathing and bob and makes morphs and panel changes instant.
 - The mark and eyes stay crisp on a 1.5× or 2× output.
+- The mark hides while Omarchy's screensaver runs and returns after it.
+- Each bot keeps its own conversation; Clear conversation and Undo work from the right-click menu.
+- Paste image, Ctrl+V, Choose a file… (`omarchy-file-select`) and dropping a file all attach, and an agent-mode ask can use them.
+- Every bubble change (page switch, thread, attach menu, tray, note, Undo chip) eases with no jump, and the card opens without overshoot.
 - Motion is judged from a 60fps capture (for example `wf-recorder -r 60`); a 30fps recording cannot show frame pacing.
 
 ## Removal
