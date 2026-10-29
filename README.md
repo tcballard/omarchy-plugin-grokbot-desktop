@@ -54,7 +54,7 @@ The companion sits in a corner. Clicks outside the mark pass through, and they k
 | Right-click > Hide companion | Hides the companion. A notification says it is hidden, and clicking it brings it back. `show`, `summon`, `toggle`, and `toggleVisible` bring it back too, as does restarting the shell |
 | Escape | Steps back: closes the menu, then leaves the appearance page, then closes the bubble |
 | Tab, then Enter or Space | Moves between the bubble's controls and presses the focused one |
-| Switch Bot | Morphs into that Bot's shape and colour when sync is on, and routes the next ask there. Each bot keeps its own conversation, as a scrolling history of up to 40 exchanges, and its unsent draft for the session (never written to disk); a reply to a bot you have switched away from waits in its conversation with a dot on its chip. One ask runs at a time. Before a conversation the bots sit in a row under the header; once one starts the row folds away and the header pill (the bot's name and chevron; its role slides out on hover) is the switch button, which unfolds every bot until you pick one |
+| Switch Bot | Morphs into that Bot's shape and colour when sync is on, and routes the next ask there. Each bot keeps its own conversation, as a scrolling history of up to 40 exchanges, and its unsent draft for the session (never written to disk); a reply to a bot you have switched away from waits in its conversation with a dot on its chip, which shows on the header pill while the row is folded away and on the mark while the bubble is closed. One ask runs at a time. Before a conversation the bots sit in a row under the header; once one starts the row folds away and the header pill (the bot's name and chevron; its role slides out on hover) is the switch button, which unfolds every bot until you pick one |
 | Pointer nearby, dodge on | Fades the closer the pointer gets (down to 28%) and lets clicks through. Rest on the mark and it fades back in over about 0.4s, then takes clicks |
 | Pointer idle for 2 minutes | The capsule eyes close into lid lines |
 
@@ -75,12 +75,13 @@ omarchy-shell io.github.tcballard.grokbot-desktop bot "OmaBot"
 omarchy-shell io.github.tcballard.grokbot-desktop appearance hex green
 omarchy-shell io.github.tcballard.grokbot-desktop animate hop
 omarchy-shell io.github.tcballard.grokbot-desktop say "Bob" "Morning briefing is ready."
+omarchy-shell io.github.tcballard.grokbot-desktop reply 4f9c2a7e1b03 "Nothing on your calendar today."
 omarchy-shell io.github.tcballard.grokbot-desktop sayLink "PR Merged" "omarchy-spaces #27 merged." "Open PR" "https://github.com/tornikegomareli/omarchy-spaces/pull/27"
 ```
 
-`animate` accepts `wave`, `think`, `happy`, `celebrate`, `alert`, `sleep`, `hop`, `spin`, and `morph`. `sayLinks` takes a second label and URL. Links must be `https`, or `http` to localhost, with no credentials. A button opens only when you click it.
+`say` with a bot's name as the title (`say "Bob" "…"`) is that bot speaking: the message goes in its own conversation, whose pill already names it, so no name line goes above it, and it keeps its line breaks, up to 4,000 characters. If another bot is on screen, the speaker's chip gets the unread dot. Any other title (`say "PR Merged" "…"`) is a one-line notice with the title above it. `animate` accepts `wave`, `think`, `happy`, `celebrate`, `alert`, `sleep`, `hop`, `spin`, and `morph`. `sayLinks` takes a second label and URL. Links must be `https`, or `http` to localhost, with no credentials. A button opens only when you click it.
 
-`bot` accepts an id, a short name (`OmaBot`, `Poteto`, `dr eggbot`), or the full profile name.
+`bot` accepts an id, a short name (`OmaBot`, `Poteto`, `dr eggbot`), or the full profile name. `reply` answers a waiting webhook ask by its id, or the oldest waiting question of a bot named the same way; see [How a webhook ask comes back](#how-a-webhook-ask-comes-back).
 
 ```bash
 omarchy-shell io.github.tcballard.grokbot-desktop dictate "Hey OmaBot, check the VM"
@@ -124,17 +125,42 @@ Each ask is one JSON object on the stdin of `bin/grokbot-ask`, launched as `/usr
 
 Set `dispatch` to `webhook` or `agent` in `~/.config/omarchy/grokbot-desktop.json`. The same keys on this plugin's `shell.json` entry win when they are present.
 
-Webhook mode POSTs what Grok Bot's "Omarchy desktop companion" routine takes, as Bob describes it: the prompt, the bot to hand it to by name, and where it came from, plus the bot's id:
+### Connect to Grok Bot
 
-```json
-{ "prompt": "…", "botName": "Bob", "botId": "…", "source": "Omarchy desktop companion (hostname)" }
+Webhook mode sends each ask to Grok Bot's "Omarchy desktop companion" routine, so Bob himself answers. To connect, run this from the plugin's folder (`~/.config/omarchy/plugins/io.github.tcballard.grokbot-desktop`):
+
+```bash
+bin/grokbot-connect
 ```
 
-The routine's Sender key goes in both `Authorization: Bearer <key>` and `X-Automation-Key: <key>`. Find the Webhook URL and Sender key in Grok Bot: click Bob the Bot in the chat header, open Routines, then Omarchy desktop companion. The key is read from `~/.config/omarchy/grokbot-webhook.key` (mode `0600`) or from `GROKBOT_WEBHOOK_KEY` in the helper's own environment. The shell does not put that variable on the helper command line. The URL must be `https`, or `http` to localhost. A response with a `reply`, `text`, `message`, or `output` field, or plain text, is shown in the bubble. A webhook that only acknowledges the ask (an empty body, or JSON without those fields, as a routine webhook that starts a run returns) shows "Sent to Bob. The webhook accepted it but sent no reply back." rather than the raw response. An error body such as `{"code":"error","message":"Invalid API key"}` is reported as an error with its message, whatever the HTTP status, never shown as the bot's reply. The routine's URL has the form `https://api2.cursor.sh/automations/webhook/<id>`. It starts a run in Grok Bot; if it answers only with an acknowledgement, the bubble shows "Sent to Bob" and the reply arrives in Grok Bot. A successful call has not yet been recorded from this plugin.
+It says where to find the routine's Webhook URL and Sender key in Grok Bot (click Bob in the chat header, open Routines, then Omarchy desktop companion), asks for both, and sends Bob one short test ask. Only if Grok Bot takes it does it save anything: the key to `~/.config/omarchy/grokbot-webhook.key` (mode `0600`), and the URL and `"dispatch": "webhook"` to `~/.config/omarchy/grokbot-desktop.json`, keeping your other settings. A refused key or a wrong address is explained, and nothing is saved. `bin/grokbot-connect --status` says how asks are sent now, and `bin/grokbot-connect --off` goes back to the local agent, keeping the URL and key.
+
+### How a webhook ask comes back
+
+The routine takes an ask at once and answers later, so the question keeps its typing dots and Bob keeps working while you carry on. Each ask carries an id and the command that answers it:
+
+```json
+{ "prompt": "…", "botName": "Bob", "botId": "…", "source": "Omarchy desktop companion (hostname)",
+  "askId": "4f9c2a7e1b03", "replyWith": "omarchy-shell io.github.tcballard.grokbot-desktop reply 4f9c2a7e1b03 \"<answer>\"" }
+```
+
+When Bob runs that `reply`, the answer goes under the question it answers, in that bot's conversation, even if another bot is on screen; that bot's chip then shows the unread dot (on the header pill while the bot row is folded). `reply` also takes a bot's name or id instead of an ask id, which answers that bot's oldest waiting question. A routine that answers with `say "Bob" "…"` instead works too: a `say` titled with the name of a bot that is waiting counts as its reply. A question still waiting after ten minutes says the reply will be in Grok Bot. A webhook that answers in its response, with a `reply`, `text`, `message`, or `output` field or plain text, is shown straight away.
+
+### Webhook details
+
+The Sender key goes in both `Authorization: Bearer <key>` and `X-Automation-Key: <key>`. It is read from `~/.config/omarchy/grokbot-webhook.key` or from `GROKBOT_WEBHOOK_KEY` in the helper's own environment; the shell does not put that variable on the helper command line, and a key file other users can read is ignored. If the routine also asks for a header of its own, run `bin/grokbot-connect --header <Name>`, or name it in `webhookHeader` and put its value in `~/.config/omarchy/grokbot-webhook-header.key` with mode `0600`; the ask is not sent while that value is missing or exposed, and a name the companion already sends, such as `Authorization`, is refused. The URL must be `https`, or `http` to localhost; the routine's has the form `https://api2.cursor.sh/automations/webhook/<id>`.
+
+A failed ask says why: no connection within 10 seconds, a name that couldn't be looked up, a refused connection, a certificate that didn't verify, a proxy that couldn't connect, no answer within 45 seconds, or the webhook's own error, such as `{"code":"error","message":"Invalid API key"}`, which is never shown as the bot's reply.
+
+### Agent mode
+
+Agent mode is the fallback. It is your local coding agent answering in the bot's name, not the Grok Bot itself. It reads `~/.config/omarchy/defaults/agent` (or an `agent` key) and can target `grok`, `claude`, `codex`, `opencode`, `gemini`, `copilot`, `crush`, `pi`, or `omp`; any other default is reported rather than swapped for Claude. The prompt goes on stdin, except for Grok, which is run as `grok --no-auto-update -p "<prompt>"` because that is its headless form, so the prompt is visible in the process list while it runs. An agent that Omarchy has only stubbed for install-on-first-run is reported as not installed rather than installed by an ask. When the agent fails, the bubble shows the agent's name and what it printed. A `command` array overrides all of this and still receives the prompt on stdin. Stdout is capped at 64 KiB.
 
 Attached files are private copies under `$XDG_RUNTIME_DIR/grokbot-desktop/attachments`, cleared at logout. Agent mode runs the agent in that directory and names the files in the prompt, so an agent with file tools can open them; how well that works depends on the agent, and only Codex documents an image flag for one-shot use. Webhook mode refuses attachments, since no webhook file format is known.
 
-Agent mode is the fallback. It is your local coding agent answering in the bot's name, not the Grok Bot itself. It reads `~/.config/omarchy/defaults/agent` (or an `agent` key) and can target `grok`, `claude`, `codex`, `opencode`, `gemini`, `copilot`, `crush`, `pi`, or `omp`; any other default is reported rather than swapped for Claude. The prompt goes on stdin, except for Grok, which is run as `grok --no-auto-update -p "<prompt>"` because that is its headless form, so the prompt is visible in the process list while it runs. An agent that Omarchy has only stubbed for install-on-first-run is reported as not installed rather than installed by an ask. When the agent fails, the bubble shows the agent's name and what it printed. A `command` array overrides all of this and still receives the prompt on stdin. Stdout is capped at 64 KiB.
+### Settings
+
+`~/.config/omarchy/grokbot-desktop.json`, which `bin/grokbot-connect` writes:
 
 ```json
 {
@@ -142,6 +168,8 @@ Agent mode is the fallback. It is your local coding agent answering in the bot's
   "webhookUrl": "https://example.invalid/omarchy-desktop-companion"
 }
 ```
+
+This plugin's entry in Omarchy's `shell.json`, which the companion keeps up to date as you change things:
 
 ```json
 {
@@ -171,7 +199,7 @@ Agent mode is the fallback. It is your local coding agent answering in the bot's
 omarchy plugin remove io.github.tcballard.grokbot-desktop
 ```
 
-That removes the plugin checkout and its `shell.json` entry. The companion's runtime Hyprland layer rule, which only stops the compositor animating its own window, is not written to any file and is gone at the next Hyprland reload. It does not delete `~/.config/omarchy/grokbot-desktop.json`, `~/.config/omarchy/grokbot-bots.json`, or `~/.config/omarchy/grokbot-webhook.key`. Hyprland bindings and the copied desktop file stay until you remove them.
+That removes the plugin checkout and its `shell.json` entry. The companion's runtime Hyprland layer rule, which only stops the compositor animating its own window, is not written to any file and is gone at the next Hyprland reload. It does not delete `~/.config/omarchy/grokbot-desktop.json`, `~/.config/omarchy/grokbot-bots.json`, `~/.config/omarchy/grokbot-webhook.key`, or `~/.config/omarchy/grokbot-webhook-header.key`. Hyprland bindings and the copied desktop file stay until you remove them.
 
 ## Development
 

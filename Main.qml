@@ -165,11 +165,22 @@ Item {
   // The bot whose ask is running, and bots with a reply not yet seen.
   property string askBotId: ""
   property var unreadBots: []
+  // Webhook asks the routine has taken and will answer through the reply
+  // command, as { askId: { botId, since } }. The exchange each belongs to
+  // carries the same id as `wait`, wherever it has moved since.
+  property var awaiting: ({})
+  // The ask the latest exchange on screen is waiting on, or "".
+  property string awaitingId: ""
+  property string pendingAskId: ""
+  readonly property int replyWaitMs: 600000
   readonly property string threadBotId: {
     var bot = root.currentBot()
     return bot ? bot.id : root.defaultBotId
   }
   readonly property bool askingHere: root.asking && root.askBotId === root.threadBotId
+  readonly property bool waitingHere: root.awaitingId !== ""
+  // Bob works while his ask runs and while its answer is on the way.
+  readonly property bool busyHere: root.askingHere || root.waitingHere
   property string pendingJson: ""
   property string themeAccent: ""
   property string themeForeground: ""
@@ -713,7 +724,7 @@ Item {
 
   function stashThread(id) {
     var next = Object.assign({}, root.threads)
-    next[id] = { history: root.history, asked: root.askedText, files: root.askedFiles, body: root.bubbleBody, links: root.noticeLinks, draft: root.promptDraft, pending: root.pendingFiles }
+    next[id] = { history: root.history, asked: root.askedText, files: root.askedFiles, body: root.bubbleBody, links: root.noticeLinks, wait: root.awaitingId, draft: root.promptDraft, pending: root.pendingFiles }
     root.threads = next
   }
 
@@ -725,6 +736,7 @@ Item {
     root.pendingFiles = thread.pending || []
     root.bubbleBody = thread.body || ""
     root.noticeLinks = thread.links || []
+    root.awaitingId = thread.wait || ""
     root.promptDraft = thread.draft || ""
     root.unreadBots = root.unreadBots.filter(function (other) { return other !== id })
   }
@@ -741,8 +753,7 @@ Item {
     thread.body = body
     next[id] = thread
     root.threads = next
-    if (root.unreadBots.indexOf(id) < 0) root.unreadBots = root.unreadBots.concat([id])
-    root.hop()
+    root.markUnread(id)
     return false
   }
 
@@ -756,7 +767,7 @@ Item {
     root.chosenBotId = id
     if (changed) {
       root.loadThread(id)
-      if (root.expression === "work" || root.expression === "idle") root.expression = root.askingHere ? "work" : "idle"
+      if (root.expression === "work" || root.expression === "idle") root.expression = root.busyHere ? "work" : "idle"
     }
     root.recentBots = [id].concat(root.recentBots.filter(function (other) { return other !== id })).slice(0, 6)
     if (changed && !root.bubbleOpen) root.showSwitchTag()
@@ -1019,20 +1030,211 @@ Item {
   function archiveExchange() {
     root.clearedThread = null
     if (root.askedText === "" && root.bubbleBody === "" && root.noticeLinks.length === 0) return
-    root.history = root.history.concat([{ asked: root.askedText, files: root.askedFiles, body: root.bubbleBody, links: root.noticeLinks }]).slice(-root.historyLimit)
+    root.history = root.history.concat([{ asked: root.askedText, files: root.askedFiles, body: root.bubbleBody, links: root.noticeLinks, wait: root.awaitingId }]).slice(-root.historyLimit)
     root.askedText = ""
     root.askedFiles = []
     root.bubbleBody = ""
     root.noticeLinks = []
+    root.awaitingId = ""
+  }
+
+  function newAskId() {
+    var id = ""
+    while (id.length < 12) id += Math.floor(Math.random() * 16).toString(16)
+    return id
+  }
+
+  // The routine took the ask and will answer later: its question waits.
+  function startWaiting(askId, botId) {
+    if (askId === "") return
+    var next = Object.assign({}, root.awaiting)
+    next[askId] = { botId: botId, since: Date.now() }
+    root.awaiting = next
+    if (botId === root.threadBotId) {
+      root.awaitingId = askId
+      return
+    }
+    var threads = Object.assign({}, root.threads)
+    var thread = Object.assign({}, threads[botId] || {})
+    thread.wait = askId
+    threads[botId] = thread
+    root.threads = threads
+  }
+
+  function indexWaiting(list, askId) {
+    var i
+    for (i = list.length - 1; i >= 0; i--) if (list[i].wait === askId) return i
+    return -1
+  }
+
+  // The oldest question a bot is still waiting on, or "".
+  function oldestWaiting(botId) {
+    var best = ""
+    var since = Infinity
+    var ids = Object.keys(root.awaiting)
+    var i
+    for (i = 0; i < ids.length; i++) {
+      var info = root.awaiting[ids[i]]
+      if (info.botId === botId && info.since < since) {
+        best = ids[i]
+        since = info.since
+      }
+    }
+    return best
+  }
+
+  // An answer that belongs to no waiting question still lands in its bot's
+  // conversation, as a new exchange. Returns whether it is on screen.
+  function appendReply(botId, text, links) {
+    if (botId === root.threadBotId) {
+      root.archiveExchange()
+      root.noticeLinks = links || []
+      root.bubbleBody = text
+      return true
+    }
+    var next = Object.assign({}, root.threads)
+    var thread = Object.assign({}, next[botId] || {})
+    var past = (thread.history || []).slice()
+    if ((thread.asked || "") !== "" || (thread.body || "") !== "" || (thread.links || []).length > 0)
+      past = past.concat([{ asked: thread.asked || "", files: thread.files || [], body: thread.body || "", links: thread.links || [], wait: thread.wait || "" }]).slice(-root.historyLimit)
+    thread.history = past
+    thread.asked = ""
+    thread.files = []
+    thread.links = links || []
+    thread.wait = ""
+    thread.body = text
+    next[botId] = thread
+    root.threads = next
+    root.markUnread(botId)
+    return false
+  }
+
+  // A bot not on screen has news: a dot on its chip, and on the mark too
+  // while the bubble is closed, or the hop would be the only sign.
+  function markUnread(botId) {
+    if (root.unreadBots.indexOf(botId) < 0) root.unreadBots = root.unreadBots.concat([botId])
+    if (!root.bubbleOpen) root.replyUnread = true
+    root.hop()
+  }
+
+  // The answer to a waiting webhook ask goes under the question it answers,
+  // in that bot's conversation, wherever the question now sits. Returns
+  // whether it is on screen.
+  function answerWaiting(askId, text) {
+    var info = root.awaiting[askId]
+    if (!info) return false
+    var rest = Object.assign({}, root.awaiting)
+    delete rest[askId]
+    root.awaiting = rest
+    var botId = info.botId
+    if (botId === root.threadBotId) {
+      if (root.awaitingId === askId) {
+        root.bubbleBody = text
+        root.awaitingId = ""
+        return true
+      }
+      var index = root.indexWaiting(root.history, askId)
+      if (index < 0) return root.appendReply(botId, text)
+      var history = root.history.slice()
+      history[index] = Object.assign({}, history[index], { body: text, wait: "" })
+      root.history = history
+      return true
+    }
+    var next = Object.assign({}, root.threads)
+    var thread = Object.assign({}, next[botId] || {})
+    if (thread.wait === askId) {
+      thread.body = text
+      thread.wait = ""
+    } else {
+      var past = (thread.history || []).slice()
+      var at = root.indexWaiting(past, askId)
+      if (at < 0) return root.appendReply(botId, text)
+      past[at] = Object.assign({}, past[at], { body: text, wait: "" })
+      thread.history = past
+    }
+    next[botId] = thread
+    root.threads = next
+    root.markUnread(botId)
+    return false
+  }
+
+  function landReply(here) {
+    if (!here) return
+    root.flashExpression("happy", 1600)
+    syllableAnim.restart()
+    root.replyLanded()
+  }
+
+  // reply <askId | bot> <text>: a routine answering a webhook ask. An id
+  // finds its question; a bot's name or id answers that bot's oldest
+  // waiting question, or starts a new exchange when none is waiting.
+  function receiveReply(target, text) {
+    var body = root.cleanText(text, 4000)
+    if (body === "") return "empty text"
+    var key = String(target || "").trim()
+    if (root.awaiting[key]) {
+      root.landReply(root.answerWaiting(key, body))
+      return "ok"
+    }
+    var bot = root.matchBot(key)
+    if (!bot) return "unknown ask or bot"
+    var waiting = root.oldestWaiting(bot.id)
+    root.landReply(waiting !== "" ? root.answerWaiting(waiting, body) : root.appendReply(bot.id, body))
+    return "ok"
+  }
+
+  // A routine that has waited too long lets its question go.
+  function expireWaiting() {
+    var now = Date.now()
+    var ids = Object.keys(root.awaiting)
+    var i
+    for (i = 0; i < ids.length; i++) {
+      var info = root.awaiting[ids[i]]
+      if (!info || now - info.since < root.replyWaitMs) continue
+      root.answerWaiting(ids[i], "No answer yet. " + root.labelOf(root.findBot(info.botId)) + "'s reply will be in Grok Bot.")
+    }
+    if (!root.busyHere && root.expression === "work") root.expression = "idle"
+  }
+
+  Timer {
+    interval: 30000
+    repeat: true
+    running: Object.keys(root.awaiting).length > 0
+    onTriggered: root.expireWaiting()
   }
 
   function sayNotice(title, text, links) {
     var body = root.plainLine(text, 300)
     if (body === "") return "empty text"
+    var who = root.plainLine(title, 80)
+    var bot = root.matchBot(who)
+    if (bot) {
+      // A bot speaking: a message, not a notice. It keeps its line breaks
+      // and length, and goes in that bot's own conversation, whose pill
+      // already names it, so no name goes above it. Without links it
+      // answers the bot's waiting question, if it has one, as a routine
+      // that replies with say rather than reply does.
+      var words = root.cleanText(text, 4000)
+      var waiting = (links || []).length === 0 ? root.oldestWaiting(bot.id) : ""
+      if (waiting !== "") {
+        root.landReply(root.answerWaiting(waiting, words))
+        return "ok"
+      }
+      if (bot.id !== root.threadBotId) {
+        root.appendReply(bot.id, words, links)
+        return "ok"
+      }
+      root.summon()
+      root.archiveExchange()
+      root.noticeLinks = links || []
+      root.bubbleBody = words
+      root.flashExpression("alert", 1200)
+      syllableAnim.restart()
+      return "ok"
+    }
     root.summon()
     root.archiveExchange()
     root.noticeLinks = links || []
-    var who = root.plainLine(title, 80)
     root.bubbleBody = (who !== "" ? who + "\n" : "") + body
     root.flashExpression("alert", 1200)
     syllableAnim.restart()
@@ -1047,12 +1249,13 @@ Item {
 
   function clearConversation() {
     if (!root.canClear) return "nothing to clear"
-    root.clearedThread = { botId: root.threadBotId, history: root.history, asked: root.askedText, files: root.askedFiles, body: root.bubbleBody, links: root.noticeLinks }
+    root.clearedThread = { botId: root.threadBotId, history: root.history, asked: root.askedText, files: root.askedFiles, body: root.bubbleBody, links: root.noticeLinks, wait: root.awaitingId }
     root.history = []
     root.askedText = ""
     root.askedFiles = []
     root.bubbleBody = ""
     root.noticeLinks = []
+    root.awaitingId = ""
     undoTimer.restart()
     root.openBubble()
     return "ok"
@@ -1066,6 +1269,7 @@ Item {
     root.askedFiles = cleared.files
     root.bubbleBody = cleared.body
     root.noticeLinks = cleared.links
+    root.awaitingId = cleared.wait || ""
     root.clearedThread = null
     undoTimer.stop()
   }
@@ -1273,7 +1477,9 @@ Item {
       return "error"
     }
     var bot = root.currentBot()
+    root.pendingAskId = root.newAskId()
     root.pendingJson = JSON.stringify({
+      askId: root.pendingAskId,
       botId: bot ? bot.id : root.defaultBotId,
       botName: root.botLabel(),
       prompt: prompt,
@@ -1324,6 +1530,11 @@ Item {
       askTimeout.stop()
       if (!root.asking) return
       root.asking = false
+      // The routine took the ask; its answer comes through reply.
+      if (code === 10) {
+        root.startWaiting(root.pendingAskId, root.askBotId)
+        return
+      }
       var out = root.cleanText(askOut.text, 4000)
       var err = root.cleanText(askErr.text, 400)
       var ok = code === 0 && out !== ""
@@ -1516,7 +1727,7 @@ Item {
   Timer {
     id: expressionTimer
     onTriggered: {
-      if (root.askingHere) root.expression = "work"
+      if (root.busyHere) root.expression = "work"
       else if (root.sleepHold || Date.now() - root.lastMoveAt > 120000) root.expression = "sleep"
       else root.expression = "idle"
     }
@@ -1590,14 +1801,14 @@ Item {
   property int workStep: 0
   property real workX: 0
   property real workY: 0
-  property real workBlend: root.askingHere && !root.reduceMotion ? 1 : 0
+  property real workBlend: root.busyHere && !root.reduceMotion ? 1 : 0
   Behavior on workX { NumberAnimation { duration: root.ms(root.workMoveMs); easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0, 0.2, 1, 1, 1] } }
   Behavior on workY { NumberAnimation { duration: root.ms(root.workMoveMs); easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0, 0.2, 1, 1, 1] } }
   Behavior on workBlend { NumberAnimation { duration: root.ms(root.workMoveMs); easing.type: Easing.BezierSpline; easing.bezierCurve: [0.4, 0, 0.2, 1, 1, 1] } }
 
   Timer {
     id: workTimer
-    running: root.present && root.askingHere && !root.reduceMotion
+    running: root.present && root.busyHere && !root.reduceMotion
     repeat: true
     triggeredOnStart: true
     onRunningChanged: if (running) root.workStep = 0
@@ -1643,7 +1854,7 @@ Item {
   Timer {
     interval: 2600
     repeat: true
-    running: root.liveMotion === "hyper" && root.present && !root.dragging && !root.askingHere
+    running: root.liveMotion === "hyper" && root.present && !root.dragging && !root.busyHere
     onTriggered: root.hop()
   }
 
@@ -1825,6 +2036,7 @@ Item {
     }
     function animate(name: string): string { return root.playAnimation(name) }
     function say(title: string, text: string): string { return root.sayNotice(title, text, []) }
+    function reply(target: string, text: string): string { return root.receiveReply(target, text) }
     function sayLink(title: string, text: string, label: string, url: string): string {
       var link = root.linkButton(label, url)
       if (!link) return "invalid link"

@@ -471,20 +471,193 @@ test('a webhook that only acknowledges the ask says it was sent', async () => {
     webhookUrl: `http://127.0.0.1:${server.address().port}/automations/webhook/routine`
   }))
   fs.writeFileSync(path.join(config, 'grokbot-webhook.key'), 'crsr_test\n', { mode: 0o600 })
-  const outputs = []
-  for (let i = 0; i < bodies.length; i++) {
-    const child = await spawnCollected(['python3', path.join(root, 'bin/grokbot-ask')], {
-      input: JSON.stringify({ botId: 'e0195a7d-f804-4688-9191-e2cf3574a6d1', botName: 'Bob', prompt: 'hi' }),
-      env: { ...process.env, HOME: home, XDG_CONFIG_HOME: path.join(home, '.config'), GROKBOT_WEBHOOK_KEY: '' }
+  const results = []
+  try {
+    for (let i = 0; i < bodies.length; i++) {
+      results.push(await spawnCollected(['python3', path.join(root, 'bin/grokbot-ask')], {
+        input: JSON.stringify({ botId: 'e0195a7d-f804-4688-9191-e2cf3574a6d1', botName: 'Bob', prompt: 'hi' }),
+        env: { ...process.env, HOME: home, XDG_CONFIG_HOME: path.join(home, '.config'), GROKBOT_WEBHOOK_KEY: '' }
+      }))
+    }
+  } finally {
+    server.close()
+  }
+  // An acknowledgement means the answer follows through the reply command:
+  // exit 10, so the shell keeps the question waiting for it.
+  for (const result of results.slice(0, 3)) {
+    assert.equal(result.status, 10, result.stderr)
+    assert.equal(result.stdout, 'Sent to Bob.\n')
+  }
+  assert.equal(results[3].status, 0, results[3].stderr)
+  assert.equal(results[3].stdout, 'Plain answer\n')
+})
+
+test('a webhook ask carries its id and the command that answers it', async () => {
+  let seen = null
+  const server = http.createServer((req, res) => {
+    const chunks = []
+    req.on('data', (chunk) => chunks.push(chunk))
+    req.on('end', () => {
+      seen = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+      res.setHeader('content-type', 'application/json')
+      res.end('{"success":true,"runUuid":"ac049e46-d399-485d-8a8e-b6e8954202c8"}')
     })
-    assert.equal(child.status, 0, child.stderr)
-    outputs.push(child.stdout)
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'grokbot-askid-'))
+  const config = path.join(home, '.config', 'omarchy')
+  fs.mkdirSync(config, { recursive: true })
+  fs.writeFileSync(path.join(config, 'grokbot-desktop.json'), JSON.stringify({
+    dispatch: 'webhook',
+    webhookUrl: `http://127.0.0.1:${server.address().port}/automations/webhook/routine`
+  }))
+  fs.writeFileSync(path.join(config, 'grokbot-webhook.key'), 'crsr_test\n', { mode: 0o600 })
+  const env = { ...process.env, HOME: home, XDG_CONFIG_HOME: path.join(home, '.config'), GROKBOT_WEBHOOK_KEY: '' }
+  const ask = (askId) => spawnCollected(['python3', path.join(root, 'bin/grokbot-ask')], {
+    input: JSON.stringify({ askId, botId: 'e0195a7d-f804-4688-9191-e2cf3574a6d1', botName: 'Bob', prompt: 'hi' }),
+    env
+  })
+  let sent, bad
+  try {
+    sent = await ask('0a1b2c3d4e5f')
+    bad = await ask('0a1b; rm -rf ~')
+  } finally {
+    server.close()
+  }
+  assert.equal(sent.status, 10, sent.stderr)
+  assert.deepEqual(Object.keys(seen).sort(), ['askId', 'botId', 'botName', 'prompt', 'replyWith', 'source'])
+  assert.equal(seen.askId, '0a1b2c3d4e5f')
+  assert.equal(seen.replyWith, 'omarchy-shell io.github.tcballard.grokbot-desktop reply 0a1b2c3d4e5f "<answer>"')
+  // An id that isn't plain hex never reaches the routine.
+  assert.equal(bad.status, 2)
+})
+
+test('a webhook that cannot be reached, or does not answer, says why', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'grokbot-reach-'))
+  const config = path.join(home, '.config', 'omarchy')
+  fs.mkdirSync(config, { recursive: true })
+  fs.writeFileSync(path.join(config, 'grokbot-webhook.key'), 'crsr_test\n', { mode: 0o600 })
+  const env = { ...process.env, HOME: home, XDG_CONFIG_HOME: path.join(home, '.config'), GROKBOT_WEBHOOK_KEY: '', GROKBOT_WEBHOOK_TIMEOUT: '2' }
+  const ask = (url) => {
+    fs.writeFileSync(path.join(config, 'grokbot-desktop.json'), JSON.stringify({ dispatch: 'webhook', webhookUrl: url }))
+    return spawnCollected(['python3', path.join(root, 'bin/grokbot-ask')], {
+      input: JSON.stringify({ botId: 'e0195a7d-f804-4688-9191-e2cf3574a6d1', botName: 'Bob', prompt: 'hi' }),
+      env
+    })
+  }
+  // Nothing listening.
+  const closed = http.createServer()
+  await new Promise((resolve) => closed.listen(0, '127.0.0.1', resolve))
+  const port = closed.address().port
+  await new Promise((resolve) => closed.close(resolve))
+  const refused = await ask(`http://127.0.0.1:${port}/hook`)
+  assert.equal(refused.status, 4)
+  assert.equal(refused.stderr.trim(), 'webhook unreachable: the connection was refused')
+  // Connected, but no answer before the wait runs out.
+  const silent = http.createServer(() => {})
+  await new Promise((resolve) => silent.listen(0, '127.0.0.1', resolve))
+  let slow
+  try {
+    slow = await ask(`http://127.0.0.1:${silent.address().port}/hook`)
+  } finally {
+    silent.closeAllConnections()
+    silent.close()
+  }
+  assert.equal(slow.status, 4)
+  assert.equal(slow.stderr.trim(), "the webhook didn't answer within 2 seconds")
+  // The other reasons, named in a few plain words.
+  const script = [
+    'import importlib.machinery, importlib.util, socket, ssl, errno',
+    `loader = importlib.machinery.SourceFileLoader("ga", ${JSON.stringify(path.join(root, 'bin/grokbot-ask'))})`,
+    'm = importlib.util.module_from_spec(importlib.util.spec_from_loader("ga", loader))',
+    'loader.exec_module(m)',
+    'r = m.unreachable_reason',
+    'print(r(TimeoutError(), "h"))',
+    'print(r(socket.gaierror(-2, "x"), "api2.cursor.sh"))',
+    'print(r(ssl.SSLCertVerificationError("x"), "h"))',
+    'print(r(OSError(errno.ENETUNREACH, "x"), "h"))',
+    'print(r(OSError("Tunnel connection failed: 502 Bad Gateway"), "api2.cursor.sh"))',
+    'print(r("odd", "h"))'
+  ].join('\n')
+  const reasons = spawnSync('python3', ['-c', script], { encoding: 'utf8' })
+  assert.equal(reasons.status, 0, reasons.stderr)
+  assert.deepEqual(reasons.stdout.trim().split('\n'), [
+    'no connection within 10 seconds',
+    "couldn't look up api2.cursor.sh",
+    "its certificate couldn't be verified",
+    'the network is unreachable',
+    "the proxy couldn't connect to api2.cursor.sh",
+    'the connection failed'
+  ])
+})
+
+test('a routine\'s own header carries its value from a private file, beside the key', async () => {
+  const value = `hv_${Math.random().toString(16).slice(2)}`
+  const seen = []
+  let cmdline = ''
+  let pid = 0
+  const server = http.createServer((req, res) => {
+    req.resume()
+    req.on('end', () => {
+      seen.push(req.headers)
+      try { cmdline = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8') } catch { cmdline = '' }
+      res.end('ok')
+    })
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'grokbot-header-'))
+  const config = path.join(home, '.config', 'omarchy')
+  fs.mkdirSync(config, { recursive: true })
+  const settings = (extra) => fs.writeFileSync(path.join(config, 'grokbot-desktop.json'), JSON.stringify({
+    dispatch: 'webhook',
+    webhookUrl: `http://127.0.0.1:${server.address().port}/automations/webhook/routine`,
+    ...extra
+  }))
+  fs.writeFileSync(path.join(config, 'grokbot-webhook.key'), 'crsr_test\n', { mode: 0o600 })
+  const headerFile = path.join(config, 'grokbot-webhook-header.key')
+  const ask = () => spawnCollected(['python3', path.join(root, 'bin/grokbot-ask')], {
+    input: JSON.stringify({ botId: 'e0195a7d-f804-4688-9191-e2cf3574a6d1', botName: 'Bob', prompt: 'hi' }),
+    env: { ...process.env, HOME: home, XDG_CONFIG_HOME: path.join(home, '.config'), GROKBOT_WEBHOOK_KEY: '' },
+    onPid: (p) => { pid = p }
+  })
+
+  settings({ webhookHeader: 'X-Routine-Token' })
+  fs.writeFileSync(headerFile, `${value}\n`, { mode: 0o600 })
+  const sent = await ask()
+  assert.equal(sent.status, 0, sent.stderr)
+  assert.equal(seen.length, 1)
+  assert.equal(seen[0]['x-routine-token'], value)
+  // The Sender key still goes in both auth headers.
+  assert.equal(seen[0].authorization, 'Bearer crsr_test')
+  assert.equal(seen[0]['x-automation-key'], 'crsr_test')
+  for (const text of [sent.stdout, sent.stderr, cmdline]) assert.equal(text.includes(value), false)
+
+  // Without a private value nothing is sent: a missing file, a file others
+  // can read, or a value that would start another header line.
+  fs.rmSync(headerFile)
+  const missing = await ask()
+  assert.equal(missing.status, 3)
+  assert.equal(missing.stderr.trim(), 'the value for the X-Routine-Token header is missing or readable by other users')
+  fs.writeFileSync(headerFile, `${value}\n`, { mode: 0o644 })
+  fs.chmodSync(headerFile, 0o644)
+  const open = await ask()
+  assert.equal(open.status, 3)
+  assert.equal(open.stderr.includes(value), false)
+  fs.writeFileSync(headerFile, `${value}\rX-Injected: 1\n`, { mode: 0o600 })
+  fs.chmodSync(headerFile, 0o600)
+  assert.equal((await ask()).status, 3)
+
+  // A name must be a plain header name, and cannot replace one the
+  // companion sends itself.
+  fs.writeFileSync(headerFile, `${value}\n`, { mode: 0o600 })
+  for (const name of ['Authorization', 'x-automation-key', 'Host', 'X Bad', 'X-Bad:1', 'X-Bad\r\nX-Injected']) {
+    settings({ webhookHeader: name })
+    const refused = await ask()
+    assert.equal(refused.status, 2, name)
+    assert.match(refused.stderr, /webhookHeader must be a plain header name/)
   }
   server.close()
-  for (const output of outputs.slice(0, 3)) {
-    assert.equal(output, 'Sent to Bob. The webhook accepted it but sent no reply back.\n')
-  }
-  assert.equal(outputs[3], 'Plain answer\n')
+  assert.equal(seen.length, 1)
 })
 
 const BOB = 'e0195a7d-f804-4688-9191-e2cf3574a6d1'
@@ -926,7 +1099,7 @@ test('thinking and sleeping read at a glance', () => {
   assert.match(main, /property real thinkLook: root\.expression === "think" \? 1 : 0/)
   assert.match(main, /Math\.sin\(root\.thinkAngle \* 0\.5\) \* 3 \* root\.thinkLook/)
   assert.match(main, /running: root\.present && !root\.dragging && root\.liveMotion !== "calm" && root\.expression === "sleep"/)
-  assert.match(read('BubblePanel.qml'), /typing: app \? app\.askingHere && app\.bubbleBody === "" : false/)
+  assert.match(read('BubblePanel.qml'), /typing: app \? \(app\.askingHere \|\| app\.waitingHere\) && app\.bubbleBody === "" : false/)
 })
 
 test('the mark answers hover and lifts while dragged', () => {
@@ -1282,7 +1455,9 @@ test('while asking, the mark looks around as Bob does while Working', () => {
   assert.match(main, /readonly property var workLooks: \[/)
   assert.match(main, /\[-0\.54, -0\.13, 560, "blink"\]/)
   assert.match(main, /easing\.bezierCurve: \[0\.4, 0, 0\.2, 1, 1, 1\]/)
-  assert.match(main, /running: root\.present && root\.askingHere && !root\.reduceMotion/)
+  // It keeps working while a webhook answer is on the way.
+  assert.match(main, /running: root\.present && root\.busyHere && !root\.reduceMotion/)
+  assert.match(main, /readonly property bool busyHere: root\.askingHere \|\| root\.waitingHere/)
   assert.match(main, /gazeX: \(root\.gazeX \* \(1 - root\.workBlend\) \+ root\.workX \* root\.workBlend\)/)
   const face = loadLibrary('qml/face.js')
   assert.deepEqual(JSON.parse(JSON.stringify(face.pose('work'))), { tilt: 0, height: 1, open: 1 })
@@ -1309,18 +1484,23 @@ test('each bot keeps its own conversation, and a reply lands with the bot asked'
   const select = qmlFunction(main, 'selectBot')
   assert.match(select, /if \(changed\) \{\s*root\.clearedThread = null\s*root\.stashThread\(root\.threadBotId\)/)
   assert.match(select, /root\.loadThread\(id\)/)
-  assert.match(qmlFunction(main, 'stashThread'), /\{ history: root\.history, asked: root\.askedText, files: root\.askedFiles, body: root\.bubbleBody, links: root\.noticeLinks, draft: root\.promptDraft, pending: root\.pendingFiles \}/)
+  assert.match(qmlFunction(main, 'stashThread'), /\{ history: root\.history, asked: root\.askedText, files: root\.askedFiles, body: root\.bubbleBody, links: root\.noticeLinks, wait: root\.awaitingId, draft: root\.promptDraft, pending: root\.pendingFiles \}/)
+  assert.match(qmlFunction(main, 'loadThread'), /root\.awaitingId = thread\.wait \|\| ""/)
   assert.doesNotMatch(qmlFunction(main, 'saveSettings'), /threads/)
   // The ask remembers its bot; its reply is shown there or kept unread.
   assert.match(qmlFunction(main, 'launchAsk'), /root\.askBotId = root\.threadBotId/)
   const deliver = qmlFunction(main, 'deliver')
   assert.match(deliver, /if \(id === "" \|\| id === root\.threadBotId\)/)
-  assert.match(deliver, /root\.unreadBots = root\.unreadBots\.concat\(\[id\]\)/)
+  assert.match(deliver, /root\.markUnread\(id\)/)
+  // A folded row hides the chips, so the pill's chevron carries their dot.
+  const folded = read('BubblePanel.qml')
+  assert.match(folded, /readonly property bool unreadHidden: \{\n\s*var unread = app \? app\.unreadBots : \[\]\n\s*if \(unread\.length === 0\) return false\n\s*if \(!bubble\.rosterShown\) return true/)
+  assert.match(folded, /\/\/ A reply for a bot whose chip is folded away\.\n\s*Rectangle \{\n\s*visible: bubble\.unreadHidden/)
   assert.match(main, /var here = root\.deliver\(root\.askBotId, ok \? out :/)
   assert.match(qmlFunction(main, 'stopAsk'), /root\.deliver\(root\.askBotId, "Stopped\."\)/)
   // Only the bot asking shows the dots, stop button, and work loop.
   assert.match(main, /readonly property bool askingHere: root\.asking && root\.askBotId === root\.threadBotId/)
-  assert.match(main, /property real workBlend: root\.askingHere && !root\.reduceMotion/)
+  assert.match(main, /property real workBlend: root\.busyHere && !root\.reduceMotion/)
   const panel = read('BubblePanel.qml')
   assert.match(panel, /readonly property bool asking: app \? app\.askingHere : false/)
   assert.match(panel, /"Waiting for " \+ app\.askingLabel\(\) \+ " to answer…"/)
@@ -1331,7 +1511,7 @@ test('each bot keeps its own conversation, and a reply lands with the bot asked'
 test('each bot keeps a scrolling history of its conversation', () => {
   // A new ask or notice moves the latest exchange into the history.
   const archive = qmlFunction(main, 'archiveExchange')
-  assert.match(archive, /root\.history = root\.history\.concat\(\[\{ asked: root\.askedText, files: root\.askedFiles, body: root\.bubbleBody, links: root\.noticeLinks \}\]\)\.slice\(-root\.historyLimit\)/)
+  assert.match(archive, /root\.history = root\.history\.concat\(\[\{ asked: root\.askedText, files: root\.askedFiles, body: root\.bubbleBody, links: root\.noticeLinks, wait: root\.awaitingId \}\]\)\.slice\(-root\.historyLimit\)/)
   assert.match(qmlFunction(main, 'launchAsk'), /root\.archiveExchange\(\)\n\s*root\.askedText = String\(prompt \|\| ""\)/)
   assert.match(qmlFunction(main, 'sayNotice'), /root\.archiveExchange\(\)/)
   assert.match(qmlFunction(main, 'loadThread'), /root\.history = thread\.history \|\| \[\]/)
@@ -1350,7 +1530,8 @@ test('clearing a conversation is in the menu, not the composer, and can be undon
   assert.doesNotMatch(main, /function newConversation/)
   // Clearing keeps the conversation behind an Undo chip for a few seconds.
   const clear = qmlFunction(main, 'clearConversation')
-  assert.match(clear, /root\.clearedThread = \{ botId: root\.threadBotId, history: root\.history, asked: root\.askedText, files: root\.askedFiles, body: root\.bubbleBody, links: root\.noticeLinks \}/)
+  assert.match(clear, /root\.clearedThread = \{ botId: root\.threadBotId, history: root\.history, asked: root\.askedText, files: root\.askedFiles, body: root\.bubbleBody, links: root\.noticeLinks, wait: root\.awaitingId \}/)
+  assert.match(qmlFunction(main, 'undoClear'), /root\.awaitingId = cleared\.wait \|\| ""/)
   assert.match(clear, /undoTimer\.restart\(\)/)
   assert.match(qmlFunction(main, 'undoClear'), /root\.history = cleared\.history/)
   assert.match(main, /readonly property bool undoShown: root\.clearedThread !== null && root\.clearedThread\.botId === root\.threadBotId/)
@@ -1360,6 +1541,124 @@ test('clearing a conversation is in the menu, not the composer, and can be undon
   // It lives in the right-click menu and on IPC, not in the composer.
   assert.match(main, /root\.canClear \? \[\{ "label": "Clear conversation", "action": "clear" \}\]/)
   assert.match(main, /function clear\(\): string \{ return root\.clearConversation\(\) \}/)
+})
+
+test('grokbot-connect tests the URL and key before saving them, and keeps other settings', async () => {
+  const seen = []
+  let answer = { status: 200, body: '{"success":true,"runUuid":"ac049e46-d399-485d-8a8e-b6e8954202c8"}' }
+  const server = http.createServer((req, res) => {
+    const chunks = []
+    req.on('data', (chunk) => chunks.push(chunk))
+    req.on('end', () => {
+      seen.push({ headers: req.headers, body: JSON.parse(Buffer.concat(chunks).toString('utf8')) })
+      res.statusCode = answer.status
+      res.setHeader('content-type', 'application/json')
+      res.end(answer.body)
+    })
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const url = `http://127.0.0.1:${server.address().port}/automations/webhook/routine`
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'grokbot-connect-'))
+  const config = path.join(home, '.config', 'omarchy')
+  fs.mkdirSync(config, { recursive: true })
+  const settingsFile = path.join(config, 'grokbot-desktop.json')
+  const keyFile = path.join(config, 'grokbot-webhook.key')
+  const headerFile = path.join(config, 'grokbot-webhook-header.key')
+  fs.writeFileSync(settingsFile, JSON.stringify({ agentsDir: '/srv/agents', webhookHeader: 'X-Old' }))
+  const env = { ...process.env, HOME: home, XDG_CONFIG_HOME: path.join(home, '.config'), GROKBOT_WEBHOOK_KEY: '' }
+  const connect = (args, input) => spawnCollected(['python3', path.join(root, 'bin/grokbot-connect'), ...args], { input, env })
+  const key = `crsr_${Math.random().toString(16).slice(2)}`
+  const results = {}
+  try {
+    // A refused key saves nothing.
+    answer = { status: 401, body: '{"code":"error","message":"Invalid API key"}' }
+    results.refused = await connect([], `${url}\nwrong_key\n`)
+    results.refusedSaved = fs.existsSync(keyFile)
+    // Neither does an address that isn't https, or a header name the
+    // companion sends itself; both are refused before anything is sent.
+    results.badUrl = await connect([], 'http://example.com/hook\nkey\n')
+    results.badHeader = await connect(['--header', 'Authorization'], `${url}\nkey\nvalue\n`)
+    results.sentBeforeGood = seen.length
+    answer = { status: 200, body: '{"success":true,"runUuid":"ac049e46-d399-485d-8a8e-b6e8954202c8"}' }
+    results.ok = await connect([], `${url}\n${key}\n`)
+    results.status = await connect(['--status'], '')
+    results.withHeader = await connect(['--header', 'X-Routine-Token'], `${url}\n${key}\nhv_secret\n`)
+    results.off = await connect(['--off'], '')
+  } finally {
+    server.close()
+  }
+  assert.equal(results.refused.status, 1)
+  assert.match(results.refused.stderr, /Not saved\. Grok Bot refused the key\. Use the routine's Sender key/)
+  assert.equal(results.refusedSaved, false)
+  assert.equal(results.badUrl.status, 2)
+  assert.equal(results.badHeader.status, 2)
+  assert.equal(results.sentBeforeGood, 1)
+
+  assert.equal(results.ok.status, 0, results.ok.stderr)
+  assert.match(results.ok.stdout, /Connected\. Grok Bot took the test ask\./)
+  for (const text of [results.ok.stdout, results.ok.stderr]) assert.equal(text.includes(key), false)
+  // The test went through the real helper: the test prompt, to Bob, with
+  // the key in both auth headers.
+  assert.equal(seen.length, 3)
+  const test = seen[1]
+  assert.equal(test.body.botName, 'Bob')
+  assert.match(test.body.prompt, /^Connection test from the Omarchy desktop companion\./)
+  assert.equal(test.headers['x-automation-key'], key)
+  assert.equal(results.status.status, 0, results.status.stderr)
+  assert.match(results.status.stdout, /Asks go to Grok Bot through the webhook at 127\.0\.0\.1\.\nSender key: saved\./)
+
+  // Saved as tested, with the header from --header, and other settings kept.
+  assert.equal(results.withHeader.status, 0, results.withHeader.stderr)
+  assert.equal(seen[2].headers['x-routine-token'], 'hv_secret')
+  assert.equal(fs.readFileSync(keyFile, 'utf8'), `${key}\n`)
+  assert.equal(fs.statSync(keyFile).mode & 0o777, 0o600)
+  assert.equal(fs.readFileSync(headerFile, 'utf8'), 'hv_secret\n')
+  assert.equal(fs.statSync(headerFile).mode & 0o777, 0o600)
+
+  // --off goes back to the agent and keeps the rest.
+  assert.equal(results.off.status, 0, results.off.stderr)
+  const saved = JSON.parse(fs.readFileSync(settingsFile, 'utf8'))
+  assert.deepEqual(saved, { agentsDir: '/srv/agents', webhookHeader: 'X-Routine-Token', dispatch: 'agent', webhookUrl: url })
+})
+
+test('a bot speaking through say is a message in its own conversation, not a notice', () => {
+  const say = qmlFunction(main, 'sayNotice')
+  // A bot's name as the title: whole text, line breaks kept, no name line,
+  // in that bot's conversation even when another is on screen.
+  assert.match(say, /var bot = root\.matchBot\(who\)\n\s*if \(bot\) \{/)
+  assert.match(say, /var words = root\.cleanText\(text, 4000\)/)
+  assert.match(say, /if \(bot\.id !== root\.threadBotId\) \{\n\s*root\.appendReply\(bot\.id, words, links\)/)
+  assert.match(say, /root\.bubbleBody = words\n/)
+  // Any other title stays a one-line notice with the title above it.
+  assert.match(say, /root\.bubbleBody = \(who !== "" \? who \+ "\\n" : ""\) \+ body/)
+})
+
+test('a webhook answer waits under its question and lands there, whichever bot is on screen', () => {
+  // Every ask carries an id; a routine that only acknowledges it leaves the
+  // question waiting rather than ending the ask with a placeholder.
+  assert.match(qmlFunction(main, 'launchAsk'), /root\.pendingAskId = root\.newAskId\(\)\n\s*root\.pendingJson = JSON\.stringify\(\{\n\s*askId: root\.pendingAskId,/)
+  assert.match(main, /if \(code === 10\) \{\n\s*root\.startWaiting\(root\.pendingAskId, root\.askBotId\)\n\s*return\n\s*\}/)
+  // The answer finds its question by id: the latest on screen, an earlier
+  // one in the history, or one put away with another bot, which gets a dot.
+  const answer = qmlFunction(main, 'answerWaiting')
+  assert.match(answer, /if \(root\.awaitingId === askId\) \{\n\s*root\.bubbleBody = text\n\s*root\.awaitingId = ""/)
+  assert.match(answer, /root\.indexWaiting\(root\.history, askId\)/)
+  assert.match(answer, /if \(thread\.wait === askId\) \{/)
+  assert.match(answer, /root\.markUnread\(botId\)/)
+  // With the bubble closed, the mark shows the dot too, not just a hop.
+  assert.match(qmlFunction(main, 'markUnread'), /if \(!root\.bubbleOpen\) root\.replyUnread = true/)
+  assert.match(qmlFunction(main, 'deliver'), /root\.markUnread\(id\)/)
+  // reply takes an ask id or a bot; say from a waiting bot counts too.
+  assert.match(main, /function reply\(target: string, text: string\): string \{ return root\.receiveReply\(target, text\) \}/)
+  const receive = qmlFunction(main, 'receiveReply')
+  assert.match(receive, /if \(root\.awaiting\[key\]\)/)
+  assert.match(receive, /root\.oldestWaiting\(bot\.id\)/)
+  assert.match(qmlFunction(main, 'sayNotice'), /var waiting = \(links \|\| \[\]\)\.length === 0 \? root\.oldestWaiting\(bot\.id\) : ""/)
+  // A question waits ten minutes at most.
+  assert.match(main, /readonly property int replyWaitMs: 600000/)
+  assert.match(qmlFunction(main, 'expireWaiting'), /"'s reply will be in Grok Bot\."/)
+  // Earlier exchanges still waiting show the dots too.
+  assert.match(read('BubblePanel.qml'), /typing: \(modelData\.wait \|\| ""\) !== "" && \(modelData\.body \|\| ""\) === ""/)
 })
 
 const PNG = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex')

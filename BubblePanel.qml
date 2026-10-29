@@ -47,6 +47,21 @@ Rectangle {
   readonly property bool inThread: app ? (app.askingHere || bubble.hasThread) : false
   readonly property bool rosterShown: !bubble.inThread || (app ? app.rosterExpanded : false)
 
+  // A bot with an unseen reply whose chip is folded away: the pill's
+  // chevron carries the dot instead, so the reply isn't missed.
+  readonly property bool unreadHidden: {
+    var unread = app ? app.unreadBots : []
+    if (unread.length === 0) return false
+    if (!bubble.rosterShown) return true
+    if (app.rosterExpanded) return false
+    var extra = bubble.extraBots
+    var i
+    var j
+    for (i = 0; i < unread.length; i++)
+      for (j = 0; j < extra.length; j++) if (extra[j].id === unread[i]) return true
+    return false
+  }
+
   function pickBot(id) {
     app.selectBot(id)
     if (bubble.inThread) app.rosterExpanded = false
@@ -355,6 +370,19 @@ Rectangle {
             }
           }
 
+          // A reply for a bot whose chip is folded away.
+          Rectangle {
+            visible: bubble.unreadHidden
+            width: 10
+            height: 10
+            radius: 5
+            x: parent.width - 10
+            y: 0
+            color: Theme.text
+            border.width: 2
+            border.color: Theme.surface
+          }
+
           HoverArea {
             id: pillArea
             label: bubble.inThread ? (app.rosterExpanded ? "Hide bots" : "Switch bot") : (app.rosterExpanded ? "Show fewer bots" : "Show all bots")
@@ -605,6 +633,7 @@ Rectangle {
                 files: modelData.files || []
                 body: modelData.body || ""
                 links: modelData.links || []
+                typing: (modelData.wait || "") !== "" && (modelData.body || "") === ""
               }
             }
 
@@ -615,7 +644,7 @@ Rectangle {
               files: app ? app.askedFiles : []
               body: app ? app.bubbleBody : ""
               links: app ? app.noticeLinks : []
-              typing: app ? app.askingHere && app.bubbleBody === "" : false
+              typing: app ? (app.askingHere || app.waitingHere) && app.bubbleBody === "" : false
             }
           }
 

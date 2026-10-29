@@ -7,6 +7,10 @@
 
 Patch check, for every v0.1.n: the mark loads and follows the pointer, clicks pass through, the bubble opens and closes without moving the mark, an agent-mode ask answers, `omarchy plugin validate` passes, and nothing from the plugin shows in `journalctl --user -t omarchy-shell`.
 
+### Known for v0.1.1
+
+- **Sleeping eyes as dots.** One report says Bob's eyes show as dots rather than lid lines after two minutes idle. Offscreen renders at 1×, 1.5× and 2×, in Calm and Playful and on all fourteen shapes, all show lid lines; the reporting XPS runs at 1.25×, which those renders did not cover. Needs a close-up with the shape, size, motion, Dodge state and `hyprctl monitors` scale.
+
 ### Branches while both are open
 
 `main` stays releasable as v0.1.n until the first costume PR is ready to merge. At that point, create `release/0.1` from the latest v0.1.n tag. Then:
