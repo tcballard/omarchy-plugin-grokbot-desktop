@@ -471,20 +471,124 @@ test('a webhook that only acknowledges the ask says it was sent', async () => {
     webhookUrl: `http://127.0.0.1:${server.address().port}/automations/webhook/routine`
   }))
   fs.writeFileSync(path.join(config, 'grokbot-webhook.key'), 'crsr_test\n', { mode: 0o600 })
-  const outputs = []
-  for (let i = 0; i < bodies.length; i++) {
-    const child = await spawnCollected(['python3', path.join(root, 'bin/grokbot-ask')], {
-      input: JSON.stringify({ botId: 'e0195a7d-f804-4688-9191-e2cf3574a6d1', botName: 'Bob', prompt: 'hi' }),
-      env: { ...process.env, HOME: home, XDG_CONFIG_HOME: path.join(home, '.config'), GROKBOT_WEBHOOK_KEY: '' }
+  const results = []
+  try {
+    for (let i = 0; i < bodies.length; i++) {
+      results.push(await spawnCollected(['python3', path.join(root, 'bin/grokbot-ask')], {
+        input: JSON.stringify({ botId: 'e0195a7d-f804-4688-9191-e2cf3574a6d1', botName: 'Bob', prompt: 'hi' }),
+        env: { ...process.env, HOME: home, XDG_CONFIG_HOME: path.join(home, '.config'), GROKBOT_WEBHOOK_KEY: '' }
+      }))
+    }
+  } finally {
+    server.close()
+  }
+  // An acknowledgement means the answer follows through the reply command:
+  // exit 10, so the shell keeps the question waiting for it.
+  for (const result of results.slice(0, 3)) {
+    assert.equal(result.status, 10, result.stderr)
+    assert.equal(result.stdout, 'Sent to Bob.\n')
+  }
+  assert.equal(results[3].status, 0, results[3].stderr)
+  assert.equal(results[3].stdout, 'Plain answer\n')
+})
+
+test('a webhook ask carries its id and the command that answers it', async () => {
+  let seen = null
+  const server = http.createServer((req, res) => {
+    const chunks = []
+    req.on('data', (chunk) => chunks.push(chunk))
+    req.on('end', () => {
+      seen = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+      res.setHeader('content-type', 'application/json')
+      res.end('{"success":true,"runUuid":"ac049e46-d399-485d-8a8e-b6e8954202c8"}')
     })
-    assert.equal(child.status, 0, child.stderr)
-    outputs.push(child.stdout)
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'grokbot-askid-'))
+  const config = path.join(home, '.config', 'omarchy')
+  fs.mkdirSync(config, { recursive: true })
+  fs.writeFileSync(path.join(config, 'grokbot-desktop.json'), JSON.stringify({
+    dispatch: 'webhook',
+    webhookUrl: `http://127.0.0.1:${server.address().port}/automations/webhook/routine`
+  }))
+  fs.writeFileSync(path.join(config, 'grokbot-webhook.key'), 'crsr_test\n', { mode: 0o600 })
+  const env = { ...process.env, HOME: home, XDG_CONFIG_HOME: path.join(home, '.config'), GROKBOT_WEBHOOK_KEY: '' }
+  const ask = (askId) => spawnCollected(['python3', path.join(root, 'bin/grokbot-ask')], {
+    input: JSON.stringify({ askId, botId: 'e0195a7d-f804-4688-9191-e2cf3574a6d1', botName: 'Bob', prompt: 'hi' }),
+    env
+  })
+  let sent, bad
+  try {
+    sent = await ask('0a1b2c3d4e5f')
+    bad = await ask('0a1b; rm -rf ~')
+  } finally {
+    server.close()
   }
-  server.close()
-  for (const output of outputs.slice(0, 3)) {
-    assert.equal(output, 'Sent to Bob. The webhook accepted it but sent no reply back.\n')
+  assert.equal(sent.status, 10, sent.stderr)
+  assert.deepEqual(Object.keys(seen).sort(), ['askId', 'botId', 'botName', 'prompt', 'replyWith', 'source'])
+  assert.equal(seen.askId, '0a1b2c3d4e5f')
+  assert.equal(seen.replyWith, 'omarchy-shell io.github.tcballard.grokbot-desktop reply 0a1b2c3d4e5f "<answer>"')
+  // An id that isn't plain hex never reaches the routine.
+  assert.equal(bad.status, 2)
+})
+
+test('a webhook that cannot be reached, or does not answer, says why', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'grokbot-reach-'))
+  const config = path.join(home, '.config', 'omarchy')
+  fs.mkdirSync(config, { recursive: true })
+  fs.writeFileSync(path.join(config, 'grokbot-webhook.key'), 'crsr_test\n', { mode: 0o600 })
+  const env = { ...process.env, HOME: home, XDG_CONFIG_HOME: path.join(home, '.config'), GROKBOT_WEBHOOK_KEY: '', GROKBOT_WEBHOOK_TIMEOUT: '2' }
+  const ask = (url) => {
+    fs.writeFileSync(path.join(config, 'grokbot-desktop.json'), JSON.stringify({ dispatch: 'webhook', webhookUrl: url }))
+    return spawnCollected(['python3', path.join(root, 'bin/grokbot-ask')], {
+      input: JSON.stringify({ botId: 'e0195a7d-f804-4688-9191-e2cf3574a6d1', botName: 'Bob', prompt: 'hi' }),
+      env
+    })
   }
-  assert.equal(outputs[3], 'Plain answer\n')
+  // Nothing listening.
+  const closed = http.createServer()
+  await new Promise((resolve) => closed.listen(0, '127.0.0.1', resolve))
+  const port = closed.address().port
+  await new Promise((resolve) => closed.close(resolve))
+  const refused = await ask(`http://127.0.0.1:${port}/hook`)
+  assert.equal(refused.status, 4)
+  assert.equal(refused.stderr.trim(), 'webhook unreachable: the connection was refused')
+  // Connected, but no answer before the wait runs out.
+  const silent = http.createServer(() => {})
+  await new Promise((resolve) => silent.listen(0, '127.0.0.1', resolve))
+  let slow
+  try {
+    slow = await ask(`http://127.0.0.1:${silent.address().port}/hook`)
+  } finally {
+    silent.closeAllConnections()
+    silent.close()
+  }
+  assert.equal(slow.status, 4)
+  assert.equal(slow.stderr.trim(), "the webhook didn't answer within 2 seconds")
+  // The other reasons, named in a few plain words.
+  const script = [
+    'import importlib.machinery, importlib.util, socket, ssl, errno',
+    `loader = importlib.machinery.SourceFileLoader("ga", ${JSON.stringify(path.join(root, 'bin/grokbot-ask'))})`,
+    'm = importlib.util.module_from_spec(importlib.util.spec_from_loader("ga", loader))',
+    'loader.exec_module(m)',
+    'r = m.unreachable_reason',
+    'print(r(TimeoutError(), "h"))',
+    'print(r(socket.gaierror(-2, "x"), "api2.cursor.sh"))',
+    'print(r(ssl.SSLCertVerificationError("x"), "h"))',
+    'print(r(OSError(errno.ENETUNREACH, "x"), "h"))',
+    'print(r(OSError("Tunnel connection failed: 502 Bad Gateway"), "api2.cursor.sh"))',
+    'print(r("odd", "h"))'
+  ].join('\n')
+  const reasons = spawnSync('python3', ['-c', script], { encoding: 'utf8' })
+  assert.equal(reasons.status, 0, reasons.stderr)
+  assert.deepEqual(reasons.stdout.trim().split('\n'), [
+    'no connection within 10 seconds',
+    "couldn't look up api2.cursor.sh",
+    "its certificate couldn't be verified",
+    'the network is unreachable',
+    "the proxy couldn't connect to api2.cursor.sh",
+    'the connection failed'
+  ])
 })
 
 test('a routine\'s own header carries its value from a private file, beside the key', async () => {

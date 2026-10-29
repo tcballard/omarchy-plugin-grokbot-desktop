@@ -2,7 +2,9 @@
 """Dispatch one companion prompt.
 
 Webhook mode POSTs {"prompt","botName","botId","source"} to the configured
-Omarchy desktop companion URL. The bearer key is read from
+Omarchy desktop companion URL, with "askId" and "replyWith" when the shell
+gives the ask an id. A routine that accepts the ask without answering it
+exits 10: its answer comes later through the companion's reply command. The bearer key is read from
 ~/.config/omarchy/grokbot-webhook.key or GROKBOT_WEBHOOK_KEY. It is never
 taken from argv. A routine that also wants its own header names it in
 webhookHeader; the value is read from ~/.config/omarchy/grokbot-webhook-header.key
@@ -22,23 +24,34 @@ images); webhook mode refuses them, since no webhook file format is known.
 """
 from __future__ import annotations
 
+import errno
+import http.client
 import json
 import os
 import re
 import select
 import signal
+import socket
+import ssl
 import stat
 import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 STDOUT_CEILING = 64 * 1024
 STDERR_CEILING = 16 * 1024
 PROMPT_CEILING = 16 * 1024
 EXIT_OVERFLOW = 125
+# The routine took the ask and will answer later, through the companion's
+# reply command.
+EXIT_SENT = 10
 WEBHOOK_TIMEOUT = 45
+WEBHOOK_CONNECT_TIMEOUT = 10
+TARGET = "io.github.tcballard.grokbot-desktop"
+ASK_ID = re.compile(r"^[0-9a-f]{8,32}$")
 AGENT_TIMEOUT = 180
 KEY_NAME = "GROKBOT_WEBHOOK_KEY"
 # A header name as HTTP defines a token. The headers the helper sets itself
@@ -247,15 +260,18 @@ def webhook_parts(url, key, payload, extra=None):
     # takes: the prompt, the bot to hand it to by name, and where it came
     # from, with the routine's Sender key in both auth headers. botId is
     # kept so a routine can route without matching names.
-    body = json.dumps(
-        {
-            "prompt": payload["prompt"],
-            "botName": payload["botName"],
-            "botId": payload["botId"],
-            "source": f"Omarchy desktop companion ({payload['host']})",
-        },
-        separators=(",", ":"),
-    ).encode("utf-8")
+    fields = {
+        "prompt": payload["prompt"],
+        "botName": payload["botName"],
+        "botId": payload["botId"],
+        "source": f"Omarchy desktop companion ({payload['host']})",
+    }
+    # The routine answers later, on the desktop. The ask's id and the exact
+    # command that puts the answer under this question travel with it.
+    if payload.get("askId"):
+        fields["askId"] = payload["askId"]
+        fields["replyWith"] = f'omarchy-shell {TARGET} reply {payload["askId"]} "<answer>"'
+    body = json.dumps(fields, separators=(",", ":")).encode("utf-8")
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json, text/plain",
@@ -317,6 +333,62 @@ def webhook_error(raw):
     return "error"
 
 
+def reply_limit():
+    # Tests shorten the wait; the shell never sets this.
+    try:
+        value = int(os.environ.get("GROKBOT_WEBHOOK_TIMEOUT", ""))
+    except ValueError:
+        return WEBHOOK_TIMEOUT
+    return value if 1 <= value <= 120 else WEBHOOK_TIMEOUT
+
+
+class _ConnectFirst:
+    """Connecting, including the TLS handshake, gets its own short limit,
+    so a dead network fails fast; the answer then gets the full wait."""
+
+    def connect(self):
+        self.timeout = WEBHOOK_CONNECT_TIMEOUT
+        super().connect()
+        self.sock.settimeout(reply_limit())
+
+
+class _HTTPConnection(_ConnectFirst, http.client.HTTPConnection):
+    pass
+
+
+class _HTTPSConnection(_ConnectFirst, http.client.HTTPSConnection):
+    pass
+
+
+class _HTTPHandler(urllib.request.HTTPHandler):
+    def http_open(self, req):
+        return self.do_open(_HTTPConnection, req)
+
+
+class _HTTPSHandler(urllib.request.HTTPSHandler):
+    def https_open(self, req):
+        return self.do_open(_HTTPSConnection, req, context=self._context)
+
+
+def unreachable_reason(reason, host):
+    """Why no connection was made, in a few plain words."""
+    if isinstance(reason, TimeoutError):
+        return f"no connection within {WEBHOOK_CONNECT_TIMEOUT} seconds"
+    if isinstance(reason, socket.gaierror):
+        return f"couldn't look up {host}"
+    if isinstance(reason, ssl.SSLCertVerificationError):
+        return "its certificate couldn't be verified"
+    if isinstance(reason, ssl.SSLError):
+        return "the secure connection failed"
+    if isinstance(reason, ConnectionRefusedError):
+        return "the connection was refused"
+    if isinstance(reason, OSError) and reason.errno in (errno.ENETUNREACH, errno.EHOSTUNREACH):
+        return "the network is unreachable"
+    if isinstance(reason, OSError) and str(reason).startswith("Tunnel connection failed"):
+        return f"the proxy couldn't connect to {host}"
+    return "the connection failed"
+
+
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
@@ -325,17 +397,26 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 def post_webhook(url, key, payload, extra=None):
     target, headers, body = webhook_parts(url, key, payload, extra)
     request = urllib.request.Request(target, data=body, headers=headers, method="POST")
-    opener = urllib.request.build_opener(_NoRedirect)
+    opener = urllib.request.build_opener(_NoRedirect, _HTTPHandler, _HTTPSHandler)
+    host = plain(urllib.parse.urlsplit(target).hostname or "the webhook", 120)
     try:
-        with opener.open(request, timeout=WEBHOOK_TIMEOUT) as response:
+        with opener.open(request, timeout=WEBHOOK_CONNECT_TIMEOUT) as response:
             raw = response.read(STDOUT_CEILING + 1)
     except urllib.error.HTTPError as exc:
         body = exc.read(2048)
-        detail = webhook_error(body) or plain(body.decode("utf-8", errors="replace"), 180)
+        text = body.decode("utf-8", errors="replace").lstrip()
+        # An error page says nothing a person can use; its markup is left out.
+        detail = webhook_error(body) or ("" if text.startswith("<") else plain(text, 180))
         print(f"webhook status {exc.code}" + (f": {detail}" if detail else ""), file=sys.stderr)
         return 4
-    except urllib.error.URLError:
-        print("webhook unreachable", file=sys.stderr)
+    except urllib.error.URLError as exc:
+        print(f"webhook unreachable: {unreachable_reason(exc.reason, host)}", file=sys.stderr)
+        return 4
+    except TimeoutError:
+        print(f"the webhook didn't answer within {reply_limit()} seconds", file=sys.stderr)
+        return 4
+    except (OSError, http.client.HTTPException):
+        print("the connection to the webhook dropped before it answered", file=sys.stderr)
         return 4
     if len(raw) > STDOUT_CEILING:
         print("webhook reply too long", file=sys.stderr)
@@ -347,7 +428,9 @@ def post_webhook(url, key, payload, extra=None):
         return 4
     reply = extract_reply(raw)
     if reply is None:
-        reply = f"Sent to {payload['botName']}. The webhook accepted it but sent no reply back."
+        # Accepted, with the answer to follow through the reply command.
+        print(f"Sent to {payload['botName']}.")
+        return EXIT_SENT
     sys.stdout.write(reply)
     if not reply.endswith("\n"):
         sys.stdout.write("\n")
@@ -717,7 +800,11 @@ def parse_request(raw):
     attachments = parse_attachments(data.get("attachments"))
     if attachments is None:
         return None
+    ask_id = str(data.get("askId") or "")
+    if ask_id and not ASK_ID.fullmatch(ask_id):
+        return None
     return {
+        "askId": ask_id,
         "botId": bot_id,
         "botName": plain(data.get("botName"), 120) or "Bob",
         "prompt": prompt,
