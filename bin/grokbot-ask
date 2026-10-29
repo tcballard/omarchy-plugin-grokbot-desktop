@@ -1,16 +1,22 @@
 #!/usr/bin/python3
 """Dispatch one companion prompt.
 
-Webhook mode POSTs {"botId","botName","prompt","host"} to the configured
+Webhook mode POSTs {"prompt","botName","botId","source"} to the configured
 Omarchy desktop companion URL. The bearer key is read from
 ~/.config/omarchy/grokbot-webhook.key or GROKBOT_WEBHOOK_KEY. It is never
 taken from argv.
 
 Agent mode writes the prompt to the Omarchy default agent (or a configured
-command) on stdin, with a 64 KiB stdout ceiling. The shell launches this
+command) on stdin, with a 64 KiB stdout ceiling. Grok takes it as the value
+of -p instead, its only headless form. An agent Omarchy has not installed
+yet is reported, not installed. The shell launches this
 file as /usr/bin/python3 -I so site and user environment modules are ignored.
 
-Stdin is a JSON object: {"botId","botName","prompt","host"?}.
+Stdin is a JSON object: {"botId","botName","prompt","host"?,"attachments"?}.
+Attachments are files saved by grokbot-attach; only those inside its
+private runtime directory are accepted. Agent mode runs the agent in that
+directory and names the files in the prompt (Codex also gets --image for
+images); webhook mode refuses them, since no webhook file format is known.
 """
 from __future__ import annotations
 
@@ -46,11 +52,27 @@ AGENT_ARGV = {
     "gemini": ["gemini"],
     "copilot": ["copilot"],
     "crush": ["crush", "run"],
-    "grok": ["grok"],
+    "grok": ["grok", "--no-auto-update", "-p"],
     "pi": ["pi"],
     "omp": ["omp"],
     "claude": ["claude", "-p"],
 }
+
+# Agents that take the prompt as their last argument rather than on stdin.
+# Grok's headless mode is `grok -p "<prompt>"`, and its docs do not offer a
+# stdin form.
+PROMPT_AS_ARGUMENT = {"grok"}
+
+# Omarchy's lazy installer leaves a small script in ~/.local/bin that installs
+# the agent with mise on first run. An ask must not install software, so such
+# a launcher is followed to the real binary or reported as not installed.
+MISE_WRAPPER = re.compile(rb"mise (use|x) ")
+
+# Agents with a documented flag for attaching an image to a one-shot prompt.
+IMAGE_FLAGS = {"codex": "--image"}
+MAX_ATTACHMENTS = 4
+ATTACHMENT_LIMIT = 25 * 1024 * 1024
+ATTACHMENT_NAME = re.compile(r"^[0-9]{8}-[0-9]{6}-[0-9a-f]{8}[.-][A-Za-z0-9._-]{1,80}$")
 
 AGENT_CREDENTIALS = {
     "claude": ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"],
@@ -113,6 +135,14 @@ def plain(value, limit):
     text = text.replace("<", "").replace(">", "")
     text = " ".join(text.split())
     return text[:limit]
+
+
+def reply_text(value, limit):
+    # Replies are shown as plain text, so angle brackets and line breaks are
+    # content. Only control characters other than tab and newline go.
+    text = str(value or "").replace("\r\n", "\n").replace("\r", "\n")
+    text = CONTROLS.sub("", text)
+    return text.strip()[:limit]
 
 
 def host_name(given):
@@ -179,12 +209,16 @@ def read_key(path):
 
 
 def webhook_parts(url, key, payload):
+    # The body and headers Grok Bot's "Omarchy desktop companion" routine
+    # takes: the prompt, the bot to hand it to by name, and where it came
+    # from, with the routine's Sender key in both auth headers. botId is
+    # kept so a routine can route without matching names.
     body = json.dumps(
         {
-            "botId": payload["botId"],
-            "botName": payload["botName"],
             "prompt": payload["prompt"],
-            "host": payload["host"],
+            "botName": payload["botName"],
+            "botId": payload["botId"],
+            "source": f"Omarchy desktop companion ({payload['host']})",
         },
         separators=(",", ":"),
     ).encode("utf-8")
@@ -192,19 +226,24 @@ def webhook_parts(url, key, payload):
         "Content-Type": "application/json",
         "Accept": "application/json, text/plain",
         "Authorization": f"Bearer {key}",
+        "X-Automation-Key": key,
         "User-Agent": "grokbot-desktop/0.1.0",
     }
     return url, headers, body
 
 
 def extract_reply(raw):
+    """The reply text in a webhook response, or None when the response only
+    acknowledges the request: an empty body, or JSON with no reply field.
+    Grok Bot's routine webhooks start a run and answer at once, before the
+    bot has replied."""
     text = raw.decode("utf-8", errors="replace")
     text = text.replace("\x00", "")
     if len(text) > STDOUT_CEILING:
         text = text[:STDOUT_CEILING]
     stripped = text.strip()
     if not stripped:
-        return ""
+        return None
     if stripped[0] in "{[":
         try:
             data = json.loads(stripped)
@@ -214,8 +253,32 @@ def extract_reply(raw):
             for key in ("reply", "text", "message", "output"):
                 value = data.get(key)
                 if isinstance(value, str) and value.strip():
-                    return plain(value, 4000)
+                    return reply_text(value, 4000)
+            return None
+        if isinstance(data, list):
+            return None
     return stripped[:4000]
+
+
+def webhook_error(raw):
+    """The message of an error-shaped JSON body such as
+    {"code": "error", "message": "Invalid API key"}, or ""."""
+    try:
+        data = json.loads(raw.decode("utf-8", errors="replace").strip() or "null")
+    except json.JSONDecodeError:
+        return ""
+    if not isinstance(data, dict):
+        return ""
+    failed = data.get("code") == "error" or data.get("status") == "error" or data.get("ok") is False or bool(data.get("error"))
+    if not failed:
+        return ""
+    for key in ("message", "error", "detail"):
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            return plain(value, 180)
+        if isinstance(value, dict) and isinstance(value.get("message"), str):
+            return plain(value["message"], 180)
+    return "error"
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -231,8 +294,8 @@ def post_webhook(url, key, payload):
         with opener.open(request, timeout=WEBHOOK_TIMEOUT) as response:
             raw = response.read(STDOUT_CEILING + 1)
     except urllib.error.HTTPError as exc:
-        detail = exc.read(240).decode("utf-8", errors="replace")
-        detail = plain(detail, 180)
+        body = exc.read(2048)
+        detail = webhook_error(body) or plain(body.decode("utf-8", errors="replace"), 180)
         print(f"webhook status {exc.code}" + (f": {detail}" if detail else ""), file=sys.stderr)
         return 4
     except urllib.error.URLError:
@@ -241,10 +304,14 @@ def post_webhook(url, key, payload):
     if len(raw) > STDOUT_CEILING:
         print("webhook reply too long", file=sys.stderr)
         return EXIT_OVERFLOW
-    reply = extract_reply(raw)
-    if not reply:
-        print("webhook returned an empty reply", file=sys.stderr)
+    # Some services report a failure with a success status.
+    failure = webhook_error(raw)
+    if failure:
+        print(f"webhook error: {failure}", file=sys.stderr)
         return 4
+    reply = extract_reply(raw)
+    if reply is None:
+        reply = f"Sent to {payload['botName']}. The webhook accepted it but sent no reply back."
     sys.stdout.write(reply)
     if not reply.endswith("\n"):
         sys.stdout.write("\n")
@@ -346,24 +413,69 @@ def resolve_launcher(name, dirs):
     return ""
 
 
+def mise_wrapper(path):
+    try:
+        if os.path.islink(path):
+            return False
+        with open(path, "rb") as handle:
+            head = handle.read(4096)
+    except OSError:
+        return False
+    return head.startswith(b"#!") and MISE_WRAPPER.search(head) is not None
+
+
+def installed_by_mise(name, dirs):
+    mise = resolve_launcher("mise", dirs)
+    if not mise:
+        return ""
+    env = {"PATH": FALLBACK_PATH, "MISE_OFFLINE": "1"}
+    for key in ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME", "MISE_DATA_DIR"):
+        if os.environ.get(key):
+            env[key] = os.environ[key]
+    try:
+        found = subprocess.run(
+            [mise, "which", name],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            env=env,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    if found.returncode != 0:
+        return ""
+    path = found.stdout.decode("utf-8", errors="replace").strip()
+    return path if launcher_ok(path) and not mise_wrapper(path) else ""
+
+
 def agent_command(entry, desktop):
+    """Return (argv, agent name, custom, problem). An empty argv comes with a
+    sentence saying why."""
     custom = setting(entry, desktop, "command")
     if isinstance(custom, list) and custom:
         argv = [str(part) for part in custom if str(part)]
         if not argv or len(argv) > 16:
-            return [], "", True
+            return [], "", True, "The agent command in grokbot-desktop.json is not usable."
         resolved = resolve_launcher(argv[0], launcher_dirs())
         if not resolved:
-            return [], "", True
-        return [resolved, *argv[1:]], "", True
+            return [], "", True, f"The agent command {plain(argv[0], 80)} was not found."
+        return [resolved, *argv[1:]], "", True, ""
     name = str(setting(entry, desktop, "agent") or default_agent_name() or "claude").lower()
     if name not in AGENT_ARGV:
-        name = "claude"
+        return [], name, False, (
+            f"The companion can't ask {plain(name, 32)} yet. Set \"agent\" or \"command\", "
+            "or use webhook dispatch, in grokbot-desktop.json."
+        )
     argv = AGENT_ARGV[name][:]
-    resolved = resolve_launcher(argv[0], launcher_dirs())
+    dirs = launcher_dirs()
+    resolved = resolve_launcher(argv[0], dirs)
+    if resolved and mise_wrapper(resolved):
+        resolved = installed_by_mise(argv[0], dirs)
     if not resolved:
-        return [], name, False
-    return [resolved, *argv[1:]], name, False
+        return [], name, False, (
+            f"{name} isn't installed. Install it with: omarchy default agent {name}"
+        )
+    return [resolved, *argv[1:]], name, False, ""
 
 
 def persona(bot_name):
@@ -419,7 +531,15 @@ def _kill_group(pgid):
         return
 
 
-def run_agent(argv, stdin_text, env):
+def with_attachments(prompt, attachments):
+    if not attachments:
+        return prompt
+    names = ", ".join(os.path.basename(path) for path in attachments)
+    noun = "file is" if len(attachments) == 1 else "files are"
+    return f"{prompt}\n\nThe attached {noun} in the current directory: {names}. Look at them before answering."
+
+
+def run_agent(argv, stdin_text, env, label="agent", cwd=None):
     try:
         proc = subprocess.Popen(
             argv,
@@ -427,6 +547,7 @@ def run_agent(argv, stdin_text, env):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=env,
+            cwd=cwd,
             start_new_session=True,
         )
     except OSError:
@@ -490,9 +611,58 @@ def run_agent(argv, stdin_text, env):
         if not text.endswith("\n"):
             sys.stdout.write("\n")
         return 0
+    # Many agents print a failure such as a sign-in prompt on stdout, so fall
+    # back to that before giving up with only the exit status.
     detail = plain(bytes(buckets[err_fd]).decode("utf-8", errors="replace"), 300)
-    print(detail or f"agent exited {code}", file=sys.stderr)
+    if not detail:
+        detail = plain(text[-600:], 300)
+    if not detail:
+        detail = f"exited {code} with no output" if code else "returned an empty reply"
+    print(f"{label}: {detail}", file=sys.stderr)
     return code if code else 1
+
+
+def attachment_dir():
+    runtime = os.environ.get("XDG_RUNTIME_DIR", "")
+    if not re.fullmatch(r"/run/user/\d{1,10}", runtime):
+        return ""
+    return os.path.join(runtime, "grokbot-desktop", "attachments")
+
+
+def file_ok(path):
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return False
+    return stat.S_ISREG(st.st_mode) and st.st_uid == os.geteuid() and st.st_size <= ATTACHMENT_LIMIT
+
+
+def is_image(path):
+    try:
+        with open(path, "rb") as handle:
+            head = handle.read(16)
+    except OSError:
+        return False
+    return (head.startswith(b"\x89PNG\r\n\x1a\n") or head.startswith(b"\xff\xd8\xff")
+            or head[:6] in (b"GIF87a", b"GIF89a") or (head[:4] == b"RIFF" and head[8:12] == b"WEBP"))
+
+
+def parse_attachments(value):
+    """Paths of attached images, or None when any is not one of ours."""
+    if value in (None, []):
+        return []
+    if not isinstance(value, list) or len(value) > MAX_ATTACHMENTS:
+        return None
+    base = attachment_dir()
+    out = []
+    for item in value:
+        path = str(item or "")
+        if not base or os.path.dirname(path) != base or not ATTACHMENT_NAME.fullmatch(os.path.basename(path)):
+            return None
+        if not file_ok(path):
+            return None
+        out.append(path)
+    return out
 
 
 def parse_request(raw):
@@ -508,11 +678,15 @@ def parse_request(raw):
     bot_id = str(data.get("botId") or "")
     if not SAFE_ID.fullmatch(bot_id):
         return None
+    attachments = parse_attachments(data.get("attachments"))
+    if attachments is None:
+        return None
     return {
         "botId": bot_id,
         "botName": plain(data.get("botName"), 120) or "Bob",
         "prompt": prompt,
         "host": host_name(data.get("host")),
+        "attachments": attachments,
     }
 
 
@@ -532,7 +706,7 @@ def main(argv=None):
         return 2
     payload = parse_request(raw)
     if not payload:
-        print("expected a JSON prompt", file=sys.stderr)
+        print("expected a JSON prompt with valid attachments", file=sys.stderr)
         return 2
     entry = plugin_entry()
     desktop = desktop_config()
@@ -541,16 +715,30 @@ def main(argv=None):
         if not url:
             print("webhook URL is missing or not https", file=sys.stderr)
             return 2
+        if payload["attachments"]:
+            print("attachments can't be sent through the webhook yet; ask without them, or use agent mode", file=sys.stderr)
+            return 2
         key = read_key(key_file_path(entry, desktop))
         if not key:
             print("webhook key is missing or readable by other users", file=sys.stderr)
             return 3
         return post_webhook(url, key, payload)
-    argv, agent, custom = agent_command(entry, desktop)
+    argv, agent, custom, problem = agent_command(entry, desktop)
     if not argv:
-        print("agent launcher was not found", file=sys.stderr)
+        print(problem, file=sys.stderr)
         return 127
-    return run_agent(argv, agent_stdin(payload["prompt"], payload["botName"], custom), child_env(agent, custom))
+    attachments = payload["attachments"]
+    text = agent_stdin(with_attachments(payload["prompt"], attachments), payload["botName"], custom)
+    if attachments and not custom and agent in IMAGE_FLAGS:
+        for path in attachments:
+            if is_image(path):
+                argv = [*argv, IMAGE_FLAGS[agent], path]
+    if not custom and agent in PROMPT_AS_ARGUMENT:
+        argv, text = [*argv, text], ""
+    # With images, the agent works in their directory so its file tools
+    # can open them without reaching outside it.
+    cwd = attachment_dir() if attachments else None
+    return run_agent(argv, text, child_env(agent, custom), agent or "agent command", cwd)
 
 
 if __name__ == "__main__":

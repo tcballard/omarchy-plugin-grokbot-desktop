@@ -34,17 +34,21 @@ o.bind("SUPER + W", "Close window / Grok Bot", "grokbot-desktop-close")
 
 ## Use
 
-The companion sits in a corner. Clicks outside the mark pass through. Drag it, or hold Super and drag, and the corner margins are written back to its own `plugins[]` entry. Right-click, the sliders button in the bubble, or `settings` opens the appearance drawer.
+The companion sits in a corner. Clicks outside the mark pass through, and they keep passing through while the bubble is open, so you can work beside a reply. Close the bubble with its minimize button, Esc, or a click on the mark. Drag it, or hold Super and drag, and the corner margins are written back to its own `plugins[]` entry. The sliders button in the bubble, Right-click > Appearance & bots, or `settings` crossfades the bubble to its appearance page. The back chevron returns to the chat. The appearance page is laid out like Grok Bot's avatar picker: its fourteen shapes in the chosen colour with a ring around the current one, its eleven colours plus the Omarchy theme accent, and Reset to default, which goes back to the bot's own look.
 
 | Action | Result |
 | --- | --- |
 | Click, `summon`, or `toggle` | Opens the speech bubble |
-| Enter, or the waveform button with text | Sends the prompt. A leading "Hey <Bot>" selects that bot first |
+| `+`, Ctrl+V, or dropping files on the bubble | Attaches files: `+` offers "Paste image" or "Choose a file…" (Omarchy's file chooser, `omarchy-file-select`; the bubble steps aside while it is open), Ctrl+V attaches a copied image and pastes text as usual otherwise, and any file can be dropped on the bubble. Up to four files, 25 MB each, wait above the field (images as thumbnails, other files by name) and go with the next ask; an ask can be attachments alone. In agent mode the agent is pointed at them (Codex gets `--image` for images); the webhook cannot take attachments yet |
+| Enter, or the send arrow (the waveform button turns into it once you type) | Sends the prompt. A leading "Hey <Bot>" selects that bot first. Long prompts wrap and the field grows to six lines before it scrolls; Shift+Enter starts a new line |
 | Waveform button on an empty field | Focuses the field and toggles Superwhisper or Voxtype |
-| Escape | Closes the bubble |
-| Switch Bot | Morphs into that Bot's shape and colour when sync is on, and routes the next ask there |
-| Pointer nearby, dodge on | Fades and lets clicks through until you rest on the mark |
-| Pointer idle for 2 minutes | The capsule eyes compress into thin slits |
+| Stop button while asking | Cancels the ask in flight |
+| Right-click > Clear conversation, or `clear` | Clears the conversation with the bot on screen; an Undo chip offers it back for 8 seconds |
+| Escape | Steps back: closes the menu, then leaves the appearance page, then closes the bubble |
+| Tab, then Enter or Space | Moves between the bubble's controls and presses the focused one |
+| Switch Bot | Morphs into that Bot's shape and colour when sync is on, and routes the next ask there. Each bot keeps its own conversation, as a scrolling history of up to 40 exchanges, and its unsent draft for the session (never written to disk); a reply to a bot you have switched away from waits in its conversation with a dot on its chip. One ask runs at a time. Before a conversation the bots sit in a row under the header; once one starts the row folds away and the header pill (the bot's name and chevron; its role slides out on hover) is the switch button, which unfolds every bot until you pick one |
+| Pointer nearby, dodge on | Fades the closer the pointer gets (down to 28%) and lets clicks through. Rest on the mark and it fades back in over about 0.4s, then takes clicks |
+| Pointer idle for 2 minutes | The capsule eyes close into lid lines |
 
 Bob (`e0195a7d-f804-4688-9191-e2cf3574a6d1`, teardrop, orange) is the default. Asking Bob sends Bob's id, so a Grok Bot routine named for the Omarchy desktop companion can delegate to the other bots. This plugin only delivers the payload.
 
@@ -56,6 +60,7 @@ omarchy-shell io.github.tcballard.grokbot-desktop toggle
 omarchy-shell io.github.tcballard.grokbot-desktop hide
 omarchy-shell io.github.tcballard.grokbot-desktop show
 omarchy-shell io.github.tcballard.grokbot-desktop settings
+omarchy-shell io.github.tcballard.grokbot-desktop clear
 omarchy-shell io.github.tcballard.grokbot-desktop ask "What's on my calendar?"
 omarchy-shell io.github.tcballard.grokbot-desktop bot "OmaBot"
 omarchy-shell io.github.tcballard.grokbot-desktop appearance hex green
@@ -77,7 +82,7 @@ bin/grokbot-desktop-ctl dictate "Hey Bob, what's on my calendar?"
 
 ## Dictation
 
-The waveform button does two jobs. With text in the field, it sends that prompt. With an empty field, it focuses the field, lights the waveform, and runs `omarchy dictation toggle`.
+The composer's right-hand button changes with the field. With an empty field it shows the waveform: it focuses the field, lights the waveform, and runs `omarchy dictation toggle`. Once you type it becomes a send arrow, and while an ask runs it becomes Stop.
 
 Omarchy reads `~/.config/omarchy/defaults/dictation` and toggles whichever backend you picked, Superwhisper or Voxtype. Superwhisper's own toggle is Alt+Space (`superwhisper record`). Voxtype's is `voxtype record toggle`, also bound to Super+Ctrl+X. If `omarchy` is not on `PATH`, the button calls that backend command directly. Both backends share one wake-phrase router.
 
@@ -110,15 +115,17 @@ Each ask is one JSON object on the stdin of `bin/grokbot-ask`, launched as `/usr
 
 Set `dispatch` to `webhook` or `agent` in `~/.config/omarchy/grokbot-desktop.json`. The same keys on this plugin's `shell.json` entry win when they are present.
 
-Webhook mode POSTs exactly:
+Webhook mode POSTs what Grok Bot's "Omarchy desktop companion" routine takes, as Bob describes it: the prompt, the bot to hand it to by name, and where it came from, plus the bot's id:
 
 ```json
-{ "botId": "…", "botName": "Bob", "prompt": "…", "host": "…" }
+{ "prompt": "…", "botName": "Bob", "botId": "…", "source": "Omarchy desktop companion (hostname)" }
 ```
 
-The bearer token is read from `~/.config/omarchy/grokbot-webhook.key` (mode `0600`) or from `GROKBOT_WEBHOOK_KEY` in the helper's own environment. The shell does not put that variable on the helper command line. The URL must be `https`, or `http` to localhost.
+The routine's Sender key goes in both `Authorization: Bearer <key>` and `X-Automation-Key: <key>`. Find the Webhook URL and Sender key in Grok Bot: click Bob the Bot in the chat header, open Routines, then Omarchy desktop companion. The key is read from `~/.config/omarchy/grokbot-webhook.key` (mode `0600`) or from `GROKBOT_WEBHOOK_KEY` in the helper's own environment. The shell does not put that variable on the helper command line. The URL must be `https`, or `http` to localhost. A response with a `reply`, `text`, `message`, or `output` field, or plain text, is shown in the bubble. A webhook that only acknowledges the ask (an empty body, or JSON without those fields, as a routine webhook that starts a run returns) shows "Sent to Bob. The webhook accepted it but sent no reply back." rather than the raw response. An error body such as `{"code":"error","message":"Invalid API key"}` is reported as an error with its message, whatever the HTTP status, never shown as the bot's reply. The routine's URL has the form `https://api2.cursor.sh/automations/webhook/<id>`. It starts a run in Grok Bot; if it answers only with an acknowledgement, the bubble shows "Sent to Bob" and the reply arrives in Grok Bot. A successful call has not yet been recorded from this plugin.
 
-Agent mode is the fallback. It reads `~/.config/omarchy/defaults/agent` and can target `grok`, `claude`, `codex`, `opencode`, `gemini`, `copilot`, `crush`, `pi`, or `omp`. A `command` array overrides that and still receives the prompt on stdin. Stdout is capped at 64 KiB.
+Attached files are private copies under `$XDG_RUNTIME_DIR/grokbot-desktop/attachments`, cleared at logout. Agent mode runs the agent in that directory and names the files in the prompt, so an agent with file tools can open them; how well that works depends on the agent, and only Codex documents an image flag for one-shot use. Webhook mode refuses attachments, since no webhook file format is known.
+
+Agent mode is the fallback. It is your local coding agent answering in the bot's name, not the Grok Bot itself. It reads `~/.config/omarchy/defaults/agent` (or an `agent` key) and can target `grok`, `claude`, `codex`, `opencode`, `gemini`, `copilot`, `crush`, `pi`, or `omp`; any other default is reported rather than swapped for Claude. The prompt goes on stdin, except for Grok, which is run as `grok --no-auto-update -p "<prompt>"` because that is its headless form, so the prompt is visible in the process list while it runs. An agent that Omarchy has only stubbed for install-on-first-run is reported as not installed rather than installed by an ask. When the agent fails, the bubble shows the agent's name and what it printed. A `command` array overrides all of this and still receives the prompt on stdin. Stdout is capped at 64 KiB.
 
 ```json
 {
@@ -133,16 +140,17 @@ Agent mode is the fallback. It reads `~/.config/omarchy/defaults/agent` and can 
   "botId": "e0195a7d-f804-4688-9191-e2cf3574a6d1",
   "syncAppearance": true,
   "dodge": true,
-  "idleMotion": true,
-  "motion": "playful",
+  "idleMotion": false,
+  "motion": "calm",
   "anchor": "br",
   "size": "medium",
   "marginX": 24,
-  "marginY": 24
+  "marginY": 24,
+  "recentBots": ["e0195a7d-f804-4688-9191-e2cf3574a6d1"]
 }
 ```
 
-`size` may be `small`, `medium`, `large`, or `custom` with `sizePx` from 48 to 320. `motion` is `calm` (breathing), `playful` (float and gaze), or `hyper` (orbit and hop). `idleMotion: false` is the older switch for Calm. `anchor` is `br`, `bl`, `tr`, or `tl`, and `marginX` / `marginY` are the insets from that corner. `syncAppearance: false` keeps a custom shape and colour while asks still go to the selected Bot.
+`size` may be `small`, `medium`, `large`, or `custom` with `sizePx` from 48 to 320. `motion` is `calm` (the default: the body holds still and does not blink, as Grok Bot's avatars do at rest, while the face turns toward the pointer: the eyes cross the face and shrink as it turns away, and the outline tilts with it, as Grok Bot moves Bob; while an ask runs it looks around as Bob does while "Working…"), `playful` (breathing, a gentle bob, and blinks), or `hyper` (Playful plus an orbit and hops). `idleMotion: true` is the older switch for Playful. When Omarchy's animations are off (`omarchy toggle animations`, which the shell reads as `Style.reduceMotion`), the companion holds still whatever `motion` says: no breathing, bob, orbit, or hops, and morphs and panel changes happen at once. Shells without `Style.reduceMotion` keep the chosen motion. `anchor` is `br`, `bl`, `tr`, or `tl`, and `marginX` / `marginY` are the insets from that corner. `syncAppearance: false` keeps a custom shape and colour while asks still go to the selected Bot. `recentBots` is written by the companion: the bubble pins the primary bot and the three you used most recently, in roster order, and the rest sit behind the `+N` expander. Switching bots while the bubble is closed shows the new bot's name beside the mark for a moment.
 
 ## Roster
 
@@ -154,7 +162,7 @@ Agent mode is the fallback. It reads `~/.config/omarchy/defaults/agent` and can 
 omarchy plugin remove io.github.tcballard.grokbot-desktop
 ```
 
-That removes the plugin checkout and its `shell.json` entry. It does not delete `~/.config/omarchy/grokbot-desktop.json`, `~/.config/omarchy/grokbot-bots.json`, or `~/.config/omarchy/grokbot-webhook.key`. Hyprland bindings and the copied desktop file stay until you remove them.
+That removes the plugin checkout and its `shell.json` entry. The companion's runtime Hyprland layer rule, which only stops the compositor animating its own window, is not written to any file and is gone at the next Hyprland reload. It does not delete `~/.config/omarchy/grokbot-desktop.json`, `~/.config/omarchy/grokbot-bots.json`, or `~/.config/omarchy/grokbot-webhook.key`. Hyprland bindings and the copied desktop file stay until you remove them.
 
 ## Development
 
