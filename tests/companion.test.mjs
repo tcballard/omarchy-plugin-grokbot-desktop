@@ -1103,7 +1103,7 @@ test('Hyprland does not animate the window growing to the output and back', () =
   // Added before the window first maps, never left hiding it, and again after a reload.
   assert.match(main, /visible: root\.present && root\.targetScreen !== null && root\.layerRuleTried/)
   assert.match(main, /running: !root\.layerRuleTried\s*\n\s*onTriggered: root\.layerRuleTried = true/)
-  assert.match(main, /String\(event\.name\) === "configreloaded"[^\n]*layerRuleProc\.running = true/)
+  assert.match(main, /name === "configreloaded" && !layerRuleProc\.running\) layerRuleProc\.running = true/)
 })
 
 test('the mark is a GPU path with rectangle eyes', () => {
@@ -1434,4 +1434,18 @@ test('the composer attaches screenshots, pasted images, and dropped files', () =
   assert.match(qmlFunction(main, 'submitPrompt'), /if \(prompt === "" && root\.pendingImages\.length > 0\) prompt = "Have a look at this\."/)
   // The helper's output is trusted only as a path in its own directory.
   assert.match(main, /\\\/run\\\/user\\\/\\d\+\\\/grokbot-desktop\\\/attachments\\\//)
+})
+
+test('the companion steps aside while Omarchy\'s screensaver runs', () => {
+  assert.match(main, /readonly property string screensaverName: "org\.omarchy\.screensaver"/)
+  const handle = qmlFunction(main, 'screensaverEvent')
+  // The terminal-window screensaver (class) and the native overlay (namespace).
+  assert.match(handle, /name === "openwindow"[\s\S]*parts\[2\] === root\.screensaverName/)
+  assert.match(handle, /name === "closewindow"/)
+  assert.match(handle, /name === "openlayer" && data === root\.screensaverName/)
+  assert.match(handle, /name === "closelayer" && data === root\.screensaverName/)
+  assert.match(main, /visible: root\.present && root\.targetScreen !== null && root\.layerRuleTried && !root\.screensaverUp/)
+  // A missed close event is caught by a periodic check while hidden.
+  assert.match(main, /running: root\.screensaverUp\n\s*onTriggered: if \(!screensaverCheck\.running\) screensaverCheck\.running = true/)
+  assert.match(main, /"\/usr\/bin\/hyprctl -j clients; echo; \/usr\/bin\/hyprctl -j layers"/)
 })

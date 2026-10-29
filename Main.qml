@@ -628,7 +628,55 @@ Item {
   Connections {
     target: Hyprland
     function onRawEvent(event) {
-      if (event && String(event.name) === "configreloaded" && !layerRuleProc.running) layerRuleProc.running = true
+      if (!event) return
+      var name = String(event.name)
+      if (name === "configreloaded" && !layerRuleProc.running) layerRuleProc.running = true
+      else root.screensaverEvent(name, String(event.data || ""))
+    }
+  }
+
+  // The companion steps aside while Omarchy's screensaver runs. It is named
+  // org.omarchy.screensaver either way: a full-screen terminal window in
+  // Omarchy before 27 October 2026, which the companion's layer would draw
+  // over, and since then a native overlay-layer surface on each output.
+  readonly property string screensaverName: "org.omarchy.screensaver"
+  property var screensaverWindows: []
+  property int screensaverLayers: 0
+  readonly property bool screensaverUp: root.screensaverWindows.length > 0 || root.screensaverLayers > 0
+
+  function screensaverEvent(name, data) {
+    if (name === "openwindow") {
+      var parts = data.split(",")
+      if (parts.length >= 3 && parts[2] === root.screensaverName)
+        root.screensaverWindows = root.screensaverWindows.concat([parts[0]])
+    } else if (name === "closewindow") {
+      root.screensaverWindows = root.screensaverWindows.filter(function (address) { return address !== data })
+    } else if (name === "openlayer" && data === root.screensaverName) {
+      root.screensaverLayers++
+    } else if (name === "closelayer" && data === root.screensaverName) {
+      root.screensaverLayers = Math.max(0, root.screensaverLayers - 1)
+    }
+  }
+
+  // A missed close event must not leave the companion hidden, so while it is
+  // hidden it checks every 20 seconds that a screensaver is still there.
+  Timer {
+    interval: 20000
+    repeat: true
+    running: root.screensaverUp
+    onTriggered: if (!screensaverCheck.running) screensaverCheck.running = true
+  }
+
+  Process {
+    id: screensaverCheck
+    command: ["/usr/bin/sh", "-c", "/usr/bin/hyprctl -j clients; echo; /usr/bin/hyprctl -j layers"]
+    stdout: StdioCollector { id: screensaverCheckOut }
+    onExited: function (code) {
+      if (code !== 0) return
+      if (String(screensaverCheckOut.text).indexOf(root.screensaverName) < 0) {
+        root.screensaverWindows = []
+        root.screensaverLayers = 0
+      }
     }
   }
 
@@ -1738,7 +1786,7 @@ Item {
   PanelWindow {
     id: win
     screen: root.targetScreen
-    visible: root.present && root.targetScreen !== null && root.layerRuleTried
+    visible: root.present && root.targetScreen !== null && root.layerRuleTried && !root.screensaverUp
     // The window always covers the whole output and never changes size, so
     // the mark cannot move when the card opens or closes: a layer surface
     // that grows or shrinks is re-placed (and animated) by the compositor.
