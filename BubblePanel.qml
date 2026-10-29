@@ -605,6 +605,7 @@ Rectangle {
                 files: modelData.files || []
                 body: modelData.body || ""
                 links: modelData.links || []
+                typing: (modelData.wait || "") !== "" && (modelData.body || "") === ""
               }
             }
 
@@ -615,7 +616,7 @@ Rectangle {
               files: app ? app.askedFiles : []
               body: app ? app.bubbleBody : ""
               links: app ? app.noticeLinks : []
-              typing: app ? app.askingHere && app.bubbleBody === "" : false
+              typing: app ? (app.askingHere || app.waitingHere) && app.bubbleBody === "" : false
             }
           }
 

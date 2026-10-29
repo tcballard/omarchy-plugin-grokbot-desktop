@@ -1099,7 +1099,7 @@ test('thinking and sleeping read at a glance', () => {
   assert.match(main, /property real thinkLook: root\.expression === "think" \? 1 : 0/)
   assert.match(main, /Math\.sin\(root\.thinkAngle \* 0\.5\) \* 3 \* root\.thinkLook/)
   assert.match(main, /running: root\.present && !root\.dragging && root\.liveMotion !== "calm" && root\.expression === "sleep"/)
-  assert.match(read('BubblePanel.qml'), /typing: app \? app\.askingHere && app\.bubbleBody === "" : false/)
+  assert.match(read('BubblePanel.qml'), /typing: app \? \(app\.askingHere \|\| app\.waitingHere\) && app\.bubbleBody === "" : false/)
 })
 
 test('the mark answers hover and lifts while dragged', () => {
@@ -1455,7 +1455,9 @@ test('while asking, the mark looks around as Bob does while Working', () => {
   assert.match(main, /readonly property var workLooks: \[/)
   assert.match(main, /\[-0\.54, -0\.13, 560, "blink"\]/)
   assert.match(main, /easing\.bezierCurve: \[0\.4, 0, 0\.2, 1, 1, 1\]/)
-  assert.match(main, /running: root\.present && root\.askingHere && !root\.reduceMotion/)
+  // It keeps working while a webhook answer is on the way.
+  assert.match(main, /running: root\.present && root\.busyHere && !root\.reduceMotion/)
+  assert.match(main, /readonly property bool busyHere: root\.askingHere \|\| root\.waitingHere/)
   assert.match(main, /gazeX: \(root\.gazeX \* \(1 - root\.workBlend\) \+ root\.workX \* root\.workBlend\)/)
   const face = loadLibrary('qml/face.js')
   assert.deepEqual(JSON.parse(JSON.stringify(face.pose('work'))), { tilt: 0, height: 1, open: 1 })
@@ -1482,7 +1484,8 @@ test('each bot keeps its own conversation, and a reply lands with the bot asked'
   const select = qmlFunction(main, 'selectBot')
   assert.match(select, /if \(changed\) \{\s*root\.clearedThread = null\s*root\.stashThread\(root\.threadBotId\)/)
   assert.match(select, /root\.loadThread\(id\)/)
-  assert.match(qmlFunction(main, 'stashThread'), /\{ history: root\.history, asked: root\.askedText, files: root\.askedFiles, body: root\.bubbleBody, links: root\.noticeLinks, draft: root\.promptDraft, pending: root\.pendingFiles \}/)
+  assert.match(qmlFunction(main, 'stashThread'), /\{ history: root\.history, asked: root\.askedText, files: root\.askedFiles, body: root\.bubbleBody, links: root\.noticeLinks, wait: root\.awaitingId, draft: root\.promptDraft, pending: root\.pendingFiles \}/)
+  assert.match(qmlFunction(main, 'loadThread'), /root\.awaitingId = thread\.wait \|\| ""/)
   assert.doesNotMatch(qmlFunction(main, 'saveSettings'), /threads/)
   // The ask remembers its bot; its reply is shown there or kept unread.
   assert.match(qmlFunction(main, 'launchAsk'), /root\.askBotId = root\.threadBotId/)
@@ -1493,7 +1496,7 @@ test('each bot keeps its own conversation, and a reply lands with the bot asked'
   assert.match(qmlFunction(main, 'stopAsk'), /root\.deliver\(root\.askBotId, "Stopped\."\)/)
   // Only the bot asking shows the dots, stop button, and work loop.
   assert.match(main, /readonly property bool askingHere: root\.asking && root\.askBotId === root\.threadBotId/)
-  assert.match(main, /property real workBlend: root\.askingHere && !root\.reduceMotion/)
+  assert.match(main, /property real workBlend: root\.busyHere && !root\.reduceMotion/)
   const panel = read('BubblePanel.qml')
   assert.match(panel, /readonly property bool asking: app \? app\.askingHere : false/)
   assert.match(panel, /"Waiting for " \+ app\.askingLabel\(\) \+ " to answer…"/)
@@ -1504,7 +1507,7 @@ test('each bot keeps its own conversation, and a reply lands with the bot asked'
 test('each bot keeps a scrolling history of its conversation', () => {
   // A new ask or notice moves the latest exchange into the history.
   const archive = qmlFunction(main, 'archiveExchange')
-  assert.match(archive, /root\.history = root\.history\.concat\(\[\{ asked: root\.askedText, files: root\.askedFiles, body: root\.bubbleBody, links: root\.noticeLinks \}\]\)\.slice\(-root\.historyLimit\)/)
+  assert.match(archive, /root\.history = root\.history\.concat\(\[\{ asked: root\.askedText, files: root\.askedFiles, body: root\.bubbleBody, links: root\.noticeLinks, wait: root\.awaitingId \}\]\)\.slice\(-root\.historyLimit\)/)
   assert.match(qmlFunction(main, 'launchAsk'), /root\.archiveExchange\(\)\n\s*root\.askedText = String\(prompt \|\| ""\)/)
   assert.match(qmlFunction(main, 'sayNotice'), /root\.archiveExchange\(\)/)
   assert.match(qmlFunction(main, 'loadThread'), /root\.history = thread\.history \|\| \[\]/)
@@ -1523,7 +1526,8 @@ test('clearing a conversation is in the menu, not the composer, and can be undon
   assert.doesNotMatch(main, /function newConversation/)
   // Clearing keeps the conversation behind an Undo chip for a few seconds.
   const clear = qmlFunction(main, 'clearConversation')
-  assert.match(clear, /root\.clearedThread = \{ botId: root\.threadBotId, history: root\.history, asked: root\.askedText, files: root\.askedFiles, body: root\.bubbleBody, links: root\.noticeLinks \}/)
+  assert.match(clear, /root\.clearedThread = \{ botId: root\.threadBotId, history: root\.history, asked: root\.askedText, files: root\.askedFiles, body: root\.bubbleBody, links: root\.noticeLinks, wait: root\.awaitingId \}/)
+  assert.match(qmlFunction(main, 'undoClear'), /root\.awaitingId = cleared\.wait \|\| ""/)
   assert.match(clear, /undoTimer\.restart\(\)/)
   assert.match(qmlFunction(main, 'undoClear'), /root\.history = cleared\.history/)
   assert.match(main, /readonly property bool undoShown: root\.clearedThread !== null && root\.clearedThread\.botId === root\.threadBotId/)
@@ -1533,6 +1537,31 @@ test('clearing a conversation is in the menu, not the composer, and can be undon
   // It lives in the right-click menu and on IPC, not in the composer.
   assert.match(main, /root\.canClear \? \[\{ "label": "Clear conversation", "action": "clear" \}\]/)
   assert.match(main, /function clear\(\): string \{ return root\.clearConversation\(\) \}/)
+})
+
+test('a webhook answer waits under its question and lands there, whichever bot is on screen', () => {
+  // Every ask carries an id; a routine that only acknowledges it leaves the
+  // question waiting rather than ending the ask with a placeholder.
+  assert.match(qmlFunction(main, 'launchAsk'), /root\.pendingAskId = root\.newAskId\(\)\n\s*root\.pendingJson = JSON\.stringify\(\{\n\s*askId: root\.pendingAskId,/)
+  assert.match(main, /if \(code === 10\) \{\n\s*root\.startWaiting\(root\.pendingAskId, root\.askBotId\)\n\s*return\n\s*\}/)
+  // The answer finds its question by id: the latest on screen, an earlier
+  // one in the history, or one put away with another bot, which gets a dot.
+  const answer = qmlFunction(main, 'answerWaiting')
+  assert.match(answer, /if \(root\.awaitingId === askId\) \{\n\s*root\.bubbleBody = text\n\s*root\.awaitingId = ""/)
+  assert.match(answer, /root\.indexWaiting\(root\.history, askId\)/)
+  assert.match(answer, /if \(thread\.wait === askId\) \{/)
+  assert.match(answer, /root\.markUnread\(botId\)/)
+  // reply takes an ask id or a bot; say from a waiting bot counts too.
+  assert.match(main, /function reply\(target: string, text: string\): string \{ return root\.receiveReply\(target, text\) \}/)
+  const receive = qmlFunction(main, 'receiveReply')
+  assert.match(receive, /if \(root\.awaiting\[key\]\)/)
+  assert.match(receive, /root\.oldestWaiting\(bot\.id\)/)
+  assert.match(qmlFunction(main, 'sayNotice'), /var waiting = bot \? root\.oldestWaiting\(bot\.id\) : ""/)
+  // A question waits ten minutes at most.
+  assert.match(main, /readonly property int replyWaitMs: 600000/)
+  assert.match(qmlFunction(main, 'expireWaiting'), /"'s reply will be in Grok Bot\."/)
+  // Earlier exchanges still waiting show the dots too.
+  assert.match(read('BubblePanel.qml'), /typing: \(modelData\.wait \|\| ""\) !== "" && \(modelData\.body \|\| ""\) === ""/)
 })
 
 const PNG = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex')
