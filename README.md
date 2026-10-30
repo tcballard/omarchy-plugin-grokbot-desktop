@@ -1,14 +1,28 @@
 <h1 align="center">Grok Bot Desktop Companion</h1>
 
-<p align="center">A floating Grok Bot companion for the Omarchy desktop. It morphs into your bots and asks them from a speech bubble.</p>
+<p align="center">Your bots, beside your work on Omarchy.</p>
 
 <p align="center"><a href="https://github.com/tcballard/omarchy-badges"><img alt="Built for Omarchy: Plugin" height="20" src="https://raw.githubusercontent.com/tcballard/omarchy-badges/75975e5b5bf75e7ede3764bcd2950046f7abfe2c/badges/v1/omarchy-plugin.svg"></a></p>
 
+A floating desktop companion for Omarchy: pick a bot, ask a question, and keep working beside its reply. Sync names and avatar styles from the Grok Bot desktop app, then connect a webhook routine for real bot replies or use an authenticated local coding agent.
+
+- Make it yours with 14 avatar shapes, 11 colours, pointer-following eyes, and adjustable motion, size and placement.
+- Switch between bots with separate conversations and drafts, unread indicators, cancellation, and clear-with-Undo.
+- Attach files and images in local-agent mode, or dictate through a configured Superwhisper or Voxtype backend.
+
+```bash
+omarchy plugin add https://github.com/tcballard/omarchy-plugin-grokbot-desktop --enable
+```
+
+**Next: [sync your bots and connect replies](docs/SETUP.md).** Roster sync does not connect chat automatically. Real bot replies need a configured webhook routine and return path; local-agent mode answers in the bot's name. Conversations and drafts clear on shell restart.
+
+Accepted by the owner on an XPS running Omarchy `dev (573b518be)`; see [acceptance scope and limitations](docs/ACCEPTANCE.json).
+
+<img src="preview.png" width="800" alt="Earlier live Omarchy capture showing the orange companion, appearance drawer and Ask Bob bubble.">
+
+**Earlier preview, 27 October 2026:** [watch the 70-second demo](assets/grokbot-companion-demo.mp4). This live Try Omarchy capture predates the current UI, roster-sync button and persistent name badge.
+
 **Inspired by [Clippy for Omarchy](https://github.com/jankeesvw/omarchy-clippy) and [Clanky](https://github.com/rdoupe/omarchy-clanky).** The layer-shell window, click-through mask, dodge behaviour, cursor helper, and speech-bubble IPC follow those companions. Plugin conventions come from [Build Omarchy Plugins](https://github.com/tcballard/build-omarchy-plugins).
-
-<img src="preview.png" width="800" alt="Live Try Omarchy capture on Virtual-1: appearance drawer, Ask Bob bubble, and the orange companion mark.">
-
-**Preview:** `preview.png` and [the 70-second demo](assets/grokbot-companion-demo.mp4) are from a live Try Omarchy session on `Virtual-1` at 1280×800 (69.57s, 30fps H.264, 2026-10-27, commit `a8a5d0b`). `tools/render-preview.py` can still redraw the chrome offline. It is not the source of this preview.
 
 ## Install
 
