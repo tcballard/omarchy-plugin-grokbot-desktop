@@ -27,8 +27,8 @@ The exact commands and required distinctions are in [SETUP.md](SETUP.md).
 - History and drafts live in memory and disappear on shell restart.
 - Attachments work in local-agent mode only; roster photos are not imported.
 - Desktop-wide voice routing is opt-in and requires a configured dictation backend. It is not always-listening wake-word detection.
-- The owner accepted the candidate on the XPS running Omarchy `dev (573b518be)`. Existing preview media is older. Full CI remains a release check; the sleeping-eyes report at 1.25× is tracked for v0.1.1.
+- The owner accepted the candidate on the XPS running Omarchy `dev (573b518be)`. Existing preview media is older. The complete suite passed on GitHub CI; the sleeping-eyes report at 1.25× is tracked for v0.1.1.
 
 ## Maintainer steps after merging
 
-Wait for green CI, tag the merged documentation-only release commit `v0.1.0`, push the tag, then run **Release source** in GitHub Actions with that tag. It runs tests and creates a draft source release with an archive and checksums. Write the Release Notes and publish the draft yourself. The archive is source code, not a prebuilt installer. No tag or release has been created by this PR.
+Check green CI and merge with **Create a merge commit** to preserve the acceptance commit, then tag the merged release-preparation commit `v0.1.0`, push the tag, then run **Release source** in GitHub Actions with that tag. It runs tests and creates a draft source release with an archive and checksums. Write the Release Notes and publish the draft yourself. The archive is source code, not a prebuilt installer. No tag or release has been created by this PR.
