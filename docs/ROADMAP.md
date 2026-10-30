@@ -2,7 +2,7 @@
 
 ## Current local additions
 
-Requested after the v0.1.0 testing pass: an app-roster Sync button in Appearance & bots and a persistent name badge beneath the companion. These need a fresh live check before release; the earlier acceptance does not cover them. They are additions to the untagged first-release candidate, not a v0.1.n patch.
+Requested after the v0.1.0 testing pass: an app-roster Sync button in Appearance & bots and a persistent name badge beneath the companion. The owner accepted these after restarting the shell on the XPS; the 30 October acceptance record covers the candidate with explicit limitations. Full CI must pass before release. They are additions to the untagged first-release candidate, not a v0.1.n patch.
 
 ## Versions
 
