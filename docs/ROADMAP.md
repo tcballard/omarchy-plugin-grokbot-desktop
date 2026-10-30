@@ -1,5 +1,9 @@
 # Roadmap
 
+## Current local additions
+
+Requested after the v0.1.0 testing pass: an app-roster Sync button in Appearance & bots and a persistent name badge beneath the companion. These need a fresh live check before release; the earlier acceptance does not cover them. They are additions to the untagged first-release candidate, not a v0.1.n patch.
+
 ## Versions
 
 - **v0.1.n: fixes only.** A patch changes how shipped behaviour works, never what ships: no new settings, IPC commands or features. Every patch still needs a live pass recorded in `ACCEPTANCE.json` before it can be tagged (see [RELEASE.md](RELEASE.md)). Batch fixes, and re-check the areas they touch plus the short list below rather than the whole v0.1.0 runbook.

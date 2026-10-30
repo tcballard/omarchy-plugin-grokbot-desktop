@@ -2,6 +2,10 @@
 
 v0.1.0 is the first tagged release. `VERSION` and `manifest.json` already say `0.1.0`.
 
+## Latest candidate: 30 October
+
+The owner has tested the companion on the XPS and confirmed the latest Sync button and name badge look better after restarting the shell. See [the testing handoff](TESTING-2026-10-30.md) for observed checks and remaining release verification. The acceptance record below still refers to the historical 27 October capture; update it against the final candidate when preparing the release.
+
 ## Why a live pass comes first
 
 `scripts/archive.mjs` builds the release archive only when `docs/ACCEPTANCE.json` records a passed live run against a commit, and nothing but documentation has changed since that commit. The recorded run is from `a8a5d0b` (27 October), and the companion's runtime has changed a lot since, so the release needs a fresh live pass on the commit being released.
@@ -34,6 +38,7 @@ Follow [WALKTHROUGH.md](WALKTHROUGH.md) from a fresh install, after everything f
 >
 > **What you get**
 > - **Your bots, as they look in Grok Bot.** All fourteen avatar shapes and eleven colours, measured from the app. Switching bots morphs the companion into that bot, and it turns its head toward your pointer the way Bob does.
+> - **Refresh your bots from the desktop app.** Appearance settings has a Sync button that reads the signed-in Grok Bot app's saved roster. A name badge beneath the companion identifies the selected bot.
 > - **A conversation per bot.** Each bot keeps a scrolling history and an unsent draft for the session. A reply from a bot you've switched away from waits with a dot, and the companion shows one too while the bubble is closed. Clearing has an Undo.
 > - **Files and images in a question.** Paste an image, press Ctrl+V, choose files in Omarchy's file chooser, or drop them on the bubble.
 > - **Stays out of the way.** Clicks around it reach your windows, even with the bubble open. Drag it anywhere on the screen. It fades as the pointer comes near, hides under the screensaver, and follows `omarchy toggle animations`. Hide it from its menu and a notification brings it back with a click, or bind Super+Alt+B to show and hide it.
@@ -47,6 +52,7 @@ Follow [WALKTHROUGH.md](WALKTHROUGH.md) from a fresh install, after everything f
 >
 > **Good to know**
 > - **Ask the real Bob.** Run `bin/grokbot-connect`, paste your Grok Bot routine's Webhook URL and Sender key, and asks go to Bob himself. His answers come back into the bubble, under the question they answer. Without it, your local coding agent (Grok, Claude, Codex and others) answers in the bot's name.
+> - Sync uses the desktop app's last saved bot list; let changes from other devices reach the app first. It imports names, shapes, colours and short descriptions, but not photos.
 > - Conversations live in memory only and are gone after a shell restart.
 > - Attachments go to the local agent, not the webhook.
 > - When an ask fails, the bubble says why: no connection, a wrong key, or no answer in time.

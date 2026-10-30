@@ -45,6 +45,30 @@ Item {
   readonly property string dictateHelper: root.localPath(Qt.resolvedUrl("bin/grokbot-dictate"))
   readonly property string attachHelper: root.localPath(Qt.resolvedUrl("bin/grokbot-attach"))
 
+  readonly property string syncHelper: root.localPath(Qt.resolvedUrl("bin/grokbot-sync"))
+  readonly property bool syncingRoster: syncProc.running
+  property string syncStatus: ""
+
+  function syncRoster() {
+    if (syncProc.running) return
+    root.syncStatus = "Syncing from Grok Bot…"
+    syncProc.running = true
+  }
+
+  Process {
+    id: syncProc
+    command: ["/usr/bin/python3", "-I", root.syncHelper, "--app", "--output", root.botsPath]
+    clearEnvironment: true
+    environment: ({ HOME: root.homePath, XDG_CONFIG_HOME: Quickshell.env("XDG_CONFIG_HOME") || root.homePath + "/.config" })
+    stdout: StdioCollector { id: syncOut }
+    stderr: StdioCollector { id: syncErr }
+    onExited: function (code) {
+      root.syncStatus = root.cleanText(code === 0 ? syncOut.text : syncErr.text, 240)
+        || (code === 0 ? "Bots synced." : "Sync failed. Your desktop bots have been kept.")
+      if (code === 0) botsFile.reload()
+    }
+  }
+
   property bool ready: false
   property bool present: true
   property bool bubbleOpen: false
@@ -72,7 +96,6 @@ Item {
   // Most recently used bot ids, newest first. The bubble pins the primary
   // bot plus the latest of these.
   property var recentBots: []
-  property string switchTag: ""
   property string customShape: "teardrop"
   property string customColor: "orange"
   property string sizeName: "medium"
@@ -276,7 +299,7 @@ Item {
   readonly property int screenW: win.screen ? win.screen.width : 0
   readonly property int screenH: win.screen ? win.screen.height : 0
   readonly property real stageW: root.shownSize + 24
-  readonly property real stageH: root.shownSize + 28
+  readonly property real stageH: root.shownSize + 52
   readonly property real stageScreenX: {
     var edge = root.anchorFromRight ? root.screenW - root.stageW - root.posRight : root.posRight
     return Math.max(0, Math.min(root.screenW - root.stageW, edge))
@@ -460,19 +483,6 @@ Item {
 
   // Every bot shows its role: the first clause of its description. The
   // header elides it to fit, so it is never cut mid-word.
-  // Switching bots with the bubble closed (voice, IPC) names the new bot
-  // beside the mark for a moment.
-  function showSwitchTag() {
-    root.switchTag = root.botLabel()
-    switchTagTimer.restart()
-  }
-
-  Timer {
-    id: switchTagTimer
-    interval: 1400
-    onTriggered: root.switchTag = ""
-  }
-
   // The name of the bot whose ask is running.
   function askingLabel() {
     return root.labelOf(root.findBot(root.askBotId))
@@ -770,7 +780,6 @@ Item {
       if (root.expression === "work" || root.expression === "idle") root.expression = root.busyHere ? "work" : "idle"
     }
     root.recentBots = [id].concat(root.recentBots.filter(function (other) { return other !== id })).slice(0, 6)
-    if (changed && !root.bubbleOpen) root.showSwitchTag()
     root.switcherOpen = false
     root.rosterExpanded = false
     root.retargetAppearance(true)
@@ -1644,6 +1653,7 @@ Item {
 
   Component.onDestruction: {
     cursorProc.running = false
+    syncProc.running = false
     if (askProc.running) askProc.running = false
   }
 
@@ -2236,7 +2246,7 @@ Item {
         width: root.shownSize * 0.62
         height: width
         anchors.horizontalCenter: parent.horizontalCenter
-        y: parent.height - 6 - root.shownSize * 0.07 - height / 2
+        y: parent.height - 30 - root.shownSize * 0.07 - height / 2
         scale: Math.max(0.55, 1 - lift / 70)
         opacity: rest * Math.max(0.3, 1 - lift / 45)
         transform: Scale { origin.x: floorShadow.width / 2; origin.y: floorShadow.height / 2; yScale: floorShadow.flat }
@@ -2266,24 +2276,21 @@ Item {
 
       Rectangle {
         id: nameTag
-        readonly property bool shown: root.switchTag !== ""
-        property string label: ""
-        width: nameText.implicitWidth + 20
-        height: 24
-        radius: 12
+        readonly property string label: root.botLabel()
+        width: Math.min(180, nameText.implicitWidth + 20)
+        height: 22
+        radius: 11
         color: Theme.surface
         border.width: 1
         border.color: Theme.lifted
-        anchors.horizontalCenter: parent.horizontalCenter
-        y: root.anchorFromBottom ? -height - 4 + (shown ? 0 : 6) : parent.height + 4 - (shown ? 0 : 6)
-        opacity: shown ? 1 : 0
-        visible: opacity > 0.01
-        onShownChanged: if (shown) label = root.switchTag
-        Behavior on opacity { NumberAnimation { duration: root.ms(160) } }
-        Behavior on y { NumberAnimation { duration: root.ms(200); easing.type: Easing.OutCubic } }
+        x: Math.max(-stage.x, Math.min(root.screenW - stage.x - width, (parent.width - width) / 2))
+        y: parent.height - height
+        opacity: root.dodgeOpacity
         Text {
           id: nameText
           anchors.centerIn: parent
+          width: Math.min(160, implicitWidth)
+          elide: Text.ElideRight
           text: nameTag.label
           color: Theme.text
           font.pixelSize: 12
@@ -2297,7 +2304,7 @@ Item {
         id: mark
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: 8
+        anchors.bottomMargin: 32
         width: root.shownSize
         height: root.shownSize
         shapeFrom: root.shapeFrom

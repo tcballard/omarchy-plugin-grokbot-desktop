@@ -3,3 +3,4 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 node scripts/check.mjs
 node --test tests/*.test.mjs
+python3 tests/sync-app.py

@@ -135,6 +135,42 @@ Item {
       width: flick.width
       spacing: 12
 
+      Column {
+        width: parent.width
+        spacing: 7
+        Rectangle {
+          width: parent.width
+          height: 34
+          radius: 10
+          color: Theme.raised
+          border.width: 1
+          border.color: Theme.edge
+          Text {
+            anchors.centerIn: parent
+            text: app.syncingRoster ? "Syncing…" : "Sync bots from Grok Bot"
+            textFormat: Text.PlainText
+            color: app.syncingRoster ? Theme.textMuted : Theme.text
+            font.family: app.fontFamily
+            font.pixelSize: 12
+            font.weight: Font.DemiBold
+          }
+          HoverArea {
+            enabled: !app.syncingRoster
+            label: "Sync bots from Grok Bot"
+            onActivated: app.syncRoster()
+          }
+        }
+        Text {
+          width: parent.width
+          text: app.syncStatus || "Refresh from the bot list saved by your Grok Bot app."
+          textFormat: Text.PlainText
+          wrapMode: Text.Wrap
+          color: Theme.textMuted
+          font.family: app.fontFamily
+          font.pixelSize: 11
+        }
+      }
+
       // Shapes as Grok Bot's picker lays them out: rows of four, five, and
       // five, every shape in the chosen colour, and a ring that follows the
       // chosen shape's outline.

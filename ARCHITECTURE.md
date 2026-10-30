@@ -24,7 +24,9 @@ A webhook ask that the routine only acknowledges ends the ask but not the questi
 
 `bin/grokbot-connect` is run by hand, not by the shell. It reads the Webhook URL and Sender key (without echo), sends one test ask through `bin/grokbot-ask` from a private temporary copy of the settings, and only then writes the key (0600, replaced atomically) and the URL and webhook mode to `grokbot-desktop.json`, keeping its other keys.
 
-`bin/grokbot-sync` is not a shell child. Run it when a local agents directory should replace `~/.config/omarchy/grokbot-bots.json`. The service watches that file and falls back to `data/bots.json`.
+The appearance page runs `bin/grokbot-sync --app` as an isolated Python child with only HOME and XDG_CONFIG_HOME. It reads Grok Bot's `sand-client-persistence` account-slot (schema 1) and that account's last-roster (schema 4); names are base32-encoded cache keys. It imports only profile fields, never credentials or conversation contents. Groups and removed rows are excluded. Missing, invalid, empty, duplicate, oversized, or unsupported data leaves the previous roster intact. A successful write atomically replaces `~/.config/omarchy/grokbot-bots.json`, which the service watches and explicitly reloads. `--from` still accepts a local agents directory. The cache schema is an app implementation detail; future changes fail with an actionable error.
+
+A persistent, plain-text name badge sits below the mark, with space reserved inside the stage. It elides long names, stays within horizontal screen bounds, follows dodge opacity, and does not add an input region.
 
 The waveform button launches `bin/grokbot-dictate`, which execs `omarchy dictation toggle` when `omarchy` is on `PATH`. That command follows `~/.config/omarchy/defaults/dictation` (`superwhisper` or `voxtype`). Without `omarchy`, the helper execs `superwhisper record` or `voxtype record toggle`. It does not take the transcript as an argument.
 

@@ -14,11 +14,13 @@ paths are redacted. The webhook key is never read.
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import re
 import stat
 import sys
+from urllib.parse import quote
 
 MAX_PROFILE_BYTES = 256 * 1024
 MAX_ROLE = 180
@@ -148,6 +150,44 @@ def collect(source):
     return bots
 
 
+def app_roster():
+    """Read only the signed-in account's last roster, never credentials or chats."""
+    base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.environ.get("HOME", ""), ".config")
+    cache = os.path.join(base, "Grok Bot", "sand-client-persistence")
+
+    def cached(key, schema, limit):
+        name = base64.b32encode(key.encode()).decode().lower().rstrip("=") + ".blob"
+        data = read_json(os.path.join(cache, name), limit)
+        if not isinstance(data, dict) or data.get("schemaVersion") != schema:
+            raise ValueError("Open Grok Bot and let its bot list load, then try Sync again. The saved roster is missing or unsupported.")
+        return data.get("value")
+
+    account = cached("sand.client.slice.client-meta.account-slot", 1, 4096)
+    if not isinstance(account, str) or not account or len(account) > 512:
+        raise ValueError("Sign in to Grok Bot and load your bot list, then try Sync again.")
+    key = "sand.client.slice.account." + quote(account, safe="~()*!.'-_") + ".roster.last-roster"
+    value = cached(key, 4, 4 * 1024 * 1024)
+    rows = value.get("rows") if isinstance(value, dict) else None
+    if not isinstance(rows, list) or not rows or len(rows) > 500:
+        raise ValueError("Grok Bot's saved roster is empty or unsupported. Your desktop bots have been kept.")
+    bots = []
+    seen = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError("Grok Bot's saved roster is invalid. Your desktop bots have been kept.")
+        if row.get("isGroup") or row.get("isRemovedFromSidebar"):
+            continue
+        bot = bot_from_profile(row)
+        if not bot or bot["id"] in seen:
+            raise ValueError("Grok Bot's saved roster is invalid. Your desktop bots have been kept.")
+        bot["isPrimary"] = bot["id"] == "e0195a7d-f804-4688-9191-e2cf3574a6d1"
+        seen.add(bot["id"])
+        bots.append(bot)
+    if not bots:
+        raise ValueError("No bots found in Grok Bot's saved roster. Your desktop bots have been kept.")
+    return bots
+
+
 def write_roster(path, bots):
     parent = os.path.dirname(path)
     os.makedirs(parent, mode=0o755, exist_ok=True)
@@ -163,11 +203,23 @@ def write_roster(path, bots):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Refresh the Grok Bot desktop roster")
+    parser.add_argument("--app", action="store_true", help="read the signed-in Grok Bot desktop app roster")
     parser.add_argument("--from", dest="source", help="agents directory containing */profile.json")
     parser.add_argument("--output", help="roster path (default: ~/.config/omarchy/grokbot-bots.json)")
     parser.add_argument("--seed", help="copy this JSON roster instead of reading profiles")
     args = parser.parse_args(argv)
     output = args.output or os.path.join(config_dir(), "grokbot-bots.json")
+    if args.app:
+        if args.source or args.seed:
+            parser.error("--app cannot be combined with --from or --seed")
+        try:
+            bots = app_roster()
+            write_roster(output, bots)
+        except (ValueError, OSError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        print(f"Synced {len(bots)} bots from Grok Bot.")
+        return 0
     if args.seed:
         seeded = read_json(args.seed, 1024 * 1024)
         bots = seeded.get("bots") if isinstance(seeded, dict) else None
