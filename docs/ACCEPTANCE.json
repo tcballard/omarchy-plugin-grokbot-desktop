@@ -1,59 +1,53 @@
 {
   "status": "passed",
-  "input_commit": "a8a5d0b8e2da35853a2edfc2a6135296f01e21e7",
-  "date": "2026-10-27",
-  "platform": "Try Omarchy (Arch Linux / Hyprland / Quickshell, Virtual-1 1280x800)",
-  "omarchy_version": null,
+  "input_commit": "cd8a24cc38280324d40b91f49ab13d29a285c267",
+  "date": "2026-10-30",
+  "platform": "Owner XPS laptop running Omarchy / Hyprland / Quickshell; exact model and output scale not recorded in this session",
+  "omarchy_version": "dev (573b518be)",
+  "acceptance_basis": "Owner-reported live testing and explicit acceptance of the current candidate on 30 October 2026; not a newly recorded agent-observed walkthrough. The accepted runtime is unchanged; input_commit additionally includes documentation and corrections to two stale regression-test assertions.",
   "portable": {
     "command": "./tests/run",
-    "covers": [
-      "service manifest and Main.qml entry point",
-      "25-shape contour morph",
-      "11-colour palette contrast",
-      "bundled 15-bot roster",
-      "IPC surface and plain-text bubble",
-      "grokbot-ask stdin, webhook payload, stdout cap, and key-not-on-argv",
-      "grokbot-sync redaction",
-      "grokbot-cursor socket-path refusal"
+    "status": "passed",
+    "results": [
+      "Five Python app-roster sync tests passed.",
+      "Fifteen focused Node tests passed.",
+      "Plugin structure checks, native plugin validation, git diff checks, and QML parsing passed.",
+      "Complete ./tests/run passed on GitHub CI: 81 Node tests and five Python sync tests."
     ],
-    "doesNotEstablish": "Live Omarchy, Hyprland, or webhook acceptance"
+    "doesNotEstablish": "Automated checks do not establish live desktop behaviour; live acceptance is owner-reported.",
+    "ci_url": "https://github.com/tcballard/omarchy-plugin-grokbot-desktop/actions/runs/41144238567",
+    "ci_head_commit": "f2ec5c4c82092881e524bfe2205e90f4f06869a6"
   },
   "live": {
     "status": "passed",
-    "recording": "assets/grokbot-companion-demo.mp4",
-    "preview": "preview.png",
-    "durationSeconds": 69.57,
-    "size": "1280x800",
-    "frameRate": 30,
-    "codec": "h264",
-    "required": [
-      "corner companion mark with gaze on Virtual-1",
-      "15-bot roster visible from the bubble",
-      "appearance drawer: 25 shapes, 11 accents, Calm/Playful/Hyper, and four corner anchors",
-      "Ask Bob reply on the running shell"
-    ]
+    "method": "Owner-reported testing and explicit acceptance",
+    "recording": null,
+    "preview": null
   },
   "commands": [
-    "Live Try Omarchy session on Virtual-1 1280x800, recorded as assets/grokbot-companion-demo.mp4 (69.57s, 30fps H.264) against a8a5d0b8e2da35853a2edfc2a6135296f01e21e7"
+    "omarchy restart shell \u2014 owner executed successfully, exit 0",
+    "omarchy version \u2014 dev (573b518be)",
+    "omarchy plugin validate . \u2014 passed",
+    "bin/grokbot-sync --app \u2014 imported 18 bots from the active local app account",
+    "python3 tests/sync-app.py \u2014 five tests passed",
+    "Focused Node tests for sync, service, mark, appearance and roster \u2014 fifteen tests passed",
+    "node scripts/check.mjs \u2014 passed",
+    "Qt qmlformat parsing for Main.qml and SettingsPanel.qml \u2014 passed"
   ],
   "results": [
-    "The orange teardrop sits in a corner and moves its gaze while idle.",
-    "The bubble shows the pinned row, the +10 expander, and the line that all 15 Grok Bots are synced.",
-    "The appearance drawer changes the silhouette and accent, offers Calm, Playful, and Hyper, and the mark moves among Bottom R, Bottom L, Top R, and Top L.",
-    "Ask Bob takes a typed prompt and replies in the bubble, including the Virtual-1 anchor line.",
-    "preview.png is a frame from that session with the appearance drawer and the Ask Bob bubble open together."
+    "The owner reported completing general live testing and finding the companion solid before the final additions.",
+    "The app-roster refresh imported 18 bots; installed runtime files matched the candidate source.",
+    "After restarting the shell, the owner confirmed the Sync button and persistent name badge looked much better.",
+    "The owner explicitly accepted the current candidate and requested a PR for release preparation."
   ],
   "limitations": [
-    "The installed omarchy-version string was not recorded, and omarchy plugin validate output is not in this session.",
-    "The recording is 1280x800 at 30fps. A 60fps contour rate was not measured.",
-    "Proximity dodge fading the mark to 0.28 is not visible. Sampled frames keep the orange mark at full colour while the pointer is nearby.",
-    "The corner mark is not switched by picking another roster bot in this recording. Silhouette and colour changes come from the appearance drawer.",
-    "grokbot-desktop-ctl wave, celebrate, spin, and say are not shown.",
-    "A real Grok Bot webhook was not identified. The Ask Bob reply is on screen only.",
-    "Portable checks do not establish live desktop compatibility.",
-    "tools/render-preview.py can still redraw the chrome offline. preview.png in this tree is the on-device frame, not that render.",
-    "The motion and layout pass after 91f8f75e (single bubble card with an appearance page, non-modal bubble, OKLCH morphs, squash and stretch, reduce-motion, compact idle window, QtQuick.Shapes mark) was checked with ./tests/run and an offscreen Qt 6.12 harness with stubbed Quickshell modules, rendered on Mesa llvmpipe. It has not been recorded on a live Omarchy desktop, and preview.png and the demo video predate it.",
-    "The fourteen shapes and their eyes are measured from a phone screenshot of Grok Bot's Avatar > Shape sheet; the eleven colours match that sheet, its dark-mode version (where black is drawn white), and the values Grok Bot stores. Grok Bot's dark-mode roster confirms the names blob (the round shape: OmaBot, Afterglow, .promo) and pebble (the lumpy round shape: Middle Farm Admin, shown without the picker's pumpkin stem); the other shapes are named for how they look. A 28-second 60fps recording of the picker shows shape and colour changes landing between two frames, a 55% press dim, the selection ring jumping with no transition, and an avatar that neither breathes, bobs, nor blinks at rest while its eyes drift; the companion now matches those. The recording does not show how Grok Bot animates a switch between bots, its gaze easing, or any blink timing, so the bot-switch morph, the pointer easing, and Playful's blinks remain this plugin's own.",
-    "A first pass on the owner's own Omarchy laptop after 2db702d (a screenshot, not a recording) shows the companion loaded by the real shell: the orange teardrop with its eyes cut through to the wallpaper, the bubble with Bob's header, the pinned Bob, OmaBot, Poteto and Family Finances chips and the +11 expander, and an agent-mode reply from Grok (grok --no-auto-update -p) answering as Bob. The Omarchy version, output scale, bot switching, motion, dodge and drag were not captured in it."
-  ]
+    "Local full-suite attempts timed out in the restricted session. GitHub CI subsequently passed the complete suite after correcting two stale assertions; runtime code was unchanged. Check green CI on the final PR head before merging.",
+    "No fresh 60fps recording or screenshot was captured. Existing README preview and demo video belong to the 27 October build; historical evidence is preserved in docs/ACCEPTANCE-2026-10-27.json.",
+    "The live feedback does not enumerate every walkthrough step. In particular the ten-minute webhook-question expiry was not independently verified in this session.",
+    "The reported sleeping-eyes appearance at 1.25x scale remains a known issue for v0.1.1.",
+    "The exact XPS model and active output scale were not captured in this session.",
+    "Roster sync reads the active desktop app account's last saved roster, not the cloud directly. It supports account-slot schema 1 and roster schema 4; unsupported data preserves the current desktop roster.",
+    "Conversations are session-only; shell restarts clear them. Attachments are supported in local-agent mode, not webhook mode."
+  ],
+  "runtime_commit": "487fbb816a8a34d20a838ba5d98fea2cf0eb01a9"
 }

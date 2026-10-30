@@ -1194,13 +1194,19 @@ test('the header names every bot by role and elides instead of cutting words', (
   assert.match(bubble, /app\.rosterExpanded \? "Less" : "\+" \+ bubble\.extraBots\.length/)
 })
 
-test('pins follow use and a closed-bubble switch names the bot', () => {
+test('pins follow use and the persistent badge names the selected bot', () => {
   const bubble = read('BubblePanel.qml')
   assert.doesNotMatch(bubble, /key: "X Desk"/)
   assert.match(bubble, /app\.recentBots/)
   const select = qmlFunction(main, 'selectBot')
   assert.match(select, /recentBots = \[id\]/)
-  assert.match(select, /showSwitchTag\(\)/)
+  const badge = main.slice(main.indexOf('id: nameTag'), main.indexOf('id: mark'))
+  assert.match(badge, /readonly property string label: root\.botLabel\(\)/)
+  assert.match(badge, /text: nameTag\.label/)
+  assert.match(badge, /textFormat: Text\.PlainText/)
+  assert.match(badge, /elide: Text\.ElideRight/)
+  assert.doesNotMatch(badge, /switchTag|onShownChanged/)
+  assert.match(select, /root\.chosenBotId = id/)
   assert.match(qmlFunction(main, 'saveSettings'), /settings\.recentBots = root\.recentBots/)
 })
 
@@ -1238,7 +1244,16 @@ test('chrome colours come from one token file and text is set like Grok Bot\'s a
     for (const element of source.matchAll(/textFormat: (Text|TextEdit)\.PlainText/g)) {
       const before = source.slice(Math.max(0, element.index - 900), element.index)
       const start = Math.max(before.lastIndexOf('Text {'), before.lastIndexOf('TextEdit {'), before.lastIndexOf('TextArea {'))
-      assert.match(before.slice(start), /font\.family:/, `${file} text without a family`)
+      assert.ok(start >= 0, `${file} plain text belongs to a text element`)
+      const absoluteStart = Math.max(0, element.index - 900) + start
+      let depth = 0
+      let end = source.indexOf('{', absoluteStart)
+      for (; end < source.length; end++) {
+        if (source[end] === '{') depth++
+        else if (source[end] === '}' && --depth === 0) break
+      }
+      // QML property order is immaterial: check the whole text element.
+      assert.match(source.slice(absoluteStart, end), /font\.family:/, `${file} text without a family`)
     }
   }
   // SF Pro where installed, else the bundled Inter, else the shell's font.

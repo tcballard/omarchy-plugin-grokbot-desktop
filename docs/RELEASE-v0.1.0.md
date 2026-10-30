@@ -2,33 +2,20 @@
 
 v0.1.0 is the first tagged release. `VERSION` and `manifest.json` already say `0.1.0`.
 
-## Latest candidate: 30 October
+## Accepted candidate: 30 October
 
-The owner has tested the companion on the XPS and confirmed the latest Sync button and name badge look better after restarting the shell. See [the testing handoff](TESTING-2026-10-30.md) for observed checks and remaining release verification. The acceptance record below still refers to the historical 27 October capture; update it against the final candidate when preparing the release.
+The owner explicitly accepted candidate `487fbb816a8a34d20a838ba5d98fea2cf0eb01a9` after testing on the XPS and restarting the shell to load the Sync button and persistent name badge. [ACCEPTANCE.json](ACCEPTANCE.json) records that owner-reported acceptance and its limitations. The old capture record remains in [ACCEPTANCE-2026-10-27.json](ACCEPTANCE-2026-10-27.json).
 
-## Why a live pass comes first
+The release-preparation PR changes documentation and two stale regression-test assertions; runtime code is unchanged. The accepted input is `cd8a24c`, whose runtime matches owner-tested `487fbb8`. The full suite subsequently passed on [GitHub CI](https://github.com/tcballard/omarchy-plugin-grokbot-desktop/actions/runs/41144238567), after correcting those two assertions. Local full-suite attempts had timed out. No new live recording was captured. The README preview remains labelled as the older 27 October capture.
 
-`scripts/archive.mjs` builds the release archive only when `docs/ACCEPTANCE.json` records a passed live run against a commit, and nothing but documentation has changed since that commit. The recorded run is from `a8a5d0b` (27 October), and the companion's runtime has changed a lot since, so the release needs a fresh live pass on the commit being released.
+## Prepare and publish after merging
 
-Any change to QML, `qml/*.js`, `bin/*`, `data/`, `assets/`, `preview.png` or the manifest after the pass means testing again. Documentation (`docs/`, `README.md`, `CREDITS.md`) can still change.
+1. Check green CI and merge this PR using **Create a merge commit**, preserving the accepted input commit in the history. Squash or rebase merging requires a new documentation-only acceptance record against the resulting candidate before tagging. Check green CI on the merged candidate. Read the [build summary](BUILD-SUMMARY-v0.1.0.md), [setup guide](SETUP.md), and [testing handoff](TESTING-2026-10-30.md).
+2. Tag the merged commit `v0.1.0` and push the tag. `VERSION` and `manifest.json` already say `0.1.0`.
+3. Run **Release source** in GitHub Actions with `v0.1.0`. It runs the complete tests, builds the source archive and SHA256SUMS, and opens a draft release.
+4. Write your own Release Notes using the build summary and setup guide, then publish the draft. The older draft below is reference material, not approved final copy.
 
-## 1–3. Install, test and capture
-
-Follow [WALKTHROUGH.md](WALKTHROUGH.md) from a fresh install, after everything for the release is merged into `main`. It installs with the README's own command, checks every feature, and lists what to record. A failure means a fix, a new commit, and the walkthrough again on that commit.
-
-- **Webhook:** part 7 of the walkthrough connects Bob's routine with `bin/grokbot-connect` and checks that his answers come back into the bubble.
-- **Pictures:** new images and video go under `docs/media/`, so they don't count as runtime changes. The existing `preview.png` and demo video stay as the 27 October record.
-
-## 4. Record, tag, release
-
-1. A documentation-only commit records the pass in `docs/ACCEPTANCE.json`:
-   - status `passed`, with `input_commit` set to the SHA the walkthrough recorded
-   - the date, the XPS and Omarchy version, the commands and results
-   - what was not exercised, under limitations. Question expiry (a webhook question still waiting after ten minutes says the reply will be in Grok Bot) had not been seen live before the pass, because shell restarts kept clearing the waiting question; list it here unless the pass watched it happen.
-   It also moves the README preview to the new capture.
-2. Tag that commit `v0.1.0` and push the tag.
-3. Run **Release source** from Actions with `v0.1.0`. It runs the tests, builds the source archive with its SHA256SUMS and opens a draft release.
-4. Replace the draft's placeholder text with the notes below, adjusted to what the pass confirmed, and publish.
+`scripts/archive.mjs` requires the accepted input commit to remain an ancestor and permits only `docs/`, `README.md`, and `CREDITS.md` changes after it. If runtime or build inputs change again, test and record acceptance against the new candidate before tagging. New screenshots and recordings should go under `docs/media/` so they remain documentation changes.
 
 ## Draft release notes
 
