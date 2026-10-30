@@ -6,7 +6,7 @@ v0.1.0 is the first tagged release. `VERSION` and `manifest.json` already say `0
 
 The owner explicitly accepted candidate `487fbb816a8a34d20a838ba5d98fea2cf0eb01a9` after testing on the XPS and restarting the shell to load the Sync button and persistent name badge. [ACCEPTANCE.json](ACCEPTANCE.json) records that owner-reported acceptance and its limitations. The old capture record remains in [ACCEPTANCE-2026-10-27.json](ACCEPTANCE-2026-10-27.json).
 
-The release-preparation PR changes documentation only. Full CI must pass before release; local complete-suite attempts timed out, so owner acceptance must not be described as a full automated pass. No new live recording was captured. The README preview remains labelled as the older 27 October capture.
+The release-preparation PR changes documentation and two stale regression-test assertions; runtime code is unchanged. The accepted input is `cd8a24c`, whose runtime matches owner-tested `487fbb8`. Full CI must pass before release; local complete-suite attempts timed out, so owner acceptance must not be described as a full automated pass. No new live recording was captured. The README preview remains labelled as the older 27 October capture.
 
 ## Prepare and publish after merging
 

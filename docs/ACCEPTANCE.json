@@ -1,10 +1,10 @@
 {
   "status": "passed",
-  "input_commit": "487fbb816a8a34d20a838ba5d98fea2cf0eb01a9",
+  "input_commit": "cd8a24cc38280324d40b91f49ab13d29a285c267",
   "date": "2026-10-30",
   "platform": "Owner XPS laptop running Omarchy / Hyprland / Quickshell; exact model and output scale not recorded in this session",
   "omarchy_version": "dev (573b518be)",
-  "acceptance_basis": "Owner-reported live testing and explicit acceptance of the current candidate on 30 October 2026; not a newly recorded agent-observed walkthrough.",
+  "acceptance_basis": "Owner-reported live testing and explicit acceptance of the current candidate on 30 October 2026; not a newly recorded agent-observed walkthrough. The accepted runtime is unchanged; input_commit additionally includes documentation and corrections to two stale regression-test assertions.",
   "portable": {
     "command": "./tests/run",
     "status": "pending_full_suite",
@@ -38,12 +38,13 @@
     "The owner explicitly accepted the current candidate and requested a PR for release preparation."
   ],
   "limitations": [
-    "Complete ./tests/run result remains pending; local full-suite attempts timed out. Acceptance does not claim green CI.",
+    "Full CI must pass on the release candidate. The initial PR run passed 79 of 81 Node tests and exposed two stale test assertions; both were corrected without changing runtime code, and passed focused local checks. The latest GitHub check is authoritative.",
     "No fresh 60fps recording or screenshot was captured. Existing README preview and demo video belong to the 27 October build; historical evidence is preserved in docs/ACCEPTANCE-2026-10-27.json.",
     "The live feedback does not enumerate every walkthrough step. In particular the ten-minute webhook-question expiry was not independently verified in this session.",
     "The reported sleeping-eyes appearance at 1.25x scale remains a known issue for v0.1.1.",
     "The exact XPS model and active output scale were not captured in this session.",
     "Roster sync reads the active desktop app account's last saved roster, not the cloud directly. It supports account-slot schema 1 and roster schema 4; unsupported data preserves the current desktop roster.",
     "Conversations are session-only; shell restarts clear them. Attachments are supported in local-agent mode, not webhook mode."
-  ]
+  ],
+  "runtime_commit": "487fbb816a8a34d20a838ba5d98fea2cf0eb01a9"
 }
