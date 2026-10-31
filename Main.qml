@@ -216,7 +216,9 @@ Item {
   // Output the mark is crossing onto, and the one kept while the bubble or
   // menu is open. Plain { name, x, y, width, height }, not a ShellScreen.
   property var carryScreen: null
-  property var lockedScreen: null
+  property string homeMonitor: ""
+  property bool dragDetached: false
+  property bool pointerHeld: false
   property var hostWin: null
   property var hostMark: null
   property var hostStage: null
@@ -618,6 +620,8 @@ Item {
     root.anchorName = anchor === "bl" || anchor === "tr" || anchor === "tl" ? anchor : "br"
     root.sizeName = String(root.setting("size", "medium"))
     root.sizePx = root.settingInt("sizePx", 128, 48, 320)
+    var monitor = String(root.setting("monitor", ""))
+    if (/^[A-Za-z0-9._-]{1,64}$/.test(monitor)) root.homeMonitor = monitor
     root.posRight = root.settingInt("marginX", 24, 0, 4000)
     root.posBottom = root.settingInt("marginY", 24, 0, 4000)
     if (root.bots.length === 0) root.applyBots("")
@@ -629,6 +633,7 @@ Item {
 
   Component.onCompleted: {
     root.loadSettings()
+    root.latchMonitor()
     cursorProc.running = root.cursorHelper !== ""
     layerRuleProc.running = true
   }
@@ -736,6 +741,7 @@ Item {
     settings.motion = root.motionName
     settings.anchor = root.anchorName
     settings.idleMotion = root.motionName !== "calm"
+    if (/^[A-Za-z0-9._-]{1,64}$/.test(root.homeMonitor)) settings.monitor = root.homeMonitor
     root.shell.updateEntryInline(root.pluginId, settings)
   }
 
@@ -1589,19 +1595,32 @@ Item {
   }
 
   function cursorLine(line) {
-    var match = /^(-?\d{1,6}) (-?\d{1,6})$/.exec(String(line).slice(0, 32))
+    var text = String(line).trim()
+    // The layer that took the press loses it at the output edge. The helper
+    // reports the left button, and nothing else, so the drag can finish there.
+    if (text === "down") {
+      root.pointerHeld = true
+      return
+    }
+    if (text === "up") {
+      root.pointerHeld = false
+      if (root.dragging && root.dragDetached) root.endDrag()
+      return
+    }
+    var match = /^(-?\d{1,6}) (-?\d{1,6})$/.exec(text.slice(0, 32))
     if (!match) return
     root.cursorX = Number(match[1])
     root.cursorY = Number(match[2])
     root.cursorKnown = true
     root.lastMoveAt = Date.now()
     if (root.sleepHold || root.expression === "sleep") root.wake()
-    // The layer that received the press keeps the drag at input rate. Once
-    // the pointer has left that output, this helper is the position source.
     if (root.dragging && root.dragScreenName !== "") {
       var origin = Screens.byName(root.screenList, root.dragScreenName)
-      if (!origin || !Screens.contains(origin, root.cursorX, root.cursorY))
+      if (root.dragDetached || !origin || !Screens.contains(origin, root.cursorX, root.cursorY)) {
+        root.dragDetached = true
         root.dragGlobal(root.cursorX, root.cursorY)
+        if (!root.pointerHeld) root.endDrag()
+      }
     }
     root.updateGazeTarget()
     gazeFrames.running = true
@@ -1965,6 +1984,8 @@ Item {
   // tracks at the input rate rather than the cursor helper's 30Hz polls.
   function beginDrag(px, py) {
     root.ghost = false
+    root.dragDetached = false
+    root.pointerHeld = true
     root.carryScreen = root.activeScreen
     root.dragScreenName = root.carryScreen ? root.carryScreen.name : ""
     root.dragGrabX = px - root.stageScreenX
@@ -1981,9 +2002,7 @@ Item {
   }
 
   function dragGlobal(gx, gy) {
-    var dest = null
-    if (root.monitorSetting !== "") dest = Screens.byName(root.screenList, root.monitorSetting)
-    if (!dest) dest = Screens.atPoint(root.screenList, gx, gy)
+    var dest = Screens.atPoint(root.screenList, gx, gy)
     if (!dest) dest = Screens.byName(root.screenList, root.dragScreenName)
     if (!dest) return
     root.carryScreen = dest
@@ -2013,10 +2032,23 @@ Item {
 
   function endDrag() {
     landAnim.restart()
+    if (root.activeScreen && root.activeScreen.name) root.homeMonitor = root.activeScreen.name
     root.dragging = false
+    root.dragDetached = false
     root.dragScreenName = ""
     root.carryScreen = null
     root.saveSettings()
+  }
+
+  function latchMonitor() {
+    if (root.homeMonitor !== "" || !Hyprland.focusedMonitor) return
+    var name = String(Hyprland.focusedMonitor.name || "")
+    if (/^[A-Za-z0-9._-]{1,64}$/.test(name)) root.homeMonitor = name
+  }
+
+  Connections {
+    target: Hyprland
+    function onFocusedMonitorChanged() { root.latchMonitor() }
   }
 
   function claimHost(panel, markItem, stageItem, bubble) {
@@ -2038,11 +2070,6 @@ Item {
     }
   }
 
-  readonly property string monitorSetting: {
-    var value = String(root.setting("monitor", ""))
-    return /^[A-Za-z0-9._-]{1,64}$/.test(value) ? value : ""
-  }
-
   readonly property var screenList: {
     var raw = Quickshell.screens
     var out = []
@@ -2059,10 +2086,8 @@ Item {
 
   readonly property var activeScreen: Screens.choose(
     root.screenList,
-    root.monitorSetting,
-    root.dragging ? null : root.lockedScreen,
+    root.homeMonitor,
     root.dragging ? root.carryScreen : null,
-    { known: root.cursorKnown, x: root.cursorX, y: root.cursorY },
     root.focusedMonitorData
   )
 
@@ -2075,11 +2100,6 @@ Item {
   }
 
   readonly property var targetScreen: root.shellScreen(root.activeScreen)
-
-  onSurfacesOpenChanged: {
-    if (root.surfacesOpen) root.lockedScreen = root.activeScreen
-    else root.lockedScreen = null
-  }
 
   IpcHandler {
     target: "io.github.tcballard.grokbot-desktop"
@@ -2180,10 +2200,12 @@ Item {
     // usable while a reply is on screen. The right-click menu is the one
     // modal surface: while it is open a click anywhere closes it.
     mask: Region {
-      x: win.activeHere && root.menuOpen ? 0 : stage.x
-      y: win.activeHere && root.menuOpen ? 0 : stage.y
-      width: !win.activeHere ? 0 : (root.menuOpen ? win.width : (root.ghost || !root.present ? 0 : stage.width))
-      height: !win.activeHere ? 0 : (root.menuOpen ? win.height : (root.ghost || !root.present ? 0 : stage.height))
+      // While dragging, the grab has to survive all the way to the output
+      // edge. A mask the size of the mark cancels the press there.
+      x: (root.dragging && (win.holdingDrag || win.activeHere)) || (win.activeHere && root.menuOpen) ? 0 : stage.x
+      y: (root.dragging && (win.holdingDrag || win.activeHere)) || (win.activeHere && root.menuOpen) ? 0 : stage.y
+      width: !win.activeHere && !(root.dragging && win.holdingDrag) ? 0 : ((root.dragging && (win.holdingDrag || win.activeHere)) || root.menuOpen ? win.width : (root.ghost || !root.present ? 0 : stage.width))
+      height: !win.activeHere && !(root.dragging && win.holdingDrag) ? 0 : ((root.dragging && (win.holdingDrag || win.activeHere)) || root.menuOpen ? win.height : (root.ghost || !root.present ? 0 : stage.height))
       Region {
         x: bubblePanel.x
         y: bubblePanel.y
@@ -2506,7 +2528,12 @@ Item {
           }
         }
         onCanceled: function () {
-          if (root.dragging) root.endDrag()
+          // Leaving the output cancels the press. The drag continues from
+          // the cursor helper until the left button comes up.
+          if (root.dragging) {
+            root.dragDetached = true
+            if (!root.pointerHeld) root.endDrag()
+          }
         }
         onContainsMouseChanged: {
           root.hovering = containsMouse

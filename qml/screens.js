@@ -40,25 +40,17 @@ function snapshot(screen) {
   }
 }
 
-// pin: output name, or "".
-// locked: screen kept while the bubble or menu is open.
-// carry: screen the pointer was dragged onto.
-// pointer: { known, x, y }. focused: { name, x, y } or null.
-function choose(screens, pin, locked, carry, pointer, focused) {
-  var pinned = byName(screens, pin)
-  if (pinned) return pinned
+// carry: screen the pointer is being dragged onto. It wins over pin so a
+// drag can leave the output the mark was sitting on.
+// pin: output name the mark stays on after a drop, or "".
+// focused: { name, x, y } or null, used only when nothing is pinned.
+function choose(screens, pin, carry, focused) {
   if (carry && carry.name) {
     var carried = byName(screens, carry.name)
     if (carried) return carried
   }
-  if (locked && locked.name) {
-    var stayed = byName(screens, locked.name)
-    if (stayed) return stayed
-  }
-  if (pointer && pointer.known) {
-    var under = atPoint(screens, pointer.x, pointer.y)
-    if (under) return under
-  }
+  var pinned = byName(screens, pin)
+  if (pinned) return pinned
   if (focused) {
     var named = byName(screens, focused.name)
     if (named) return named

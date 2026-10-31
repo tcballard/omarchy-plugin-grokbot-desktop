@@ -1305,37 +1305,34 @@ test('the window covers the output and never resizes, so the mark never moves', 
   assert.match(qmlFunction(main, 'stageRect'), /x: screen\.x \+ point\.x/)
 })
 
-test('the companion follows the pointer onto the next monitor', () => {
+test('a drag past the edge lands on the next monitor and stays there', () => {
   const screens = loadLibrary('qml/screens.js')
   const desk = [
     { name: 'DP-1', x: 0, y: 0, width: 1920, height: 1080 },
     { name: 'HDMI-A-1', x: 1920, y: 0, width: 1920, height: 1080 }
   ]
   const focused = { name: 'HDMI-A-1', x: 1920, y: 0 }
-  const onRight = screens.choose(desk, '', null, null, { known: true, x: 3226, y: 449 }, focused)
-  const onLeft = screens.choose(desk, '', null, null, { known: true, x: 100, y: 100 }, focused)
-  assert.equal(onRight.name, 'HDMI-A-1')
-  assert.equal(onLeft.name, 'DP-1')
-  // A shared edge belongs to the output that starts there.
+  // Sitting on DP-1 does not follow the pointer onto HDMI-A-1.
+  assert.equal(screens.choose(desk, 'DP-1', null, focused).name, 'DP-1')
+  // The drag's destination wins over the monitor it started on.
+  assert.equal(screens.choose(desk, 'DP-1', desk[1], focused).name, 'HDMI-A-1')
   assert.equal(screens.atPoint(desk, 1920, 10).name, 'HDMI-A-1')
   assert.equal(screens.atPoint(desk, 1919, 10).name, 'DP-1')
-  // An output to the left of the origin is still found.
   const shifted = [{ name: 'left', x: -1920, y: 0, width: 1920, height: 1080 }].concat(desk)
   assert.equal(screens.atPoint(shifted, -10, 20).name, 'left')
-  // Pin and an open bubble stay put. A drag onto the other output wins over the bubble lock.
-  assert.equal(screens.choose(desk, 'DP-1', null, null, { known: true, x: 3226, y: 449 }, focused).name, 'DP-1')
-  assert.equal(screens.choose(desk, '', desk[0], null, { known: true, x: 3226, y: 449 }, focused).name, 'DP-1')
-  assert.equal(screens.choose(desk, '', desk[0], desk[1], { known: true, x: 3226, y: 449 }, focused).name, 'HDMI-A-1')
-  // Before the pointer is known, use the focused output, then the first one.
-  assert.equal(screens.choose(desk, '', null, null, { known: false, x: 0, y: 0 }, focused).name, 'HDMI-A-1')
-  assert.equal(screens.choose(desk, '', null, null, { known: false, x: 0, y: 0 }, null).name, 'DP-1')
-  // Dropping on the right output keeps the grab point under the pointer.
+  assert.equal(screens.choose(desk, '', null, focused).name, 'HDMI-A-1')
+  assert.equal(screens.choose(desk, '', null, null).name, 'DP-1')
   const placed = screens.place(desk[1], true, true, 100, 80, 10, 10, 2000, 500)
   assert.equal(placed.x, 1750)
   assert.equal(placed.y, 510)
   assert.match(main, /Variants \{\s*id: outputWindows\s*model: Quickshell\.screens/)
-  assert.match(main, /screen: modelData/)
   assert.match(main, /activeHere \|\| holdingDrag/)
+  assert.match(qmlFunction(main, 'endDrag'), /root\.homeMonitor = root\.activeScreen\.name/)
+  const cancel = main.slice(main.indexOf('onCanceled:'), main.indexOf('onCanceled:') + 500)
+  assert.match(cancel, /dragDetached = true/)
+  assert.match(cancel, /if \(!root\.pointerHeld\) root\.endDrag\(\)/)
+  const buttons = runPython('bin/grokbot-cursor', ['--self-test'])
+  assert.equal(buttons.status, 0, buttons.stderr)
 })
 
 test('Hyprland does not animate the window growing to the output and back', () => {
