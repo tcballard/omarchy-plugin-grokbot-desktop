@@ -1109,7 +1109,7 @@ test('the mark answers hover and lifts while dragged', () => {
   assert.match(main, /property real hoverScale: root\.hovering && !root\.dragging \? 1\.04 : 1/)
   assert.match(main, /root\.dragLift \* 14/)
   assert.match(qmlFunction(main, 'endDrag'), /landAnim\.restart\(\)/)
-  assert.match(qmlFunction(main, 'dragMove'), /dragTiltTarget =/)
+  assert.match(qmlFunction(main, 'dragGlobal'), /dragTiltTarget =/)
 })
 
 test('dodge fades with distance and visibly fades back during the dwell', () => {
@@ -1301,8 +1301,41 @@ test('the window covers the output and never resizes, so the mark never moves', 
   }
   // Stage, cursor, and drag all use output coordinates directly.
   assert.match(main, /x: root\.stageScreenX\n\s*y: root\.stageScreenY/)
-  assert.match(qmlFunction(main, 'updateGazeTarget'), /root\.cursorX - \(win\.screen\.x \+ local\.x\)/)
-  assert.match(qmlFunction(main, 'stageRect'), /x: win\.screen\.x \+ point\.x/)
+  assert.match(qmlFunction(main, 'updateGazeTarget'), /root\.cursorX - \(screen\.x \+ local\.x\)/)
+  assert.match(qmlFunction(main, 'stageRect'), /x: screen\.x \+ point\.x/)
+})
+
+test('the companion follows the pointer onto the next monitor', () => {
+  const screens = loadLibrary('qml/screens.js')
+  const desk = [
+    { name: 'DP-1', x: 0, y: 0, width: 1920, height: 1080 },
+    { name: 'HDMI-A-1', x: 1920, y: 0, width: 1920, height: 1080 }
+  ]
+  const focused = { name: 'HDMI-A-1', x: 1920, y: 0 }
+  const onRight = screens.choose(desk, '', null, null, { known: true, x: 3226, y: 449 }, focused)
+  const onLeft = screens.choose(desk, '', null, null, { known: true, x: 100, y: 100 }, focused)
+  assert.equal(onRight.name, 'HDMI-A-1')
+  assert.equal(onLeft.name, 'DP-1')
+  // A shared edge belongs to the output that starts there.
+  assert.equal(screens.atPoint(desk, 1920, 10).name, 'HDMI-A-1')
+  assert.equal(screens.atPoint(desk, 1919, 10).name, 'DP-1')
+  // An output to the left of the origin is still found.
+  const shifted = [{ name: 'left', x: -1920, y: 0, width: 1920, height: 1080 }].concat(desk)
+  assert.equal(screens.atPoint(shifted, -10, 20).name, 'left')
+  // Pin and an open bubble stay put. A drag onto the other output wins over the bubble lock.
+  assert.equal(screens.choose(desk, 'DP-1', null, null, { known: true, x: 3226, y: 449 }, focused).name, 'DP-1')
+  assert.equal(screens.choose(desk, '', desk[0], null, { known: true, x: 3226, y: 449 }, focused).name, 'DP-1')
+  assert.equal(screens.choose(desk, '', desk[0], desk[1], { known: true, x: 3226, y: 449 }, focused).name, 'HDMI-A-1')
+  // Before the pointer is known, use the focused output, then the first one.
+  assert.equal(screens.choose(desk, '', null, null, { known: false, x: 0, y: 0 }, focused).name, 'HDMI-A-1')
+  assert.equal(screens.choose(desk, '', null, null, { known: false, x: 0, y: 0 }, null).name, 'DP-1')
+  // Dropping on the right output keeps the grab point under the pointer.
+  const placed = screens.place(desk[1], true, true, 100, 80, 10, 10, 2000, 500)
+  assert.equal(placed.x, 1750)
+  assert.equal(placed.y, 510)
+  assert.match(main, /Variants \{\s*id: outputWindows\s*model: Quickshell\.screens/)
+  assert.match(main, /screen: modelData/)
+  assert.match(main, /activeHere \|\| holdingDrag/)
 })
 
 test('Hyprland does not animate the window growing to the output and back', () => {
@@ -1773,7 +1806,7 @@ test('the composer attaches pasted images, chosen files, and dropped files', () 
   assert.match(panel, /\{ label: "Paste image", mode: "paste" \},\s*\{ label: "Choose a file…", mode: "choose" \}/)
   assert.doesNotMatch(panel + main, /screenshot/i)
   assert.match(panel, /if \(app\.attach\("paste", "quiet"\) !== "ok"\) promptField\.paste\(\)/)
-  assert.match(main, /if \(root\.attachQuiet && bubblePanel\) bubblePanel\.pasteText\(\)\n\s*else root\.attachNote = "There's no image on the clipboard\."/)
+  assert.match(main, /if \(root\.attachQuiet && root\.hostBubble\) root\.hostBubble\.pasteText\(\)\n\s*else root\.attachNote = "There's no image on the clipboard\."/)
   // Omarchy's own portal chooser picks the files; the card steps aside meanwhile.
   assert.match(main, /exec omarchy-file-select --title 'Attach to your question' --multiple/)
   assert.match(main, /code === 127\) root\.attachNote = "Choosing files needs omarchy-file-select, from a newer Omarchy\."/)
