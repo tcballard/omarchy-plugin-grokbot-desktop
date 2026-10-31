@@ -11,8 +11,8 @@ webhookHeader; the value is read from ~/.config/omarchy/grokbot-webhook-header.k
 under the same rules as the key file.
 
 Agent mode writes the prompt to the Omarchy default agent (or a configured
-command) on stdin, with a 64 KiB stdout ceiling. Grok takes it as the value
-of -p instead, its only headless form. An agent Omarchy has not installed
+command) on stdin, with a 64 KiB stdout ceiling. Grok reads that pipe through
+--prompt-file /dev/stdin. An agent Omarchy has not installed
 yet is reported, not installed. The shell launches this
 file as /usr/bin/python3 -I so site and user environment modules are ignored.
 
@@ -74,16 +74,11 @@ AGENT_ARGV = {
     "gemini": ["gemini"],
     "copilot": ["copilot"],
     "crush": ["crush", "run"],
-    "grok": ["grok", "--no-auto-update", "-p"],
+    "grok": ["grok", "--no-auto-update", "--prompt-file", "/dev/stdin"],
     "pi": ["pi"],
     "omp": ["omp"],
     "claude": ["claude", "-p"],
 }
-
-# Agents that take the prompt as their last argument rather than on stdin.
-# Grok's headless mode is `grok -p "<prompt>"`, and its docs do not offer a
-# stdin form.
-PROMPT_AS_ARGUMENT = {"grok"}
 
 # Omarchy's lazy installer leaves a small script in ~/.local/bin that installs
 # the agent with mise on first run. An ask must not install software, so such
@@ -867,8 +862,6 @@ def main(argv=None):
         for path in attachments:
             if is_image(path):
                 argv = [*argv, IMAGE_FLAGS[agent], path]
-    if not custom and agent in PROMPT_AS_ARGUMENT:
-        argv, text = [*argv, text], ""
     # With images, the agent works in their directory so its file tools
     # can open them without reaching outside it.
     cwd = attachment_dir() if attachments else None
