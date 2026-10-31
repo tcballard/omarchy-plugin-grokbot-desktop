@@ -1262,6 +1262,68 @@ test('pins follow use and the persistent badge names the selected bot', () => {
   assert.match(qmlFunction(main, 'saveSettings'), /settings\.recentBots = root\.recentBots/)
 })
 
+test('a bot saved in shell.json is restored, not replaced by the bundled roster', () => {
+  // The watched roster loads asynchronously, so startup reads the settings first
+  // and then settles on the bundled roster, which knows nothing about the bots
+  // synced here. The saved bot must survive that and win when the roster lands.
+  const source = ['parseBots', 'applyBots', 'settleChosenBot', 'findBot', 'primaryBot']
+    .map((name) => qmlFunction(main, name)).join('\n')
+  const bundledBots = { text: () => read('data/bots.json') }
+  const roster = JSON.stringify({ bots: [
+    { id: 'a-first', name: 'Bookmark Digest', shortName: 'Bookmark Digest' },
+    { id: 'z-main', name: 'Max', shortName: 'Max' },
+  ] })
+  const start = (saved) => {
+    const root = {
+      bots: [], chosenBotId: saved, rosterRead: false, ready: false,
+      defaultBotId: 'e0195a7d-f804-4688-9191-e2cf3574a6d1',
+      safeImage: () => '', retargetAppearance() {},
+    }
+    const context = vm.createContext({ root, bundledBots })
+    vm.runInContext(source, context)
+    // The QML calls these through `root.`, so lend them back to the object.
+    for (const name of ['parseBots', 'applyBots', 'settleChosenBot', 'findBot', 'primaryBot']) {
+      root[name] = context[name]
+    }
+    return { root, applyBots: context.applyBots, settleChosenBot: context.settleChosenBot }
+  }
+
+  // Startup: settings read, bundled roster in place, watched roster still loading.
+  const late = start('z-main')
+  late.applyBots('')
+  assert.equal(late.root.chosenBotId, 'z-main', 'the saved bot survives the bundled roster')
+  // The watched roster arrives: the saved bot is in it and stays selected.
+  late.root.rosterRead = true
+  late.applyBots(roster)
+  assert.equal(late.root.chosenBotId, 'z-main', 'the saved bot wins over the first alphabetically')
+
+  // The roster loads before the settings do: settling picks the primary then the
+  // first bot, and reading the saved bot afterwards restores it.
+  const early = start('z-main')
+  early.root.chosenBotId = early.root.defaultBotId
+  early.root.rosterRead = true
+  early.applyBots(roster)
+  assert.equal(early.root.chosenBotId, 'a-first')
+  early.root.chosenBotId = 'z-main'
+  early.settleChosenBot()
+  assert.equal(early.root.chosenBotId, 'z-main')
+
+  // A bot that left the roster still falls back the way Grok Bot does.
+  const gone = start('gone-id')
+  gone.root.rosterRead = true
+  gone.applyBots(roster)
+  assert.equal(gone.root.chosenBotId, 'a-first')
+
+  // The wiring: settling waits for the watched roster, and loading never resets
+  // the chosen bot to the built-in default on its own.
+  assert.match(main, /onLoaded: \{\s*root\.rosterRead = true\s*root\.applyBots\(text\(\)\)/)
+  assert.match(main, /onLoadFailed: \{\s*root\.rosterRead = true\s*root\.applyBots\(""\)/)
+  assert.match(qmlFunction(main, 'applyBots'), /if \(root\.rosterRead\) root\.settleChosenBot\(\)/)
+  const load = qmlFunction(main, 'loadSettings')
+  assert.match(load, /if \(root\.rosterRead\) root\.settleChosenBot\(\)/)
+  assert.doesNotMatch(load, /chosenBotId = root\.defaultBotId/)
+})
+
 test('the right-click menu opens toward the screen from any corner', () => {
   const menu = main.slice(main.indexOf('id: menuCard'), main.indexOf('id: menuCard') + 1600)
   assert.match(menu, /root\.anchorFromRight \? stage\.x - width - 8 : stage\.x \+ stage\.width \+ 8/)
