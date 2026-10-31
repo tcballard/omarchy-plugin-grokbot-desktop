@@ -348,9 +348,15 @@ Item {
     path: root.botsPath
     watchChanges: true
     printErrors: false
-    onLoaded: root.applyBots(text())
+    onLoaded: {
+      root.rosterRead = true
+      root.applyBots(text())
+    }
     onFileChanged: reload()
-    onLoadFailed: root.applyBots("")
+    onLoadFailed: {
+      root.rosterRead = true
+      root.applyBots("")
+    }
   }
 
   FileView {
@@ -433,16 +439,26 @@ Item {
     return out
   }
 
+  // True once the watched roster has been read, or found missing. Until then
+  // `bots` holds the bundled roster, which knows nothing about the bots synced
+  // to this machine: the bot saved in shell.json must not be judged against it.
+  property bool rosterRead: false
+
   function applyBots(text) {
     var parsed = root.parseBots(text)
     if (parsed.length === 0) parsed = root.parseBots(bundledBots.text())
     if (parsed.length === 0) return
     root.bots = parsed
-    if (!root.findBot(root.chosenBotId)) {
-      var primary = root.primaryBot()
-      root.chosenBotId = primary ? primary.id : root.defaultBotId
-    }
+    if (root.rosterRead) root.settleChosenBot()
     if (root.ready) root.retargetAppearance(true)
+  }
+
+  // Keeps the bot chosen here while it is in the roster; otherwise the primary
+  // bot, then the first, as Grok Bot itself falls back.
+  function settleChosenBot() {
+    if (root.findBot(root.chosenBotId)) return
+    var primary = root.primaryBot()
+    root.chosenBotId = primary ? primary.id : root.defaultBotId
   }
 
   function findBot(id) {
@@ -607,7 +623,7 @@ Item {
     root.posRight = root.settingInt("marginX", 24, 0, 4000)
     root.posBottom = root.settingInt("marginY", 24, 0, 4000)
     if (root.bots.length === 0) root.applyBots("")
-    if (!root.findBot(root.chosenBotId)) root.chosenBotId = root.defaultBotId
+    if (root.rosterRead) root.settleChosenBot()
     root.ready = true
     root.retargetAppearance(false)
     root.lastMoveAt = Date.now()
