@@ -745,6 +745,32 @@ Item {
     root.shell.updateEntryInline(root.pluginId, settings)
   }
 
+  // A drop writes the output and the two margins onto the existing entry.
+  // Every other key is copied from the file, so a drag cannot rewrite the
+  // bot, the size, or the motion.
+  function saveDraggedPosition(settled) {
+    if (!settled || !root.shell || typeof root.shell.updateEntryInline !== "function") return
+    userConfig.reload()
+    if (typeof userConfig.waitForJob === "function") userConfig.waitForJob()
+    var entry = root.ownEntry()
+    var settings = {}
+    var key
+    var known = false
+    for (key in entry) {
+      if (key === "id") continue
+      settings[key] = entry[key]
+      known = true
+    }
+    if (!known) {
+      root.saveSettings()
+      return
+    }
+    settings.marginX = settled.marginX
+    settings.marginY = settled.marginY
+    settings.monitor = settled.monitor
+    root.shell.updateEntryInline(root.pluginId, settings)
+  }
+
   Timer {
     id: saveTimer
     interval: 500
@@ -2032,12 +2058,18 @@ Item {
 
   function endDrag() {
     landAnim.restart()
-    if (root.activeScreen && root.activeScreen.name) root.homeMonitor = root.activeScreen.name
+    var screen = root.carryScreen || root.activeScreen
+    var settled = Screens.settled(screen && screen.name, root.posRight, root.posBottom)
+    if (settled) {
+      root.homeMonitor = settled.monitor
+      root.posRight = settled.marginX
+      root.posBottom = settled.marginY
+    }
     root.dragging = false
     root.dragDetached = false
     root.dragScreenName = ""
     root.carryScreen = null
-    root.saveSettings()
+    if (settled) root.saveDraggedPosition(settled)
   }
 
   function latchMonitor() {

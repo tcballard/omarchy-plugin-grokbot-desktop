@@ -72,3 +72,17 @@ function place(screen, fromRight, fromBottom, stageW, stageH, grabX, grabY, gx, 
     y: Math.round(fromBottom ? screen.height - stageH - stageY : stageY)
   }
 }
+
+// The drop written to this plugin's shell entry: the output name and the
+// corner margins, as integers. Nothing else about the companion is included.
+function settled(name, marginX, marginY) {
+  var monitor = String(name || "")
+  if (!/^[A-Za-z0-9._-]{1,64}$/.test(monitor)) return null
+  function clamp(value) {
+    var n = Math.round(Number(value) || 0)
+    if (n < 0) return 0
+    if (n > 4000) return 4000
+    return n
+  }
+  return { monitor: monitor, marginX: clamp(marginX), marginY: clamp(marginY) }
+}

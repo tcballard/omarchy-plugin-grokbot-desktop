@@ -29,7 +29,7 @@ Before a public release, document the exact verified install command and the ins
 - Theme changes update an `omarchy` colour without a shell restart beyond what the host already does.
 - With the bubble open, clicks elsewhere on the desktop reach the window underneath, and Esc steps back from the menu to the appearance page to closing the bubble.
 - Opening the bubble, starting a drag, and closing the bubble again leave the mark exactly where it was: the window covers the output and never resizes.
-- With two monitors, drag the mark past the edge: it crosses, and after release it stays on that monitor while the pointer moves back. `monitor` in this plugin's shell entry is that output.
+- With two monitors, drag the mark past the edge: it crosses, and after release it stays on that monitor while the pointer moves back. This plugin's shell entry then has that output in `monitor` and the drop in `marginX` and `marginY`, with the other keys unchanged. A shell restart puts the mark back there.
 - `omarchy toggle animations` stops the breathing and bob and makes morphs and panel changes instant.
 - The mark and eyes stay crisp on a 1.5× or 2× output.
 - The mark hides while Omarchy's screensaver runs and returns after it.
