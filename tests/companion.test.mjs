@@ -1109,7 +1109,7 @@ test('the mark answers hover and lifts while dragged', () => {
   assert.match(main, /property real hoverScale: root\.hovering && !root\.dragging \? 1\.04 : 1/)
   assert.match(main, /root\.dragLift \* 14/)
   assert.match(qmlFunction(main, 'endDrag'), /landAnim\.restart\(\)/)
-  assert.match(qmlFunction(main, 'dragMove'), /dragTiltTarget =/)
+  assert.match(qmlFunction(main, 'dragGlobal'), /dragTiltTarget =/)
 })
 
 test('dodge fades with distance and visibly fades back during the dwell', () => {
@@ -1301,8 +1301,56 @@ test('the window covers the output and never resizes, so the mark never moves', 
   }
   // Stage, cursor, and drag all use output coordinates directly.
   assert.match(main, /x: root\.stageScreenX\n\s*y: root\.stageScreenY/)
-  assert.match(qmlFunction(main, 'updateGazeTarget'), /root\.cursorX - \(win\.screen\.x \+ local\.x\)/)
-  assert.match(qmlFunction(main, 'stageRect'), /x: win\.screen\.x \+ point\.x/)
+  assert.match(qmlFunction(main, 'updateGazeTarget'), /root\.cursorX - \(screen\.x \+ local\.x\)/)
+  assert.match(qmlFunction(main, 'stageRect'), /x: screen\.x \+ point\.x/)
+})
+
+test('a drag past the edge lands on the next monitor and stays there', () => {
+  const screens = loadLibrary('qml/screens.js')
+  const desk = [
+    { name: 'DP-1', x: 0, y: 0, width: 1920, height: 1080 },
+    { name: 'HDMI-A-1', x: 1920, y: 0, width: 1920, height: 1080 }
+  ]
+  const focused = { name: 'HDMI-A-1', x: 1920, y: 0 }
+  // Sitting on DP-1 does not follow the pointer onto HDMI-A-1.
+  assert.equal(screens.choose(desk, 'DP-1', null, focused).name, 'DP-1')
+  // The drag's destination wins over the monitor it started on.
+  assert.equal(screens.choose(desk, 'DP-1', desk[1], focused).name, 'HDMI-A-1')
+  assert.equal(screens.atPoint(desk, 1920, 10).name, 'HDMI-A-1')
+  assert.equal(screens.atPoint(desk, 1919, 10).name, 'DP-1')
+  const shifted = [{ name: 'left', x: -1920, y: 0, width: 1920, height: 1080 }].concat(desk)
+  assert.equal(screens.atPoint(shifted, -10, 20).name, 'left')
+  assert.equal(screens.choose(desk, '', null, focused).name, 'HDMI-A-1')
+  assert.equal(screens.choose(desk, '', null, null).name, 'DP-1')
+  const placed = screens.place(desk[1], true, true, 100, 80, 10, 10, 2000, 500)
+  assert.equal(placed.x, 1750)
+  assert.equal(placed.y, 510)
+  // The saved drop is that output and those margins, and nothing else.
+  const saved = screens.settled('HDMI-A-1', placed.x, placed.y)
+  assert.equal(saved.monitor, 'HDMI-A-1')
+  assert.equal(saved.marginX, 1750)
+  assert.equal(saved.marginY, 510)
+  const clamped = screens.settled('HDMI-A-1', -4.2, 4001.6)
+  assert.equal(clamped.marginX, 0)
+  assert.equal(clamped.marginY, 4000)
+  assert.equal(screens.settled('../etc', 10, 10), null)
+  assert.match(main, /Variants \{\s*id: outputWindows\s*model: Quickshell\.screens/)
+  assert.match(main, /activeHere \|\| holdingDrag/)
+  const end = qmlFunction(main, 'endDrag')
+  assert.match(end, /Screens\.settled\(screen && screen\.name, root\.posRight, root\.posBottom\)/)
+  assert.match(end, /root\.saveDraggedPosition\(settled\)/)
+  assert.doesNotMatch(end, /saveSettings\(\)/)
+  const save = qmlFunction(main, 'saveDraggedPosition')
+  assert.match(save, /userConfig\.waitForJob\(\)/)
+  assert.match(save, /settings\.marginX = settled\.marginX/)
+  assert.match(save, /settings\.marginY = settled\.marginY/)
+  assert.match(save, /settings\.monitor = settled\.monitor/)
+  assert.doesNotMatch(save, /settings\.botId/)
+  const cancel = main.slice(main.indexOf('onCanceled:'), main.indexOf('onCanceled:') + 500)
+  assert.match(cancel, /dragDetached = true/)
+  assert.match(cancel, /if \(!root\.pointerHeld\) root\.endDrag\(\)/)
+  const buttons = runPython('bin/grokbot-cursor', ['--self-test'])
+  assert.equal(buttons.status, 0, buttons.stderr)
 })
 
 test('Hyprland does not animate the window growing to the output and back', () => {
@@ -1773,7 +1821,7 @@ test('the composer attaches pasted images, chosen files, and dropped files', () 
   assert.match(panel, /\{ label: "Paste image", mode: "paste" \},\s*\{ label: "Choose a file…", mode: "choose" \}/)
   assert.doesNotMatch(panel + main, /screenshot/i)
   assert.match(panel, /if \(app\.attach\("paste", "quiet"\) !== "ok"\) promptField\.paste\(\)/)
-  assert.match(main, /if \(root\.attachQuiet && bubblePanel\) bubblePanel\.pasteText\(\)\n\s*else root\.attachNote = "There's no image on the clipboard\."/)
+  assert.match(main, /if \(root\.attachQuiet && root\.hostBubble\) root\.hostBubble\.pasteText\(\)\n\s*else root\.attachNote = "There's no image on the clipboard\."/)
   // Omarchy's own portal chooser picks the files; the card steps aside meanwhile.
   assert.match(main, /exec omarchy-file-select --title 'Attach to your question' --multiple/)
   assert.match(main, /code === 127\) root\.attachNote = "Choosing files needs omarchy-file-select, from a newer Omarchy\."/)

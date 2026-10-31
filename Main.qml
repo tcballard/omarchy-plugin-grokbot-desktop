@@ -10,6 +10,7 @@ import "qml/shapes.js" as Shapes
 import "qml/palette.js" as Palette
 import "qml/dictation.js" as Dictation
 import "qml/theme.js" as Theme
+import "qml/screens.js" as Screens
 
 // Grok Bot desktop companion. A service inside omarchy-shell: a transparent
 // layer-shell window, click-through except for the mark (and the bubble or
@@ -147,7 +148,7 @@ Item {
   Behavior on dragLift { NumberAnimation { duration: root.ms(180); easing.type: Easing.OutCubic } }
   property real dragTilt: 0
   property real dragTiltTarget: 0
-  property real lastDragX: 0
+  property real lastDragGlobalX: 0
   property real lastDragAt: 0
   property real idleY: 0
   property real hopY: 0
@@ -209,11 +210,19 @@ Item {
   property string themeForeground: ""
   property string themeBackground: ""
   property real dwellSince: 0
-  property real dragCursorX: 0
-  property real dragCursorY: 0
-  property int dragRight: 0
-  property int dragBottom: 0
-  property string startMonitor: ""
+  property real dragGrabX: 0
+  property real dragGrabY: 0
+  property string dragScreenName: ""
+  // Output the mark is crossing onto, and the one kept while the bubble or
+  // menu is open. Plain { name, x, y, width, height }, not a ShellScreen.
+  property var carryScreen: null
+  property string homeMonitor: ""
+  property bool dragDetached: false
+  property bool pointerHeld: false
+  property var hostWin: null
+  property var hostMark: null
+  property var hostStage: null
+  property var hostBubble: null
 
   readonly property color accent: root.themeAccent !== "" ? root.themeAccent : Commons.Color.accent
   readonly property color ink: root.themeForeground !== "" ? root.themeForeground : Commons.Color.foreground
@@ -294,10 +303,10 @@ Item {
 
   readonly property bool surfacesOpen: root.bubbleOpen || root.menuOpen
 
-  // Mark placement in output coordinates. The window covers the output, so
-  // these are also window coordinates.
-  readonly property int screenW: win.screen ? win.screen.width : 0
-  readonly property int screenH: win.screen ? win.screen.height : 0
+  // Mark placement in the active output's coordinates. Each layer covers
+  // its own output, so these are also that window's coordinates.
+  readonly property int screenW: root.activeScreen ? root.activeScreen.width : 0
+  readonly property int screenH: root.activeScreen ? root.activeScreen.height : 0
   readonly property real stageW: root.shownSize + 24
   readonly property real stageH: root.shownSize + 52
   readonly property real stageScreenX: {
@@ -567,7 +576,14 @@ Item {
 
   function startMorph(nextShape, nextColor) {
     // The picker-pose contour and eyes, before the desktop mark turns its
-    // face: the header and other plain marks share this snapshot.
+    // face: the header and other plain marks share this snapshot. Before the
+    // layer for this output exists, fall back to the resting shape.
+    var mark = root.hostMark || {
+      blended: { points: Shapes.get(root.shapeTo).points, eyes: Shapes.eyes(root.shapeTo) },
+      stemLevel: 0,
+      fillColor: root.fillFrom,
+      eyeColor: root.eyeFrom
+    }
     var face = mark.blended.points
     var eyesNow = mark.blended.eyes
     root.stemFrom = mark.stemLevel
@@ -604,6 +620,8 @@ Item {
     root.anchorName = anchor === "bl" || anchor === "tr" || anchor === "tl" ? anchor : "br"
     root.sizeName = String(root.setting("size", "medium"))
     root.sizePx = root.settingInt("sizePx", 128, 48, 320)
+    var monitor = String(root.setting("monitor", ""))
+    if (/^[A-Za-z0-9._-]{1,64}$/.test(monitor)) root.homeMonitor = monitor
     root.posRight = root.settingInt("marginX", 24, 0, 4000)
     root.posBottom = root.settingInt("marginY", 24, 0, 4000)
     if (root.bots.length === 0) root.applyBots("")
@@ -723,6 +741,33 @@ Item {
     settings.motion = root.motionName
     settings.anchor = root.anchorName
     settings.idleMotion = root.motionName !== "calm"
+    if (/^[A-Za-z0-9._-]{1,64}$/.test(root.homeMonitor)) settings.monitor = root.homeMonitor
+    root.shell.updateEntryInline(root.pluginId, settings)
+  }
+
+  // A drop writes the output and the two margins onto the existing entry.
+  // Every other key is copied from the file, so a drag cannot rewrite the
+  // bot, the size, or the motion.
+  function saveDraggedPosition(settled) {
+    if (!settled || !root.shell || typeof root.shell.updateEntryInline !== "function") return
+    userConfig.reload()
+    if (typeof userConfig.waitForJob === "function") userConfig.waitForJob()
+    var entry = root.ownEntry()
+    var settings = {}
+    var key
+    var known = false
+    for (key in entry) {
+      if (key === "id") continue
+      settings[key] = entry[key]
+      known = true
+    }
+    if (!known) {
+      root.saveSettings()
+      return
+    }
+    settings.marginX = settled.marginX
+    settings.marginY = settled.marginY
+    settings.monitor = settled.monitor
     root.shell.updateEntryInline(root.pluginId, settings)
   }
 
@@ -917,7 +962,7 @@ Item {
     root.replyUnread = false
     root.menuOpen = false
     root.wake()
-    Qt.callLater(function () { if (bubblePanel) bubblePanel.focusPrompt() })
+    Qt.callLater(function () { if (root.hostBubble) root.hostBubble.focusPrompt() })
   }
 
   function closeBubble() {
@@ -1420,7 +1465,7 @@ Item {
       })
       if (saved.length > 0) root.pendingFiles = root.pendingFiles.concat(saved).slice(0, root.fileLimit)
       if (code === 4) {
-        if (root.attachQuiet && bubblePanel) bubblePanel.pasteText()
+        if (root.attachQuiet && root.hostBubble) root.hostBubble.pasteText()
         else root.attachNote = "There's no image on the clipboard."
       } else if (code !== 0 || String(attachErr.text || "").trim() !== "") {
         var reason = root.cleanText(attachErr.text, 200)
@@ -1476,7 +1521,7 @@ Item {
     root.askedFiles = root.pendingFiles
     root.pendingFiles = []
     root.attachNote = ""
-    if (bubblePanel) bubblePanel.attachMenuOpen = false
+    if (root.hostBubble) root.hostBubble.attachMenuOpen = false
     if (!root.trustedBin("/usr/bin/setpriv") || !root.trustedBin("/usr/bin/python3")) {
       root.failAsk("Couldn't find trusted setpriv and python3.")
       return "error"
@@ -1576,13 +1621,33 @@ Item {
   }
 
   function cursorLine(line) {
-    var match = /^(-?\d{1,6}) (-?\d{1,6})$/.exec(String(line).slice(0, 32))
+    var text = String(line).trim()
+    // The layer that took the press loses it at the output edge. The helper
+    // reports the left button, and nothing else, so the drag can finish there.
+    if (text === "down") {
+      root.pointerHeld = true
+      return
+    }
+    if (text === "up") {
+      root.pointerHeld = false
+      if (root.dragging && root.dragDetached) root.endDrag()
+      return
+    }
+    var match = /^(-?\d{1,6}) (-?\d{1,6})$/.exec(text.slice(0, 32))
     if (!match) return
     root.cursorX = Number(match[1])
     root.cursorY = Number(match[2])
     root.cursorKnown = true
     root.lastMoveAt = Date.now()
     if (root.sleepHold || root.expression === "sleep") root.wake()
+    if (root.dragging && root.dragScreenName !== "") {
+      var origin = Screens.byName(root.screenList, root.dragScreenName)
+      if (root.dragDetached || !origin || !Screens.contains(origin, root.cursorX, root.cursorY)) {
+        root.dragDetached = true
+        root.dragGlobal(root.cursorX, root.cursorY)
+        if (!root.pointerHeld) root.endDrag()
+      }
+    }
     root.updateGazeTarget()
     gazeFrames.running = true
     root.pointerNear = root.pointerIsNear()
@@ -1590,10 +1655,13 @@ Item {
   }
 
   function updateGazeTarget() {
-    if (!root.cursorKnown || !win.screen) return
-    var local = mark.mapToItem(win.contentItem, mark.width / 2, mark.height / 2)
-    var dx = root.cursorX - (win.screen.x + local.x)
-    var dy = root.cursorY - (win.screen.y + local.y)
+    var screen = root.activeScreen
+    var host = root.hostWin
+    var mark = root.hostMark
+    if (!root.cursorKnown || !screen || !host || !host.screen || host.screen.name !== screen.name || !mark) return
+    var local = mark.mapToItem(host.contentItem, mark.width / 2, mark.height / 2)
+    var dx = root.cursorX - (screen.x + local.x)
+    var dy = root.cursorY - (screen.y + local.y)
     var dist = Math.sqrt(dx * dx + dy * dy)
     if (dist < 1) {
       root.gazeTargetX = 0
@@ -1658,13 +1726,16 @@ Item {
   }
 
   function stageRect() {
-    if (!win.screen) return null
-    var point = stage.mapToItem(win.contentItem, 0, 0)
+    var screen = root.activeScreen
+    var host = root.hostWin
+    var item = root.hostStage
+    if (!screen || !host || !host.screen || host.screen.name !== screen.name || !item) return null
+    var point = item.mapToItem(host.contentItem, 0, 0)
     return {
-      x: win.screen.x + point.x,
-      y: win.screen.y + point.y,
-      w: stage.width,
-      h: stage.height
+      x: screen.x + point.x,
+      y: screen.y + point.y,
+      w: item.width,
+      h: item.height
     }
   }
 
@@ -1938,30 +2009,36 @@ Item {
   // Drag follows the mark's own pointer events in window coordinates, so it
   // tracks at the input rate rather than the cursor helper's 30Hz polls.
   function beginDrag(px, py) {
-    root.dragging = true
     root.ghost = false
-    root.dragCursorX = px
-    root.dragCursorY = py
-    root.dragRight = root.posRight
-    root.lastDragX = px
+    root.dragDetached = false
+    root.pointerHeld = true
+    root.carryScreen = root.activeScreen
+    root.dragScreenName = root.carryScreen ? root.carryScreen.name : ""
+    root.dragGrabX = px - root.stageScreenX
+    root.dragGrabY = py - root.stageScreenY
+    root.lastDragGlobalX = (root.carryScreen ? root.carryScreen.x : 0) + px
     root.lastDragAt = Date.now()
-    root.dragBottom = root.posBottom
+    root.dragging = true
   }
 
   function dragMove(px, py) {
-    if (!win.screen) return
-    var maxRight = Math.max(0, root.screenW - root.stageW)
-    var maxBottom = Math.max(0, root.screenH - root.stageH)
-    var dx = px - root.dragCursorX
-    var dy = py - root.dragCursorY
-    var nextX = root.anchorFromRight ? root.dragRight - dx : root.dragRight + dx
-    var nextY = root.anchorFromBottom ? root.dragBottom - dy : root.dragBottom + dy
-    root.posRight = Math.max(0, Math.min(maxRight, Math.round(nextX)))
-    root.posBottom = Math.max(0, Math.min(maxBottom, Math.round(nextY)))
+    var origin = Screens.byName(root.screenList, root.dragScreenName)
+    if (!origin) return
+    root.dragGlobal(origin.x + px, origin.y + py)
+  }
+
+  function dragGlobal(gx, gy) {
+    var dest = Screens.atPoint(root.screenList, gx, gy)
+    if (!dest) dest = Screens.byName(root.screenList, root.dragScreenName)
+    if (!dest) return
+    root.carryScreen = dest
+    var placed = Screens.place(dest, root.anchorFromRight, root.anchorFromBottom, root.stageW, root.stageH, root.dragGrabX, root.dragGrabY, gx, gy)
+    root.posRight = placed.x
+    root.posBottom = placed.y
     var now = Date.now()
     var dt = Math.max(4, now - root.lastDragAt)
-    root.dragTiltTarget = Math.max(-8, Math.min(8, (px - root.lastDragX) / dt * 4))
-    root.lastDragX = px
+    root.dragTiltTarget = Math.max(-8, Math.min(8, (gx - root.lastDragGlobalX) / dt * 4))
+    root.lastDragGlobalX = gx
     root.lastDragAt = now
   }
 
@@ -1981,13 +2058,24 @@ Item {
 
   function endDrag() {
     landAnim.restart()
+    var screen = root.carryScreen || root.activeScreen
+    var settled = Screens.settled(screen && screen.name, root.posRight, root.posBottom)
+    if (settled) {
+      root.homeMonitor = settled.monitor
+      root.posRight = settled.marginX
+      root.posBottom = settled.marginY
+    }
     root.dragging = false
-    root.saveSettings()
+    root.dragDetached = false
+    root.dragScreenName = ""
+    root.carryScreen = null
+    if (settled) root.saveDraggedPosition(settled)
   }
 
   function latchMonitor() {
-    if (root.startMonitor === "" && Hyprland.focusedMonitor)
-      root.startMonitor = String(Hyprland.focusedMonitor.name || "")
+    if (root.homeMonitor !== "" || !Hyprland.focusedMonitor) return
+    var name = String(Hyprland.focusedMonitor.name || "")
+    if (/^[A-Za-z0-9._-]{1,64}$/.test(name)) root.homeMonitor = name
   }
 
   Connections {
@@ -1995,18 +2083,55 @@ Item {
     function onFocusedMonitorChanged() { root.latchMonitor() }
   }
 
-  readonly property string monitorSetting: {
-    var value = String(root.setting("monitor", ""))
-    return /^[A-Za-z0-9._-]{1,64}$/.test(value) ? value : ""
+  function claimHost(panel, markItem, stageItem, bubble) {
+    root.hostWin = panel
+    root.hostMark = markItem
+    root.hostStage = stageItem
+    root.hostBubble = bubble
   }
 
-  readonly property var targetScreen: {
-    var screens = Quickshell.screens
-    var wanted = root.monitorSetting !== "" ? root.monitorSetting : root.startMonitor
+  function reclaimHost() {
+    var list = outputWindows.instances || []
     var i
-    for (i = 0; i < screens.length; i++) if (screens[i].name === wanted) return screens[i]
-    return screens.length > 0 ? screens[0] : null
+    for (i = 0; i < list.length; i++) {
+      var inst = list[i]
+      if (inst && inst.activeHere) {
+        root.claimHost(inst, inst.markItem, inst.stageItem, inst.bubbleItem)
+        return
+      }
+    }
   }
+
+  readonly property var screenList: {
+    var raw = Quickshell.screens
+    var out = []
+    var i
+    for (i = 0; i < raw.length; i++) out.push(Screens.snapshot(raw[i]))
+    return out
+  }
+
+  readonly property var focusedMonitorData: {
+    var mon = Hyprland.focusedMonitor
+    if (!mon) return null
+    return { name: String(mon.name || ""), x: mon.x, y: mon.y }
+  }
+
+  readonly property var activeScreen: Screens.choose(
+    root.screenList,
+    root.homeMonitor,
+    root.dragging ? root.carryScreen : null,
+    root.focusedMonitorData
+  )
+
+  function shellScreen(info) {
+    if (!info) return null
+    var raw = Quickshell.screens
+    var i
+    for (i = 0; i < raw.length; i++) if (raw[i].name === info.name) return raw[i]
+    return null
+  }
+
+  readonly property var targetScreen: root.shellScreen(root.activeScreen)
 
   IpcHandler {
     target: "io.github.tcballard.grokbot-desktop"
@@ -2062,10 +2187,30 @@ Item {
     function ping(): string { return "ok" }
   }
 
-  PanelWindow {
+  Variants {
+    id: outputWindows
+    model: Quickshell.screens
+
+    PanelWindow {
     id: win
-    screen: root.targetScreen
-    visible: root.present && root.targetScreen !== null && root.layerRuleTried && !root.screensaverUp
+    required property var modelData
+    // A layer surface does not move to another output once it is mapped, so
+    // each output has its own window and only the active one is shown. The
+    // window the drag started on stays mapped until release, or the press
+    // grab dies at the edge.
+    readonly property bool activeHere: root.activeScreen !== null && modelData.name === root.activeScreen.name
+    readonly property bool holdingDrag: root.dragging && modelData.name === root.dragScreenName
+    property var markItem: mark
+    property var stageItem: stage
+    property var bubbleItem: bubblePanel
+    screen: modelData
+    visible: root.present && root.targetScreen !== null && root.layerRuleTried && !root.screensaverUp && (activeHere || holdingDrag)
+    onActiveHereChanged: if (activeHere) root.claimHost(win, markItem, stageItem, bubbleItem)
+    Component.onCompleted: if (activeHere) root.claimHost(win, markItem, stageItem, bubbleItem)
+    Component.onDestruction: {
+      if (root.hostWin === win) root.claimHost(null, null, null, null)
+      Qt.callLater(root.reclaimHost)
+    }
     // The window always covers the whole output and never changes size, so
     // the mark cannot move when the card opens or closes: a layer surface
     // that grows or shrinks is re-placed (and animated) by the compositor.
@@ -2080,22 +2225,24 @@ Item {
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.namespace: root.layerNamespace
     WlrLayershell.layer: WlrLayer.Top
-    WlrLayershell.keyboardFocus: root.surfacesOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+    WlrLayershell.keyboardFocus: root.surfacesOpen && activeHere ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
 
     // Only the mark and the open card take the pointer, so the desktop stays
     // usable while a reply is on screen. The right-click menu is the one
     // modal surface: while it is open a click anywhere closes it.
     mask: Region {
-      x: root.menuOpen ? 0 : stage.x
-      y: root.menuOpen ? 0 : stage.y
-      width: root.menuOpen ? win.width : (root.ghost || !root.present ? 0 : stage.width)
-      height: root.menuOpen ? win.height : (root.ghost || !root.present ? 0 : stage.height)
+      // While dragging, the grab has to survive all the way to the output
+      // edge. A mask the size of the mark cancels the press there.
+      x: (root.dragging && (win.holdingDrag || win.activeHere)) || (win.activeHere && root.menuOpen) ? 0 : stage.x
+      y: (root.dragging && (win.holdingDrag || win.activeHere)) || (win.activeHere && root.menuOpen) ? 0 : stage.y
+      width: !win.activeHere && !(root.dragging && win.holdingDrag) ? 0 : ((root.dragging && (win.holdingDrag || win.activeHere)) || root.menuOpen ? win.width : (root.ghost || !root.present ? 0 : stage.width))
+      height: !win.activeHere && !(root.dragging && win.holdingDrag) ? 0 : ((root.dragging && (win.holdingDrag || win.activeHere)) || root.menuOpen ? win.height : (root.ghost || !root.present ? 0 : stage.height))
       Region {
         x: bubblePanel.x
         y: bubblePanel.y
-        width: root.bubbleOpen ? bubblePanel.width : 0
-        height: root.bubbleOpen ? bubblePanel.height : 0
+        width: win.activeHere && root.bubbleOpen ? bubblePanel.width : 0
+        height: win.activeHere && root.bubbleOpen ? bubblePanel.height : 0
       }
     }
 
@@ -2113,7 +2260,7 @@ Item {
       id: bubblePanel
       app: root
       // Out of the way while the file chooser is open.
-      readonly property bool shown: root.bubbleOpen && !root.choosingFiles
+      readonly property bool shown: root.bubbleOpen && !root.choosingFiles && win.activeHere
       growsUp: y < stage.y
       visible: opacity > 0.01
       opacity: shown ? 1 : 0
@@ -2149,7 +2296,7 @@ Item {
     Rectangle {
       id: menuCard
       visible: opacity > 0.01
-      opacity: root.menuOpen ? 1 : 0
+      opacity: root.menuOpen && win.activeHere ? 1 : 0
       scale: root.menuOpen ? 1 : 0.92
       transformOrigin: x < stage.x ? (root.anchorFromBottom ? Item.BottomRight : Item.TopRight) : (root.anchorFromBottom ? Item.BottomLeft : Item.TopLeft)
       Behavior on opacity { NumberAnimation { duration: root.ms(root.menuOpen ? 140 : 100); easing.type: Easing.OutCubic } }
@@ -2220,12 +2367,12 @@ Item {
 
     Item {
       id: stage
-      opacity: root.cornerFade
+      opacity: win.activeHere ? root.cornerFade : 0
 
       // Lives on an item so it resolves the layer window it belongs to.
       Shortcut {
         sequence: "Escape"
-        enabled: root.surfacesOpen
+        enabled: root.surfacesOpen && win.activeHere
         onActivated: root.stepBack()
       }
       width: root.stageW
@@ -2412,6 +2559,14 @@ Item {
             root.hop()
           }
         }
+        onCanceled: function () {
+          // Leaving the output cancels the press. The drag continues from
+          // the cursor helper until the left button comes up.
+          if (root.dragging) {
+            root.dragDetached = true
+            if (!root.pointerHeld) root.endDrag()
+          }
+        }
         onContainsMouseChanged: {
           root.hovering = containsMouse
           if (containsMouse) {
@@ -2422,5 +2577,6 @@ Item {
         }
       }
     }
+  }
   }
 }

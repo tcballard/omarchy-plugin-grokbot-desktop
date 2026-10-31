@@ -7,11 +7,15 @@ request socket for cursorpos and slows down while the pointer rests.
 
 The shell starts it as: /usr/bin/python3 -I -S bin/grokbot-cursor
 with a cleared environment that contains only HYPRLAND_INSTANCE_SIGNATURE
-and XDG_RUNTIME_DIR.
+and XDG_RUNTIME_DIR. It also prints "down" or "up" when the left button
+changes, read from mouse event nodes. Other events are discarded, and the
+devices are not grabbed.
 """
 import os
 import re
+import select
 import socket
+import struct
 import sys
 import time
 
@@ -21,6 +25,10 @@ SLOW = 1 / 5
 REST_AFTER = 2.0
 FAILURE_BUDGET = 40
 POSITION = re.compile(rb"\s*(-?\d{1,6}), (-?\d{1,6})\s*")
+# linux/input.h on amd64. Only BTN_LEFT is inspected; nothing else is printed.
+EVENT = struct.Struct("llHHi")
+EV_KEY = 1
+BTN_LEFT = 0x110
 
 
 def socket_path():
@@ -52,35 +60,156 @@ def ask(path):
     return int(match.group(1)), int(match.group(2))
 
 
+def mouse_event_nodes(text):
+    """Event nodes that are mice. A keyboard that also has a mouse node counts."""
+    found = []
+    for block in str(text or "").split("\n\n"):
+        handlers = ""
+        for line in block.splitlines():
+            if line.startswith("H: Handlers="):
+                handlers = line.split("=", 1)[1]
+        tokens = handlers.split()
+        if not any(re.fullmatch(r"mouse\d+", token) for token in tokens):
+            continue
+        for token in tokens:
+            if re.fullmatch(r"event\d+", token):
+                found.append(f"/dev/input/{token}")
+    return found
+
+
+def button_edges(down, fd, value):
+    """Return down/up when the combined left button changes. value 2 is repeat."""
+    if value == 2:
+        return []
+    was = any(down.values())
+    down[fd] = value != 0
+    now = any(down.values())
+    if now and not was:
+        return ["down"]
+    if was and not now:
+        return ["up"]
+    return []
+
+
+class LeftButton:
+    """Watch BTN_LEFT on mouse event nodes. Never grabs the device."""
+
+    def __init__(self, nodes):
+        self.fds = []
+        self.buffers = {}
+        self.down = {}
+        for path in nodes:
+            try:
+                fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+            except OSError:
+                continue
+            self.fds.append(fd)
+            self.buffers[fd] = bytearray()
+            self.down[fd] = False
+
+    def close(self):
+        for fd in self.fds:
+            os.close(fd)
+        self.fds = []
+
+    def drain(self):
+        edges = []
+        size = EVENT.size
+        for fd in self.fds:
+            buf = self.buffers[fd]
+            while True:
+                try:
+                    chunk = os.read(fd, size * 64)
+                except BlockingIOError:
+                    break
+                except OSError:
+                    break
+                if not chunk:
+                    break
+                buf.extend(chunk)
+            while len(buf) >= size:
+                _sec, _usec, typ, code, value = EVENT.unpack_from(buf)
+                del buf[:size]
+                if typ != EV_KEY or code != BTN_LEFT:
+                    continue
+                edges.extend(button_edges(self.down, fd, value))
+        return edges
+
+    def wait(self, timeout):
+        if timeout > 0 and self.fds:
+            select.select(self.fds, [], [], timeout)
+        elif timeout > 0:
+            time.sleep(timeout)
+        return self.drain()
+
+
+def emit(line):
+    sys.stdout.write(line + "\n")
+    sys.stdout.flush()
+
+
+def self_test():
+    sample = (
+        "N: Name=\"Keyboard\"\nH: Handlers=kbd event2\n\n"
+        "N: Name=\"Combo\"\nH: Handlers=kbd event7 mouse1\n\n"
+        "N: Name=\"Mouse\"\nH: Handlers=event5 mouse0\n"
+    )
+    assert mouse_event_nodes(sample) == ["/dev/input/event7", "/dev/input/event5"]
+    assert mouse_event_nodes("H: Handlers=kbd event2\n") == []
+    down = {1: False, 2: False}
+    assert button_edges(down, 1, 1) == ["down"]
+    assert button_edges(down, 1, 2) == []
+    assert button_edges(down, 2, 1) == []
+    assert button_edges(down, 1, 0) == []
+    assert button_edges(down, 2, 0) == ["up"]
+    assert EVENT.size == 24
+    return 0
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "--self-test":
+        return self_test()
     path = socket_path()
     if path is None:
         return 2
+    try:
+        nodes = mouse_event_nodes(open("/proc/bus/input/devices", encoding="utf-8").read())
+    except OSError:
+        nodes = []
+    buttons = LeftButton(nodes)
     parent = os.getppid()
     last = None
     moved_at = 0.0
     failures = 0
-    while os.getppid() == parent:
-        started = time.monotonic()
-        try:
-            position = ask(path)
-            failures = 0
-            if position != last:
-                sys.stdout.write(f"{position[0]} {position[1]}\n")
-                sys.stdout.flush()
-                last = position
-                moved_at = started
-        except BrokenPipeError:
-            return 0
-        except (OSError, ValueError):
-            failures += 1
-            if failures >= FAILURE_BUDGET:
-                return 1
-            time.sleep(min(2.0, 0.1 * failures))
-            continue
-        interval = FAST if started - moved_at < REST_AFTER else SLOW
-        time.sleep(max(0.0, interval - (time.monotonic() - started)))
-    return 0
+    try:
+        while os.getppid() == parent:
+            started = time.monotonic()
+            try:
+                for edge in buttons.drain():
+                    emit(edge)
+                position = ask(path)
+                failures = 0
+                if position != last:
+                    emit(f"{position[0]} {position[1]}")
+                    last = position
+                    moved_at = started
+            except BrokenPipeError:
+                return 0
+            except (OSError, ValueError):
+                failures += 1
+                if failures >= FAILURE_BUDGET:
+                    return 1
+                time.sleep(min(2.0, 0.1 * failures))
+                continue
+            interval = FAST if started - moved_at < REST_AFTER else SLOW
+            try:
+                for edge in buttons.wait(max(0.0, interval - (time.monotonic() - started))):
+                    emit(edge)
+            except BrokenPipeError:
+                return 0
+        return 0
+    finally:
+        buttons.close()
 
 
 if __name__ == "__main__":
