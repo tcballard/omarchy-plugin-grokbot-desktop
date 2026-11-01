@@ -14,7 +14,7 @@ Wake-phrase routing needs Omarchy 4 with `ShellIpc` and the private shell socket
 
 ### Tested scope
 
-The merged fixes passed 102 Node tests and five Python tests, with no failures or skips. The privacy regressions run the actual helpers against a Unix socket fixture, inspect their live process command lines and environments, and exercise Unicode text, delivery failures and typing fallbacks.
+The release candidate passed 105 Node tests and five Python tests, with no failures or skips. The privacy regressions run the actual helpers against a Unix socket fixture, inspect their live process command lines and environments, and exercise Unicode text, delivery failures and typing fallbacks. Packaging tests check the source identity, checksums and release gates. See the [versioned evidence record](https://github.com/tcballard/omarchy-plugin-grokbot-desktop/blob/v0.1.1/docs/ACCEPTANCE-v0.1.1.json).
 
 Live Quickshell, Superwhisper/Voxtype, and install/update/removal checks for this patch remain pending. The earlier XPS acceptance and preview belong to older builds. Portable tests are not a security audit or live desktop acceptance; marketplace approval is still pending.
 

@@ -1,0 +1,48 @@
+{
+  "status": "pending-live",
+  "input_commit": "516bdd3032be8ae0dae90ffbc62a2c640fba0dc1",
+  "date": "2026-11-01",
+  "platform": "GitHub Actions ubuntu-24.04, Node.js 22 and Python 3; portable checks only",
+  "version": "0.1.1",
+  "acceptance_basis": "The owner requested v0.1.1 publication and a marketplace review-thread update after being informed that live Omarchy verification remained outstanding. This records passing portable checks and pending live acceptance separately; it does not reuse the v0.1.0 XPS pass for changed runtime code.",
+  "portable": {
+    "status": "passed",
+    "command": "./tests/run",
+    "ci_url": "https://github.com/tcballard/omarchy-plugin-grokbot-desktop/actions/runs/41315332858",
+    "ci_head_commit": "516bdd3032be8ae0dae90ffbc62a2c640fba0dc1",
+    "results": [
+      "105 Node tests and five Python tests passed, with zero failures or skips.",
+      "Dictation transport tests run real router, control-helper and watcher subprocesses against a Unix socket fixture and inspect their live /proc command lines and environments.",
+      "Regression coverage includes both dictation backends, Unicode, bounds, protocol delimiters, unavailable/stale sockets, unsafe runtime permissions, partial/oversized replies, timeout, display selection and filter/wtype fallbacks.",
+      "Grok adapter tests preserve prompt stdin and reject an unsupported prompt-file flag without an argv retry.",
+      "Saved-bot restoration is exercised against the production selection functions under settings/roster load ordering.",
+      "Three source-packaging tests verify source/asset identity and checksums, explicit pending-live acknowledgement, failed evidence rejection, dirty-tree rejection and refusal of runtime changes after the evidence commit."
+    ]
+  },
+  "live": {
+    "status": "pending",
+    "method": null,
+    "recording": null,
+    "preview": null
+  },
+  "commands": [
+    "./tests/run on GitHub Actions: passed",
+    "node --test tests/release.test.mjs locally: three passed",
+    "node scripts/check.mjs: passed",
+    "git diff --check: passed",
+    "Portable Omarchy release preflight with the trusted plugin validator: no errors; capability review warnings retained"
+  ],
+  "results": [
+    "The release includes PR #14 (saved bot), #15 (Grok prompt stdin) and #19 (private dictation transport).",
+    "The source-bound CI passed after the version, release workflow and packaging changes; the evidence record and final release-note count are subsequent documentation-only changes.",
+    "No settings or stored-state schema migration is introduced. Existing roster/settings preservation remains covered by portable regressions."
+  ],
+  "limitations": [
+    "Native Quickshell, Superwhisper and Voxtype have not been exercised live for v0.1.1.",
+    "Fresh install, update from v0.1.0 and removal on an Omarchy host remain unverified for this patch.",
+    "The earlier XPS acceptance in docs/ACCEPTANCE.json belongs to v0.1.0; existing preview media belongs to the 27 October build.",
+    "Restart the shell after updating to load ShellIpc registration. Restarting clears session conversations and drafts.",
+    "Wake-phrase routing requires Omarchy's ShellIpc/socket contract introduced in September 2026; it fails without an argv fallback when unavailable. Local Grok requires --prompt-file support.",
+    "Portable tests and deterministic scans are not security audits or marketplace approval."
+  ]
+}
