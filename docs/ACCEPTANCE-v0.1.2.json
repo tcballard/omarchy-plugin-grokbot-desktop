@@ -1,0 +1,39 @@
+{
+  "status": "pending-live",
+  "input_commit": "e7d8fbce90a6d510b22c63fa488641e347dedd00",
+  "date": "2026-11-01",
+  "platform": "GitHub Actions ubuntu-24.04, Node.js 22 and Python 3; portable checks only",
+  "version": "0.1.2",
+  "acceptance_basis": "The owner explicitly requested publication for HANCORE review after disclosure that live desktop and real webhook routine acceptance remain pending.",
+  "portable": {
+    "status": "passed",
+    "command": "./tests/run",
+    "ci_url": "https://github.com/tcballard/omarchy-plugin-grokbot-desktop/actions/runs/41326620270",
+    "ci_head_commit": "e7d8fbce90a6d510b22c63fa488641e347dedd00",
+    "results": [
+      "107 Node tests and five Python tests passed; zero failures or skips.",
+      "Real helper subprocess and Unix socket tests inspect /proc arguments and environments for asynchronous answer privacy.",
+      "Coverage includes Unicode/newlines, missing socket, invalid delimiters, oversized answers and legacy argument rejection without private-text echo or argv fallback."
+    ]
+  },
+  "live": {
+    "status": "pending",
+    "method": null,
+    "recording": null,
+    "preview": null
+  },
+  "commands": [
+    "./tests/run on GitHub Actions: passed"
+  ],
+  "results": [
+    "PR #21 moves asynchronous webhook answers to stdin and the private Omarchy socket.",
+    "Existing asynchronous routines must migrate to the replyWith argument array and supply the answer on stdin.",
+    "Immediate HTTP-response replies are unchanged.",
+    "This evidence and release-note update are documentation-only changes after the tested input commit."
+  ],
+  "limitations": [
+    "Live Quickshell, real asynchronous webhook routine and install/update/removal checks remain pending.",
+    "Existing preview media is from an older build.",
+    "Portable checks are not a security audit or marketplace approval."
+  ]
+}
