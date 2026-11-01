@@ -1942,6 +1942,6 @@ test('the chat and appearance pages crossfade, pinned to the edge the card grows
 })
 
 test('both IPC bridges expose the same methods with the same bodies', () => {
-  const methods = (src) => src.slice(src.indexOf('target:')).replace(/^\s*\/\/.*$/gm, '').trim()
+  const methods = (src) => src.slice(src.indexOf('target:')).replace(/^\s*\/\/.*$/gm, '').replace(/^[ \t]+/gm, '').replace(/[\s}]+$/, '')
   assert.equal(methods(ipcBridges[0]), methods(ipcBridges[1]))
 })
