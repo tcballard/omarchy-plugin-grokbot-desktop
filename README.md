@@ -18,6 +18,8 @@ omarchy plugin add https://github.com/tcballard/omarchy-plugin-grokbot-desktop -
 
 Accepted by the owner on an XPS running Omarchy `dev (573b518be)`; see [acceptance scope and limitations](docs/ACCEPTANCE.json).
 
+**v0.1.1 fixes private prompt transport and restores the saved bot reliably.** The earlier XPS acceptance above covers v0.1.0. This patch has portable regression coverage; live Quickshell and dictation-backend checks remain pending. See the [v0.1.1 release notes](docs/RELEASE-NOTES-v0.1.1.md).
+
 <img src="preview.png" width="800" alt="Earlier live Omarchy capture showing the orange companion, appearance drawer and Ask Bob bubble.">
 
 **Earlier preview, 27 October 2026:** [watch the 70-second demo](assets/grokbot-companion-demo.mp4). This live Try Omarchy capture predates the current UI, roster-sync button and persistent name badge.
