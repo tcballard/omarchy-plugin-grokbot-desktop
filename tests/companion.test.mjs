@@ -290,17 +290,69 @@ function askAgent(home, prompt = 'hello there') {
   })
 }
 
-test('grok is asked headless with the prompt after -p', () => {
-  const home = agentHome('grok', {
-    grok: '#!/usr/bin/python3\nimport json,os,sys\nopen(os.environ["HOME"]+"/argv.json","w").write(json.dumps({"argv":sys.argv[1:],"stdin":sys.stdin.read()}))\nprint("hi from grok")\n'
+for (const source of ['default', 'desktop config', 'shell entry']) {
+  test(`grok keeps the private prompt off process arguments when selected by ${source}`, (t) => {
+    const home = agentHome(source === 'default' ? 'grok' : 'codex', {
+      grok: `#!/usr/bin/python3
+import json, os, pathlib, sys
+args = sys.argv[1:]
+seen = {
+    "argv": args,
+    "cmdline": pathlib.Path("/proc/self/cmdline").read_bytes().decode(),
+    "env": dict(os.environ),
+}
+if "--prompt-file" in args:
+    seen["prompt"] = pathlib.Path(args[args.index("--prompt-file") + 1]).read_text()
+else:
+    seen["prompt"] = args[args.index("-p") + 1]
+seen["remainingStdin"] = sys.stdin.read()
+pathlib.Path(os.environ["HOME"], "argv.json").write_text(json.dumps(seen))
+print("hi from grok")
+`
+    })
+    t.after(() => fs.rmSync(home, { recursive: true, force: true }))
+    const config = path.join(home, '.config', 'omarchy')
+    if (source === 'desktop config') {
+      fs.writeFileSync(path.join(config, 'grokbot-desktop.json'), JSON.stringify({ dispatch: 'agent', agent: 'grok' }))
+    } else if (source === 'shell entry') {
+      fs.writeFileSync(path.join(config, 'shell.json'), JSON.stringify({ plugins: [{ id: manifest.id, agent: 'grok' }] }))
+    }
+    const token = 'private-grok-prompt-7f691a'
+    const prompt = `${token}: "quotes", 'single', $HOME, $(touch injected), \`id\`\nSecond line: café 👋`
+    const result = askAgent(home, prompt)
+    assert.equal(result.status, 0, result.stderr)
+    assert.equal(result.stdout, 'hi from grok\n')
+    const seen = JSON.parse(fs.readFileSync(path.join(home, 'argv.json'), 'utf8'))
+    for (const value of [seen.argv, seen.cmdline, seen.env]) {
+      assert.equal(JSON.stringify(value).includes(token), false, 'private prompt must not reach argv, cmdline or environment')
+    }
+    assert.deepEqual(seen.argv, ['--no-auto-update', '--prompt-file', '/dev/stdin'])
+    assert.equal(seen.prompt, 'You are answering in an Omarchy desktop speech bubble as the Grok Bot Bob. '
+      + 'Reply in a few short sentences of plain text. No headings, and no code fences '
+      + 'unless the user asked for a command.\n\n' + prompt)
+    assert.equal(seen.remainingStdin, '')
   })
-  const result = askAgent(home, 'what time is it')
-  assert.equal(result.status, 0, result.stderr)
-  assert.match(result.stdout, /hi from grok/)
-  const seen = JSON.parse(fs.readFileSync(path.join(home, 'argv.json'), 'utf8'))
-  assert.deepEqual(seen.argv.slice(0, 2), ['--no-auto-update', '-p'])
-  assert.match(seen.argv[2], /as the Grok Bot Bob[\s\S]*what time is it$/)
-  assert.equal(seen.stdin, '')
+}
+
+test('a grok without prompt-file support fails without retrying the prompt on argv', (t) => {
+  const home = agentHome('grok', {
+    grok: `#!/usr/bin/python3
+import json, os, sys
+with open(os.path.join(os.environ["HOME"], "calls.jsonl"), "a") as handle:
+    handle.write(json.dumps(sys.argv[1:]) + "\\n")
+print("error: unexpected argument '--prompt-file' found", file=sys.stderr)
+sys.exit(2)
+`
+  })
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }))
+  const prompt = 'private-prompt-must-not-be-retried'
+  const result = askAgent(home, prompt)
+  assert.equal(result.status, 2)
+  assert.match(result.stderr, /grok: error: unexpected argument '--prompt-file'/)
+  assert.equal(result.stdout, '')
+  assert.equal(result.stderr.includes(prompt), false)
+  const calls = fs.readFileSync(path.join(home, 'calls.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line))
+  assert.deepEqual(calls, [['--no-auto-update', '--prompt-file', '/dev/stdin']])
 })
 
 test('a failing agent names itself and passes on what it printed', () => {

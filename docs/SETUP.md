@@ -52,6 +52,8 @@ Enter the URL and Sender key when prompted. The helper sends a short test questi
 
 Without the webhook connection, the companion uses the agent selected in `~/.config/omarchy/defaults/agent`, or an explicit agent configuration. Install and authenticate that agent first; the companion will not install it on the first question. This is a local agent answering in the selected bot's name, not the actual Grok Bot account bot.
 
+For local Grok, use a CLI version that supports `--prompt-file` (listed in `grok --help`). The companion uses it to read the private stdin pipe. If the bubble reports an unrecognized `--prompt-file` argument, update Grok through Omarchy's normal tool update process or select another supported agent. The companion never retries with your question in process arguments.
+
 To return to this mode after connecting a webhook:
 
 ```bash
