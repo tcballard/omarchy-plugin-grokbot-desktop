@@ -3,34 +3,89 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing accepted tag (for example v0.1.0)
+        description: Release tag (for example v0.1.1)
         required: true
         type: string
+      expected_commit:
+        description: Full reviewed main commit SHA
+        required: true
+        type: string
+      allow_pending_live:
+        description: Publish a draft with live checks explicitly recorded as pending
+        required: true
+        default: false
+        type: boolean
 permissions:
   contents: read
 jobs:
   source:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    concurrency:
+      group: source-release
+      cancel-in-progress: false
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          ref: ${{ inputs.tag }}
+          ref: ${{ inputs.expected_commit }}
           fetch-depth: 0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: "22"
+      - name: Verify reviewed source and version
+        env:
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == refs/heads/main ]]
+          [[ "$EXPECTED_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$(git rev-parse HEAD)" == "$EXPECTED_COMMIT" ]]
+          [[ "$(git ls-remote origin refs/heads/main | cut -f1)" == "$EXPECTED_COMMIT" ]]
+          [[ "v$(cat VERSION)" == "$RELEASE_TAG" ]]
+          [[ "v$(node -p 'require("./manifest.json").version')" == "$RELEASE_TAG" ]]
+          test -f "docs/RELEASE-NOTES-${RELEASE_TAG}.md"
       - run: ./tests/run
+      - name: Create immutable annotated tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+        run: |
+          set -euo pipefail
+          [[ "$(git ls-remote origin refs/heads/main | cut -f1)" == "$EXPECTED_COMMIT" ]]
+          if git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
+            [[ "$(git cat-file -t "refs/tags/$RELEASE_TAG")" == tag ]]
+            [[ "$(git rev-parse "$RELEASE_TAG^{commit}")" == "$EXPECTED_COMMIT" ]]
+          else
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              tag -a "$RELEASE_TAG" "$EXPECTED_COMMIT" -m "Grok Bot Desktop Companion $RELEASE_TAG"
+          fi
       - run: node scripts/archive.mjs
         env:
           RELEASE_TAG: ${{ inputs.tag }}
+          ALLOW_PENDING_LIVE: ${{ inputs.allow_pending_live }}
+      - name: Push verified release tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+        run: |
+          set -euo pipefail
+          [[ "$(git ls-remote origin refs/heads/main | cut -f1)" == "$EXPECTED_COMMIT" ]]
+          git push origin "refs/tags/$RELEASE_TAG"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: source-release
-          path: dist/*
+          path: |
+            dist/*-source.tar.gz
+            dist/SHA256SUMS
+            dist/RELEASE-MANIFEST.json
+            dist/SOURCE-MANIFEST.json
+            dist/SBOM.spdx.json
       - name: Create draft release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag }}
-        run: gh release create "$RELEASE_TAG" dist/* --verify-tag --draft --title "$RELEASE_TAG" --notes "Source release. Review acceptance evidence and complete the release notes before publishing."
+        run: gh release create "$RELEASE_TAG" dist/* --verify-tag --draft --title "$RELEASE_TAG" --notes-file "docs/RELEASE-NOTES-${RELEASE_TAG}.md"
