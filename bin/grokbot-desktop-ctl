@@ -4,7 +4,7 @@
   grokbot-desktop-ctl dictate          # private text on stdin only
   grokbot-desktop-ctl summon
 
-Dictation uses Omarchy's user-private socket directly, without an argv
+Dictation and asynchronous replies use Omarchy's user-private socket directly, without an argv
 fallback. Other methods retain the ordinary omarchy-shell command interface.
 """
 from __future__ import annotations
@@ -51,11 +51,11 @@ def dictation_socket() -> str:
     return str(path)
 
 
-def dictate(text: str) -> int:
+def private_call(method: str, *fields: str) -> int:
     # These bytes delimit fields and records in Omarchy's IPC protocol.
     # Refuse them, never retry through qs/omarchy-shell with text in argv.
-    if any(char in text for char in ("\x00", "\x1e", "\x1f")):
-        print("Dictation contains unsupported IPC control characters", file=sys.stderr)
+    if any(char in field for field in fields for char in ("\x00", "\x1e", "\x1f")):
+        print("Input contains unsupported IPC control characters", file=sys.stderr)
         return 2
     try:
         path = dictation_socket()
@@ -66,7 +66,7 @@ def dictate(text: str) -> int:
             peer = client.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i"))
             if struct.unpack("3i", peer)[1] != os.getuid():
                 raise ValueError("Omarchy's IPC peer must be owned by you")
-            request = "\x1f".join((TARGET, "dictate", text)) + "\x1e"
+            request = "\x1f".join((TARGET, method, *fields)) + "\x1e"
             client.sendall(request.encode("utf-8"))
             reply = bytearray()
             while b"\x1e" not in reply:
@@ -81,16 +81,16 @@ def dictate(text: str) -> int:
     except (OSError, ValueError):
         # A failed/partial reply can mean the call already ran. No retry,
         # and no raw error or reply that might contain the private text.
-        print("Private dictation IPC failed; check OMARCHY_PATH and XDG_RUNTIME_DIR, "
+        print("Private IPC failed; check OMARCHY_PATH and XDG_RUNTIME_DIR, "
               "and update/restart the Omarchy shell. Delivery was not confirmed.", file=sys.stderr)
         return 1
     frame = bytes(reply).split(b"\x1e", 1)[0]
     if frame in (b"OK\x1fok", b"OK\x1fopened"):
         return 0
     if frame == b"SKIP":
-        print("Dictation IPC is unavailable; update the plugin and restart the Omarchy shell.", file=sys.stderr)
+        print("Private IPC is unavailable; update the plugin and restart the Omarchy shell.", file=sys.stderr)
     else:
-        print("The companion did not accept the dictation.", file=sys.stderr)
+        print("The companion did not accept the input.", file=sys.stderr)
     return 1
 
 
@@ -105,7 +105,16 @@ def main(argv: list[str]) -> int:
         text = sys.stdin.read(TEXT_LIMIT + 1)[:TEXT_LIMIT]
         if text.endswith("\n"):
             text = text[:-1]
-        return dictate(text)
+        return private_call("dictate", text)
+    if argv[0] == "reply":
+        if len(argv) != 2 or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", argv[1]):
+            print("Usage: grokbot-desktop-ctl reply <askId> < answer.txt (answer on stdin only)", file=sys.stderr)
+            return 2
+        text = sys.stdin.read(TEXT_LIMIT + 1)
+        if len(text) > TEXT_LIMIT:
+            print("Reply exceeds 4000 characters", file=sys.stderr)
+            return 2
+        return private_call("reply", argv[1], text)
     args = [argv[0], *argv[1:]]
     shell = shutil.which("omarchy-shell")
     if not shell:

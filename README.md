@@ -91,7 +91,7 @@ omarchy-shell io.github.tcballard.grokbot-desktop bot "OmaBot"
 omarchy-shell io.github.tcballard.grokbot-desktop appearance hex green
 omarchy-shell io.github.tcballard.grokbot-desktop animate hop
 omarchy-shell io.github.tcballard.grokbot-desktop say "Bob" "Morning briefing is ready."
-omarchy-shell io.github.tcballard.grokbot-desktop reply 4f9c2a7e1b03 "Nothing on your calendar today."
+bin/grokbot-desktop-ctl reply 4f9c2a7e1b03 < answer.txt
 omarchy-shell io.github.tcballard.grokbot-desktop sayLink "PR Merged" "omarchy-spaces #27 merged." "Open PR" "https://github.com/tornikegomareli/omarchy-spaces/pull/27"
 ```
 
@@ -156,14 +156,13 @@ It says where to find the routine's Webhook URL and Sender key in Grok Bot (clic
 
 ### How a webhook ask comes back
 
-The routine takes an ask at once and answers later, so the question keeps its typing dots and Bob keeps working while you carry on. Each ask carries an id and the command that answers it:
+The routine takes an ask at once and answers later, so the question keeps its typing dots and Bob keeps working while you carry on. Each ask carries an id, a `replyWith` argument array and `replyInput` instructions. Execute that array directly on the Omarchy computer and write the answer to its stdin. Never join it into shell code or append the answer as an argument. The helper path refers to the installed checkout on that computer.
 
-```json
-{ "prompt": "…", "botName": "Bob", "botId": "…", "source": "Omarchy desktop companion (hostname)",
-  "askId": "4f9c2a7e1b03", "replyWith": "omarchy-shell io.github.tcballard.grokbot-desktop reply 4f9c2a7e1b03 \"<answer>\"" }
+```bash
+bin/grokbot-desktop-ctl reply 4f9c2a7e1b03 < answer.txt
 ```
 
-When Bob runs that `reply`, the answer goes under the question it answers, in that bot's conversation, even if another bot is on screen; that bot's chip then shows the unread dot (on the header pill while the bot row is folded). `reply` also takes a bot's name or id instead of an ask id, which answers that bot's oldest waiting question. A routine that answers with `say "Bob" "…"` instead works too: a `say` titled with the name of a bot that is waiting counts as its reply. A question still waiting after ten minutes says the reply will be in Grok Bot. A webhook that answers in its response, with a `reply`, `text`, `message`, or `output` field or plain text, is shown straight away.
+The helper sends the answer over Omarchy's private socket, preserving Unicode and line breaks, with a 4,000-character limit. It rejects argument text, protocol delimiters and oversized input without an argv fallback. The answer lands under the waiting question even when another bot is selected. Existing routines must migrate from the old string-valued `replyWith` command to the argument array and stdin transport. Do not use `omarchy-shell reply` or `say` with private answer text: both expose arguments in process listings. Restart the shell after updating. A question still waiting after ten minutes says the reply will be in Grok Bot. A webhook that answers in its response, with a `reply`, `text`, `message`, or `output` field or plain text, is shown straight away.
 
 ### Webhook details
 
