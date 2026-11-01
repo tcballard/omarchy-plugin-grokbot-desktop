@@ -2,11 +2,13 @@
   "schemaVersion": 1,
   "id": "io.github.tcballard.grokbot-desktop",
   "name": "Grok Bot Desktop Companion",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "author": "Tom Ballard",
   "license": "MIT",
   "description": "A floating Grok Bot companion for the Omarchy desktop. It morphs into your bots and asks them from a speech bubble.",
-  "kinds": ["service"],
+  "kinds": [
+    "service"
+  ],
   "entryPoints": {
     "service": "Main.qml"
   }
