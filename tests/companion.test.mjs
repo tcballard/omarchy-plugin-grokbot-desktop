@@ -23,6 +23,10 @@ const palette = loadLibrary('qml/palette.js')
 const face = loadLibrary('qml/face.js')
 const bots = readJSON(path.join(root, 'data/bots.json')).bots
 const main = read('Main.qml')
+// IPC lives in two bridges: ShellIpc (Omarchy dev, private socket) and IpcHandler
+// (packaged stable). Main.qml loads whichever compiles; both must stay identical.
+const ipcBridges = ['qml/CompanionShellIpc.qml', 'qml/CompanionIpcHandler.qml'].map(read)
+const ipc = ipcBridges[1]
 const manifest = readJSON(path.join(root, 'manifest.json'))
 
 const EXPECTED = {
@@ -179,9 +183,11 @@ test('bundled roster is the fifteen live bots, with Bob first', () => {
 
 test('QML exposes the speech-bubble IPC and keeps outside text plain', () => {
   for (const name of ['summon', 'show', 'hide', 'toggleVisible', 'toggle', 'settings', 'ask', 'dictate', 'bot', 'appearance', 'animate', 'say', 'sayLink', 'sayLinks', 'dismiss']) {
-    assert.match(main, new RegExp(`function ${name}\\(`))
+    for (const bridge of ipcBridges) assert.match(bridge, new RegExp(`function ${name}\\(`))
   }
-  assert.match(main, /target:\s*"io\.github\.tcballard\.grokbot-desktop"/)
+  for (const bridge of ipcBridges) assert.match(bridge, /target:\s*"io\.github\.tcballard\.grokbot-desktop"/)
+  assert.match(main, /qml\/CompanionShellIpc\.qml/)
+  assert.match(main, /qml\/CompanionIpcHandler\.qml/)
   assert.match(main, /WlrLayershell/)
   assert.match(main, /clearEnvironment:\s*true/)
   assert.match(main, /\/usr\/bin\/setpriv/)
@@ -194,8 +200,8 @@ test('QML exposes the speech-bubble IPC and keeps outside text plain', () => {
 })
 
 test('hiding from the menu says how to bring the companion back, and a shortcut can toggle it', () => {
-  const toggle = qmlFunction(main, 'toggleVisible')
-  assert.match(toggle, /if \(root\.present\) root\.hideCompanion\(\)\n\s*else root\.showCompanion\(\)/)
+  const toggle = qmlFunction(ipc, 'toggleVisible')
+  assert.match(toggle, /if \(host\.present\) host\.hideCompanion\(\)\n\s*else host\.showCompanion\(\)/)
   const announce = qmlFunction(main, 'announceHidden')
   // Omarchy's own helper, never notify-send; the click runs the IPC show.
   assert.match(announce, /omarchy-notification-send 'Grok Bot is hidden' 'Click to bring it back\.' --action Show omarchy-shell io\.github\.tcballard\.grokbot-desktop show/)
@@ -968,7 +974,7 @@ test('Superwhisper and Voxtype wake lines route instead of being typed', () => {
   assert.match(readme, /voxtype record toggle/)
   assert.match(readme, /fallback_on_empty/)
   assert.match(readme, /grokbot-voice-watch/)
-  assert.match(source, /function dictate\(text: string\)/)
+  assert.match(ipc, /function dictate\(text: string\)/)
   assert.match(source, /function dictateText\(/)
   assert.match(source, /function toggleDictation\(/)
   assert.match(source, /Dictation\.route/)
@@ -1672,7 +1678,7 @@ test('clearing a conversation is in the menu, not the composer, and can be undon
   assert.match(panel, /onActivated: app\.undoClear\(\)/)
   // It lives in the right-click menu and on IPC, not in the composer.
   assert.match(main, /root\.canClear \? \[\{ "label": "Clear conversation", "action": "clear" \}\]/)
-  assert.match(main, /function clear\(\): string \{ return root\.clearConversation\(\) \}/)
+  assert.match(ipc, /function clear\(\): string \{ return host\.clearConversation\(\) \}/)
 })
 
 test('grokbot-connect tests the URL and key before saving them, and keeps other settings', async () => {
@@ -1781,7 +1787,7 @@ test('a webhook answer waits under its question and lands there, whichever bot i
   assert.match(qmlFunction(main, 'markUnread'), /if \(!root\.bubbleOpen\) root\.replyUnread = true/)
   assert.match(qmlFunction(main, 'deliver'), /root\.markUnread\(id\)/)
   // reply takes an ask id or a bot; say from a waiting bot counts too.
-  assert.match(main, /function reply\(target: string, text: string\): string \{ return root\.receiveReply\(target, text\) \}/)
+  assert.match(ipc, /function reply\(target: string, text: string\): string \{ return host\.receiveReply\(target, text\) \}/)
   const receive = qmlFunction(main, 'receiveReply')
   assert.match(receive, /if \(root\.awaiting\[key\]\)/)
   assert.match(receive, /root\.oldestWaiting\(bot\.id\)/)
@@ -1933,4 +1939,9 @@ test('the chat and appearance pages crossfade, pinned to the edge the card grows
   assert.match(panel, /y: bubble\.pageY\(implicitHeight\)/)
   assert.match(panel, /y: bubble\.pageY\(height\)/)
   assert.doesNotMatch(panel, /growOffset/)
+})
+
+test('both IPC bridges expose the same methods with the same bodies', () => {
+  const methods = (src) => src.slice(src.indexOf('target:')).replace(/^\s*\/\/.*$/gm, '').trim()
+  assert.equal(methods(ipcBridges[0]), methods(ipcBridges[1]))
 })
