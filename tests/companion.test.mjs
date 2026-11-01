@@ -851,7 +851,7 @@ test('Superwhisper and Voxtype wake lines route instead of being typed', () => {
   const sink = path.join(dir, 'sink')
   const wtypeLog = path.join(dir, 'wtype')
   const wtype = path.join(dir, 'wtype')
-  fs.writeFileSync(wtype, '#!/bin/sh\nprintf "%s\\n" "$*" > "$WTYPE_LOG"\n')
+  fs.writeFileSync(wtype, '#!/usr/bin/python3\nimport os, sys\nwith open(os.environ["WTYPE_LOG"], "w") as out: out.write(sys.stdin.read())\n')
   fs.chmodSync(wtype, 0o755)
   const filter = (backend, text) => spawnSync('/usr/bin/python3', [
     path.join(root, 'bin/grokbot-dictation-route'), '--filter', '--backend', backend

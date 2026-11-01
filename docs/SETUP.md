@@ -93,6 +93,8 @@ bin/grokbot-voice-watch --enable --install-voxtype-hook
 
 The installer refuses to overwrite an existing post-process command. If one exists, integrate the printed block manually. Keep `fallback_on_empty = false`. See [the README](../README.md#dictation) for the routing details.
 
+Wake-phrase routing requires Omarchy's `ShellIpc` socket support (Omarchy #13435, September 2026). Restart the shell after updating this plugin: `omarchy restart shell`. The router uses stdin and the private socket for transcript text, and fails without a command-line fallback if that socket is unavailable. For manual delivery, use `bin/grokbot-desktop-ctl dictate < transcript.txt`; text arguments are refused. The optional wtype wrapper also types through stdin.
+
 ## 6. Optional launcher and close helper
 
 From the plugin directory:

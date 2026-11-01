@@ -24,6 +24,7 @@ Before a public release, document the exact verified install command and the ins
 - `omarchy-shell io.github.tcballard.grokbot-desktop summon` opens the bubble.
 - Hide companion in the menu sends a notification that brings the companion back when clicked, and `toggleVisible` shows and hides it.
 - An ask in agent mode returns text into the bubble, or a plain error saying why it failed.
+- With wake-phrase routing enabled, a Superwhisper or Voxtype transcript reaches the correct bot after a shell restart. While routing a distinctive non-sensitive sentinel, inspect process command lines from a second local account: neither the router, control helper nor wtype exposes it. Ordinary transcripts and delivery failures still return/type the original text. The portable socket tests exercise the actual helpers, including `/proc` inspection and failure cases; they do not run a live Quickshell handler or dictation backend.
 - `bin/grokbot-connect` connects the webhook only after its test ask is accepted. In webhook mode a question waits with typing dots until the routine answers with `reply`, or a `say` titled with the bot's name, and the answer lands under that question, in that bot's conversation.
 - Dodge and `idleMotion: false` behave as described in the README.
 - Theme changes update an `omarchy` colour without a shell restart beyond what the host already does.

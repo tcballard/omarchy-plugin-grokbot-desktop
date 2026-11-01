@@ -2024,7 +2024,7 @@ Item {
     return screens.length > 0 ? screens[0] : null
   }
 
-  IpcHandler {
+  ShellIpc {
     target: "io.github.tcballard.grokbot-desktop"
 
     function summon(): string { root.summon(); return "ok" }
