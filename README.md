@@ -98,11 +98,12 @@ omarchy-shell io.github.tcballard.grokbot-desktop sayLink "PR Merged" "omarchy-s
 `bot` accepts an id, a short name (`OmaBot`, `Poteto`, `dr eggbot`), or the full profile name. `reply` answers a waiting webhook ask by its id, or the oldest waiting question of a bot named the same way; see [How a webhook ask comes back](#how-a-webhook-ask-comes-back).
 
 ```bash
-omarchy-shell io.github.tcballard.grokbot-desktop dictate "Hey OmaBot, check the VM"
-bin/grokbot-desktop-ctl dictate "Hey Bob, what's on my calendar?"
+bin/grokbot-desktop-ctl dictate <<'TRANSCRIPT'
+Hey OmaBot, check the VM
+TRANSCRIPT
 ```
 
-`dictate` understands the same wake phrases as the prompt field. Anything that does not start with one is ignored, so a normal ask still uses `ask`.
+`dictate` understands the same wake phrases as the prompt field. Anything that does not start with one is ignored, so a normal ask still uses `ask`. For private dictation, feed `grokbot-desktop-ctl dictate` through stdin, as above, or redirect an existing transcript file. It rejects text arguments. Calling `omarchy-shell` with text arguments exposes that text in process listings; use the composer for private ordinary asks.
 
 ## Dictation
 
@@ -123,7 +124,9 @@ fallback_on_empty = false
 timeout_ms = 5000
 ```
 
-`bin/grokbot-voice-watch --print-voxtype-hook` prints that block with the installed script path. `bin/grokbot-voice-watch --enable --install-voxtype-hook` appends it only when Voxtype does not already have a post-process command. A wake phrase is sent to the companion and is not typed. Every other transcript is returned unchanged for Voxtype to type, including through wtype. `bin/grokbot-dictation-route --wtype` is the same rule as a wtype wrapper: a wake phrase is routed, other text is typed.
+`bin/grokbot-voice-watch --print-voxtype-hook` prints that block with the installed script path. `bin/grokbot-voice-watch --enable --install-voxtype-hook` appends it only when Voxtype does not already have a post-process command. A wake phrase is sent to the companion and is not typed. Every other transcript is returned unchanged for Voxtype to type, including through wtype. `bin/grokbot-dictation-route --wtype` is the same rule as a wtype wrapper: a wake phrase is routed, other text is typed using `wtype -` with text on stdin.
+
+The router passes dictated text to the control helper on stdin, then directly to Omarchy's private IPC socket. It does not put the transcript in command arguments, environment variables, or temporary files. This requires Omarchy 4 with `ShellIpc` and the shell socket introduced in [Omarchy #13435](https://github.com/omacom/omarchy/pull/13435), plus the session's `OMARCHY_PATH` and private `XDG_RUNTIME_DIR`. After updating the plugin, run `omarchy restart shell` to load its socket registration. If the socket or handler is unavailable, delivery fails with an error and never falls back to command-line text. The filter returns the original transcript on failure; the wtype wrapper types it through stdin. Neither retries a call that may already have reached the shell.
 
 Superwhisper (`superwhisper.service`, transcripts under `~/.local/share/superwhisper`, `~/.config/superwhisper`, and `~/superwhisper/recordings`) and Voxtype (`voxtype.service`) use the same watcher:
 

@@ -135,7 +135,9 @@ def deliver(text: str, backend: str = "") -> bool:
     if not ctl.is_file():
         return False
     proc = subprocess.run(
-        [sys.executable, str(ctl), "dictate", payload],
+        [sys.executable, str(ctl), "dictate"],
+        input=payload.encode("utf-8"),
+        stdout=subprocess.DEVNULL,
         check=False,
         env=os.environ.copy(),
     )
@@ -229,7 +231,7 @@ def main(argv: list[str]) -> int:
         return 0
     typer = real_wtype()
     if typer:
-        os.execv(typer, [typer, "--", text])
+        return subprocess.run([typer, "-"], input=text.encode("utf-8"), check=False).returncode
     sys.stdout.write(text)
     return 0
 

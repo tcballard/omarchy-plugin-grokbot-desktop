@@ -1,36 +1,112 @@
 #!/usr/bin/python3
 """Forward one IPC call to the Grok Bot companion.
 
-  grokbot-desktop-ctl dictate "Hey Bob, what's on my calendar?"
-  grokbot-desktop-ctl dictate          # text on stdin
+  grokbot-desktop-ctl dictate          # private text on stdin only
+  grokbot-desktop-ctl summon
 
-The text is one argument to `omarchy-shell`. It is not passed through a shell.
+Dictation uses Omarchy's user-private socket directly, without an argv
+fallback. Other methods retain the ordinary omarchy-shell command interface.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import shutil
+import socket
+import stat
+import struct
 import sys
+import time
+from pathlib import Path
 
 TARGET = "io.github.tcballard.grokbot-desktop"
 METHOD = re.compile(r"^[A-Za-z][A-Za-z0-9]{0,31}$")
 TEXT_LIMIT = 4000
+IPC_TIMEOUT = 2.0
+REPLY_LIMIT = 4096
+
+
+def dictation_socket() -> str:
+    """Match omarchy-shell's config/display-scoped socket, in a private dir."""
+    runtime = Path(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}")
+    info = runtime.stat()
+    if (not runtime.is_absolute() or not stat.S_ISDIR(info.st_mode)
+            or info.st_uid != os.getuid() or info.st_mode & 0o077):
+        raise ValueError("XDG_RUNTIME_DIR must be a private directory owned by you")
+    omarchy = os.environ.get("OMARCHY_PATH", "")
+    if not omarchy or not Path(omarchy, "shell", "shell.qml").is_file():
+        raise ValueError("OMARCHY_PATH must point to your Omarchy installation")
+    display = os.environ.get("WAYLAND_DISPLAY", "")
+    if not display or not (runtime / display).exists():
+        displays = [p for p in runtime.glob("wayland-[0-9]*")
+                    if not p.name.endswith(".lock") and p.is_socket()]
+        if displays:
+            display = max(displays, key=lambda p: p.stat().st_mtime_ns).name
+    identity = hashlib.md5(f"{omarchy}/shell\n{display}".encode("utf-8")).hexdigest()[:16]
+    path = runtime / f"omarchy-shell-{identity}.sock"
+    info = path.stat()
+    if not stat.S_ISSOCK(info.st_mode) or info.st_uid != os.getuid():
+        raise ValueError("Omarchy's IPC socket must be owned by you")
+    return str(path)
+
+
+def dictate(text: str) -> int:
+    # These bytes delimit fields and records in Omarchy's IPC protocol.
+    # Refuse them, never retry through qs/omarchy-shell with text in argv.
+    if any(char in text for char in ("\x00", "\x1e", "\x1f")):
+        print("Dictation contains unsupported IPC control characters", file=sys.stderr)
+        return 2
+    try:
+        path = dictation_socket()
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            deadline = time.monotonic() + IPC_TIMEOUT
+            client.settimeout(IPC_TIMEOUT)
+            client.connect(path)
+            peer = client.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i"))
+            if struct.unpack("3i", peer)[1] != os.getuid():
+                raise ValueError("Omarchy's IPC peer must be owned by you")
+            request = "\x1f".join((TARGET, "dictate", text)) + "\x1e"
+            client.sendall(request.encode("utf-8"))
+            reply = bytearray()
+            while b"\x1e" not in reply:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError()
+                client.settimeout(remaining)
+                chunk = client.recv(REPLY_LIMIT + 1 - len(reply))
+                if not chunk or len(reply) + len(chunk) > REPLY_LIMIT:
+                    raise ValueError("Incomplete or oversized IPC reply")
+                reply.extend(chunk)
+    except (OSError, ValueError):
+        # A failed/partial reply can mean the call already ran. No retry,
+        # and no raw error or reply that might contain the private text.
+        print("Private dictation IPC failed; check OMARCHY_PATH and XDG_RUNTIME_DIR, "
+              "and update/restart the Omarchy shell. Delivery was not confirmed.", file=sys.stderr)
+        return 1
+    frame = bytes(reply).split(b"\x1e", 1)[0]
+    if frame in (b"OK\x1fok", b"OK\x1fopened"):
+        return 0
+    if frame == b"SKIP":
+        print("Dictation IPC is unavailable; update the plugin and restart the Omarchy shell.", file=sys.stderr)
+    else:
+        print("The companion did not accept the dictation.", file=sys.stderr)
+    return 1
 
 
 def main(argv: list[str]) -> int:
     if not argv or not METHOD.fullmatch(argv[0]):
         print("Usage: grokbot-desktop-ctl <method> [args...]", file=sys.stderr)
         return 2
-    if argv[0] == "dictate" and len(argv) == 1:
+    if argv[0] == "dictate":
+        if len(argv) != 1:
+            print("Usage: grokbot-desktop-ctl dictate < transcript.txt (text on stdin only)", file=sys.stderr)
+            return 2
         text = sys.stdin.read(TEXT_LIMIT + 1)[:TEXT_LIMIT]
         if text.endswith("\n"):
             text = text[:-1]
-        args = ["dictate", text]
-    else:
-        args = [argv[0], *argv[1:]]
-        if args[0] == "dictate" and len(args) > 1:
-            args[1] = args[1][:TEXT_LIMIT]
+        return dictate(text)
+    args = [argv[0], *argv[1:]]
     shell = shutil.which("omarchy-shell")
     if not shell:
         print("omarchy-shell is not on PATH", file=sys.stderr)
