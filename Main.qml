@@ -81,6 +81,18 @@ Item {
   // backend reports its state here, so every exit path clears it.
   property bool dictating: false
   property bool replyUnread: false
+  // Floating reply cues: a toast for the active bot, or a peeking avatar for
+  // another bot. Shown only while the companion bubble is closed and the
+  // Grok Bot desktop app is not open.
+  property string cueKind: ""
+  property string cueText: ""
+  property string cueBotId: ""
+  property real cueActiveShown: 0
+  property real cuePeekOut: 0
+  property real cuePeekBubbleShown: 0
+  readonly property int cueActiveMs: 5000
+  readonly property int cuePeekMs: 3000
+  readonly property int cuePeekBubbleMs: 2000
   property bool dragging: false
   property bool ghost: false
   property bool claimed: false
@@ -634,6 +646,7 @@ Item {
     root.latchMonitor()
     cursorProc.running = root.cursorHelper !== ""
     layerRuleProc.running = true
+    grokAppCheck.running = true
   }
 
   // Hyprland animates layer surfaces as they map, which would pop the
@@ -668,7 +681,7 @@ Item {
       if (!event) return
       var name = String(event.name)
       if (name === "configreloaded" && !layerRuleProc.running) layerRuleProc.running = true
-      else root.screensaverEvent(name, String(event.data || ""))
+      else root.hyprWindowEvent(name, String(event.data || ""))
     }
   }
 
@@ -680,14 +693,23 @@ Item {
   property var screensaverWindows: []
   property int screensaverLayers: 0
   readonly property bool screensaverUp: root.screensaverWindows.length > 0 || root.screensaverLayers > 0
+  // Reply cues stay quiet while the Grok Bot desktop app itself is open.
+  readonly property string grokAppClass: "grok-bot"
+  property var grokAppWindows: []
+  readonly property bool grokAppOpen: root.grokAppWindows.length > 0
 
-  function screensaverEvent(name, data) {
+  function hyprWindowEvent(name, data) {
     if (name === "openwindow") {
       var parts = data.split(",")
-      if (parts.length >= 3 && parts[2] === root.screensaverName)
-        root.screensaverWindows = root.screensaverWindows.concat([parts[0]])
+      if (parts.length >= 3) {
+        if (parts[2] === root.screensaverName)
+          root.screensaverWindows = root.screensaverWindows.concat([parts[0]])
+        if (parts[2] === root.grokAppClass && root.grokAppWindows.indexOf(parts[0]) < 0)
+          root.grokAppWindows = root.grokAppWindows.concat([parts[0]])
+      }
     } else if (name === "closewindow") {
       root.screensaverWindows = root.screensaverWindows.filter(function (address) { return address !== data })
+      root.grokAppWindows = root.grokAppWindows.filter(function (address) { return address !== data })
     } else if (name === "openlayer" && data === root.screensaverName) {
       root.screensaverLayers++
     } else if (name === "closelayer" && data === root.screensaverName) {
@@ -697,10 +719,11 @@ Item {
 
   // A missed close event must not leave the companion hidden, so while it is
   // hidden it checks every 20 seconds that a screensaver is still there.
+  // The same poll refreshes whether the Grok Bot app is open.
   Timer {
     interval: 20000
     repeat: true
-    running: root.screensaverUp
+    running: root.screensaverUp || root.grokAppOpen
     onTriggered: if (!screensaverCheck.running) screensaverCheck.running = true
   }
 
@@ -710,11 +733,46 @@ Item {
     stdout: StdioCollector { id: screensaverCheckOut }
     onExited: function (code) {
       if (code !== 0) return
-      if (String(screensaverCheckOut.text).indexOf(root.screensaverName) < 0) {
+      var text = String(screensaverCheckOut.text)
+      if (text.indexOf(root.screensaverName) < 0) {
         root.screensaverWindows = []
         root.screensaverLayers = 0
       }
+      root.applyGrokAppClients(text)
     }
+  }
+
+  Process {
+    id: grokAppCheck
+    command: ["/usr/bin/hyprctl", "-j", "clients"]
+    stdout: StdioCollector { id: grokAppCheckOut }
+    onExited: function (code) {
+      if (code !== 0) return
+      root.applyGrokAppClients(String(grokAppCheckOut.text))
+    }
+  }
+
+  function applyGrokAppClients(text) {
+    var blob = String(text || "")
+    var clientsEnd = blob.indexOf("\n\n")
+    if (clientsEnd >= 0) blob = blob.slice(0, clientsEnd)
+    var found = []
+    try {
+      var clients = JSON.parse(blob)
+      var i
+      for (i = 0; i < clients.length; i++) {
+        if (clients[i] && clients[i]["class"] === root.grokAppClass && clients[i].address)
+          found.push(String(clients[i].address))
+      }
+    } catch (e) {
+      if (blob.indexOf('"' + root.grokAppClass + '"') >= 0 && root.grokAppWindows.length > 0) return
+      found = []
+    }
+    root.grokAppWindows = found
+  }
+
+  onGrokAppOpenChanged: {
+    if (root.grokAppOpen) root.clearReplyCue()
   }
 
   function scheduleSave() { saveTimer.restart() }
@@ -770,8 +828,10 @@ Item {
   // A reply or status for the bot `id`: shown if its conversation is on
   // screen, otherwise kept with it and marked unread.
   function deliver(id, body) {
+    var botId = id === "" ? root.threadBotId : id
     if (id === "" || id === root.threadBotId) {
       root.bubbleBody = body
+      root.announceReply(botId, body)
       return true
     }
     var next = Object.assign({}, root.threads)
@@ -780,6 +840,7 @@ Item {
     next[id] = thread
     root.threads = next
     root.markUnread(id)
+    root.announceReply(botId, body)
     return false
   }
 
@@ -802,6 +863,26 @@ Item {
     root.scheduleSave()
     root.hop()
     return root.botLabel()
+  }
+
+  // Hover the mark and scroll to step through the roster. Positive delta
+  // moves forward; negative moves back. Wraps at both ends.
+  function cycleBot(delta) {
+    var list = root.bots
+    if (!list || list.length < 2) return root.botLabel()
+    var step = Math.round(Number(delta) || 0)
+    if (step === 0) return root.botLabel()
+    var at = 0
+    var i
+    for (i = 0; i < list.length; i++) {
+      if (list[i].id === root.threadBotId) {
+        at = i
+        break
+      }
+    }
+    var next = (at + step) % list.length
+    if (next < 0) next += list.length
+    return root.selectBot(list[next].id)
   }
 
   // Picking a shape or colour swaps the avatar at once, as Grok Bot's
@@ -931,6 +1012,7 @@ Item {
     root.cardPage = "chat"
     root.bubbleOpen = true
     root.replyUnread = false
+    root.clearReplyCue()
     root.menuOpen = false
     root.wake()
     Qt.callLater(function () { if (bubblePanel) bubblePanel.focusPrompt() })
@@ -1115,6 +1197,7 @@ Item {
       root.archiveExchange()
       root.noticeLinks = links || []
       root.bubbleBody = text
+      root.announceReply(botId, text)
       return true
     }
     var next = Object.assign({}, root.threads)
@@ -1131,6 +1214,7 @@ Item {
     next[botId] = thread
     root.threads = next
     root.markUnread(botId)
+    root.announceReply(botId, text)
     return false
   }
 
@@ -1156,6 +1240,7 @@ Item {
       if (root.awaitingId === askId) {
         root.bubbleBody = text
         root.awaitingId = ""
+        root.announceReply(botId, text)
         return true
       }
       var index = root.indexWaiting(root.history, askId)
@@ -1163,6 +1248,7 @@ Item {
       var history = root.history.slice()
       history[index] = Object.assign({}, history[index], { body: text, wait: "" })
       root.history = history
+      root.announceReply(botId, text)
       return true
     }
     var next = Object.assign({}, root.threads)
@@ -1180,6 +1266,7 @@ Item {
     next[botId] = thread
     root.threads = next
     root.markUnread(botId)
+    root.announceReply(botId, text)
     return false
   }
 
@@ -1255,6 +1342,7 @@ Item {
       root.bubbleBody = words
       root.flashExpression("alert", 1200)
       syllableAnim.restart()
+      // summon opens the bubble, so no floating cue while the card is up.
       return "ok"
     }
     root.summon()
@@ -1541,6 +1629,102 @@ Item {
     root.hop()
   }
 
+  // Heads-up toasts for replies while the companion card is closed and the
+  // Grok Bot app is not open on the desktop.
+  function canShowReplyCue() {
+    return root.present && !root.bubbleOpen && !root.grokAppOpen && !root.screensaverUp
+  }
+
+  function previewSnippet(text) {
+    return root.plainLine(text, 160)
+  }
+
+  function announceReply(botId, text) {
+    if (!root.canShowReplyCue()) return
+    var preview = root.previewSnippet(text)
+    if (preview === "") return
+    if (botId === "" || botId === root.threadBotId) root.showActiveCue(preview)
+    else root.showPeekCue(botId, preview)
+  }
+
+  function clearReplyCue() {
+    activeCueTimer.stop()
+    peekBubbleTimer.stop()
+    peekHideTimer.stop()
+    peekSlideAnim.stop()
+    root.cueKind = ""
+    root.cueText = ""
+    root.cueBotId = ""
+    root.cueActiveShown = 0
+    root.cuePeekOut = 0
+    root.cuePeekBubbleShown = 0
+  }
+
+  function showActiveCue(text) {
+    peekBubbleTimer.stop()
+    peekHideTimer.stop()
+    peekSlideAnim.stop()
+    root.cuePeekOut = 0
+    root.cuePeekBubbleShown = 0
+    root.cueBotId = root.threadBotId
+    root.cueKind = "active"
+    root.cueText = text
+    root.cueActiveShown = 1
+    activeCueTimer.restart()
+  }
+
+  function showPeekCue(botId, text) {
+    if (!root.findBot(botId)) return
+    activeCueTimer.stop()
+    root.cueActiveShown = 0
+    root.cueKind = "peek"
+    root.cueBotId = botId
+    root.cueText = text
+    root.cuePeekBubbleShown = 1
+    peekSlideAnim.stop()
+    peekSlideAnim.from = root.cuePeekOut
+    peekSlideAnim.to = 1
+    peekSlideAnim.start()
+    peekBubbleTimer.restart()
+    peekHideTimer.restart()
+  }
+
+  Timer {
+    id: activeCueTimer
+    interval: root.cueActiveMs
+    onTriggered: {
+      root.cueActiveShown = 0
+      root.cueKind = ""
+    }
+  }
+
+  Timer {
+    id: peekBubbleTimer
+    interval: root.cuePeekBubbleMs
+    onTriggered: root.cuePeekBubbleShown = 0
+  }
+
+  Timer {
+    id: peekHideTimer
+    interval: root.cuePeekMs
+    onTriggered: {
+      peekSlideAnim.stop()
+      peekSlideAnim.from = root.cuePeekOut
+      peekSlideAnim.to = 0
+      peekSlideAnim.start()
+      root.cueKind = ""
+      root.cueBotId = ""
+    }
+  }
+
+  NumberAnimation {
+    id: peekSlideAnim
+    target: root
+    property: "cuePeekOut"
+    duration: root.ms(280)
+    easing.type: Easing.OutCubic
+  }
+
   Process {
     id: askProc
     clearEnvironment: true
@@ -1708,9 +1892,10 @@ Item {
     return Math.sqrt(dx * dx + dy * dy)
   }
 
-  // Dodge fades with distance: faint as the pointer arrives, and while it
-  // rests on the mark the mark visibly fades back in over the dwell before
-  // it takes clicks again.
+  // Dodge fades with distance as the pointer approaches. Once the pointer
+  // is over the mark the avatar returns to full opacity immediately; the
+  // stage stays in the input mask the whole time so clicks and drags work
+  // without waiting for a dwell.
   function updateDodge() {
     if (!root.dodgeOn || !root.present || root.dragging || root.surfacesOpen || !root.cursorKnown || !root.pointerIsNear()) {
       root.ghost = false
@@ -1721,16 +1906,16 @@ Item {
     }
     var floor = 0.28
     if (root.pointerInside()) {
-      if (root.dwellSince === 0) root.dwellSince = Date.now()
-      var held = (Date.now() - root.dwellSince) / root.dwellMs
-      if (held >= 1) root.claimed = true
-      root.dodgeOpacity = root.claimed ? 1 : floor + (1 - floor) * Math.max(0, Math.min(1, held))
+      root.dwellSince = 0
+      root.claimed = true
+      root.ghost = false
+      root.dodgeOpacity = 1
     } else {
       root.dwellSince = 0
       root.claimed = false
+      root.ghost = true
       root.dodgeOpacity = floor + (1 - floor) * Math.max(0, Math.min(1, root.pointerGap() / 36))
     }
-    root.ghost = !root.claimed
   }
 
   readonly property int dwellMs: 380
@@ -2102,11 +2287,13 @@ Item {
     // Only the mark and the open card take the pointer, so the desktop stays
     // usable while a reply is on screen. The right-click menu is the one
     // modal surface: while it is open a click anywhere closes it.
+    // Dodge may fade the mark, but the stage stays in the mask so click,
+    // drag, and scroll always reach it without waiting for a dwell.
     mask: Region {
       x: root.menuOpen ? 0 : stage.x
       y: root.menuOpen ? 0 : stage.y
-      width: root.menuOpen ? win.width : (root.ghost || !root.present ? 0 : stage.width)
-      height: root.menuOpen ? win.height : (root.ghost || !root.present ? 0 : stage.height)
+      width: root.menuOpen ? win.width : (!root.present ? 0 : stage.width)
+      height: root.menuOpen ? win.height : (!root.present ? 0 : stage.height)
       Region {
         x: bubblePanel.x
         y: bubblePanel.y
@@ -2249,6 +2436,153 @@ Item {
       x: root.stageScreenX
       y: root.stageScreenY
 
+      // Floating reply toast for the active bot. Drawn above the stage so it
+      // does not widen the pointer mask; clamped so a corner placement keeps
+      // the bubble on screen.
+      Item {
+        id: activeCueCard
+        visible: opacity > 0.01
+        opacity: root.cueActiveShown * root.dodgeOpacity
+        z: 5
+        width: 288
+        height: activeCueBody.height + 8
+        x: {
+          var ideal = (parent.width - width) / 2
+          var screenX = root.stageScreenX + ideal
+          if (screenX < 8) ideal = 8 - root.stageScreenX
+          if (screenX + width > root.screenW - 8) ideal = root.screenW - 8 - width - root.stageScreenX
+          return ideal
+        }
+        y: -height - 6
+        transformOrigin: Item.Bottom
+        scale: 0.9 + 0.1 * Math.min(1, root.cueActiveShown)
+        Behavior on opacity { NumberAnimation { duration: root.ms(220); easing.type: Easing.OutCubic } }
+        Behavior on scale { NumberAnimation { duration: root.ms(260); easing.type: Easing.OutBack } }
+
+        Rectangle {
+          id: activeCueBody
+          width: parent.width
+          height: activeCueLabel.implicitHeight + 22
+          radius: 16
+          color: Theme.surface
+          border.width: 1
+          border.color: Theme.lifted
+          Text {
+            id: activeCueLabel
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: 12
+            text: root.cueText
+            color: Theme.text
+            font.pixelSize: 13
+            font.family: root.fontFamily
+            wrapMode: Text.Wrap
+            maximumLineCount: 4
+            elide: Text.ElideRight
+            textFormat: Text.PlainText
+          }
+        }
+        Rectangle {
+          width: 12
+          height: 12
+          rotation: 45
+          color: Theme.surface
+          border.width: 1
+          border.color: Theme.lifted
+          anchors.horizontalCenter: activeCueBody.horizontalCenter
+          anchors.verticalCenter: activeCueBody.bottom
+          z: -1
+        }
+      }
+
+      // A non-active bot peeks out from behind the mark when its reply lands.
+      CompanionMark {
+        id: peekMark
+        readonly property var bot: root.findBot(root.cueBotId)
+        readonly property real peekSide: root.anchorFromRight ? -1 : 1
+        visible: root.cuePeekOut > 0.01
+        width: root.shownSize * 0.56
+        height: width
+        x: (parent.width - width) / 2 + peekSide * root.shownSize * (0.22 + 0.38 * root.cuePeekOut)
+        y: parent.height - 32 - height - (root.shownSize - height) * 0.08
+        z: 0
+        opacity: root.cuePeekOut * root.dodgeOpacity * 0.98
+        scale: 0.9 + 0.1 * root.cuePeekOut
+        shapeFrom: bot ? String(bot.avatarShape || "blob") : "blob"
+        shapeTo: shapeFrom
+        morph: 1
+        cutout: true
+        darkSurface: root.desktopDark
+        colorName: bot ? String(bot.avatarColor || "blue") : "blue"
+        accent: root.accent
+        lively: false
+        expression: "alert"
+        eyeOpen: 1
+        reduceMotion: root.reduceMotion
+        transformOrigin: Item.Bottom
+        Behavior on opacity { NumberAnimation { duration: root.ms(200); easing.type: Easing.OutCubic } }
+        Behavior on scale { NumberAnimation { duration: root.ms(280); easing.type: Easing.OutBack } }
+      }
+
+      // Toast for the peeking bot.
+      Item {
+        id: peekCueCard
+        visible: opacity > 0.01
+        opacity: root.cuePeekBubbleShown * root.dodgeOpacity
+        z: 5
+        width: 260
+        height: peekCueBody.height + 8
+        x: {
+          var ideal = peekMark.x + peekMark.width / 2 - width / 2
+          var screenX = root.stageScreenX + ideal
+          if (screenX < 8) ideal = 8 - root.stageScreenX
+          if (screenX + width > root.screenW - 8) ideal = root.screenW - 8 - width - root.stageScreenX
+          return ideal
+        }
+        y: peekMark.y - height - 6
+        transformOrigin: Item.Bottom
+        scale: 0.9 + 0.1 * Math.min(1, root.cuePeekBubbleShown)
+        Behavior on opacity { NumberAnimation { duration: root.ms(200); easing.type: Easing.OutCubic } }
+        Behavior on scale { NumberAnimation { duration: root.ms(240); easing.type: Easing.OutBack } }
+
+        Rectangle {
+          id: peekCueBody
+          width: parent.width
+          height: peekCueLabel.implicitHeight + 20
+          radius: 14
+          color: Theme.surface
+          border.width: 1
+          border.color: Theme.lifted
+          Text {
+            id: peekCueLabel
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: 10
+            text: root.cueText
+            color: Theme.text
+            font.pixelSize: 12
+            font.family: root.fontFamily
+            wrapMode: Text.Wrap
+            maximumLineCount: 3
+            elide: Text.ElideRight
+            textFormat: Text.PlainText
+          }
+        }
+        Rectangle {
+          width: 10
+          height: 10
+          rotation: 45
+          color: Theme.surface
+          border.width: 1
+          border.color: Theme.lifted
+          anchors.horizontalCenter: peekCueBody.horizontalCenter
+          anchors.verticalCenter: peekCueBody.bottom
+          z: -1
+        }
+      }
+
       // Soft contact shadow. It shrinks and fades as the mark lifts off the
       // floor, so bobbing and hopping read as height rather than sliding.
       Shape {
@@ -2318,6 +2652,7 @@ Item {
 
       CompanionMark {
         id: mark
+        z: 1
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 32
@@ -2387,6 +2722,8 @@ Item {
       }
 
       MouseArea {
+        // Fill the stage so the whole mark, name tag, and padding stay
+        // hittable. Reply toasts sit above the stage and stay click-through.
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         hoverEnabled: true
@@ -2402,11 +2739,16 @@ Item {
         onPressed: function (mouse) {
           pressAt = windowPoint(mouse)
           moved = false
+          root.claimed = true
+          root.ghost = false
+          root.dodgeOpacity = 1
           if (mouse.button === Qt.RightButton) {
             root.menuOpen = !root.menuOpen
             mouse.accepted = true
             return
           }
+          // Super/Meta still starts a drag immediately; plain press waits
+          // for a short move so a click can open the bubble.
           if (mouse.modifiers & Qt.MetaModifier) root.beginDrag(pressAt.x, pressAt.y)
         }
         onPositionChanged: function (mouse) {
@@ -2414,7 +2756,7 @@ Item {
           var p = windowPoint(mouse)
           var dx = p.x - pressAt.x
           var dy = p.y - pressAt.y
-          if (!root.dragging && (Math.abs(dx) > 6 || Math.abs(dy) > 6 || (mouse.modifiers & Qt.MetaModifier)))
+          if (!root.dragging && (Math.abs(dx) > 4 || Math.abs(dy) > 4 || (mouse.modifiers & Qt.MetaModifier)))
             root.beginDrag(pressAt.x, pressAt.y)
           if (root.dragging) root.dragMove(p.x, p.y)
         }
@@ -2427,6 +2769,13 @@ Item {
             root.toggleBubble()
             root.hop()
           }
+        }
+        onWheel: function (wheel) {
+          if (root.dragging || root.menuOpen) return
+          var dy = wheel.angleDelta.y !== 0 ? wheel.angleDelta.y : wheel.pixelDelta.y
+          if (dy === 0) return
+          wheel.accepted = true
+          root.cycleBot(dy > 0 ? -1 : 1)
         }
         onContainsMouseChanged: {
           root.hovering = containsMouse

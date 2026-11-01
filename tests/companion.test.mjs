@@ -1164,11 +1164,24 @@ test('the mark answers hover and lifts while dragged', () => {
   assert.match(qmlFunction(main, 'dragMove'), /dragTiltTarget =/)
 })
 
-test('dodge fades with distance and visibly fades back during the dwell', () => {
+test('dodge fades with distance and restores at once over the mark', () => {
   const dodge = qmlFunction(main, 'updateDodge')
   assert.match(dodge, /pointerGap\(\) \/ 36/)
-  assert.match(dodge, /held = \(Date\.now\(\) - root\.dwellSince\) \/ root\.dwellMs/)
+  assert.match(dodge, /pointerInside\(\)/)
+  assert.match(dodge, /root\.dodgeOpacity = 1/)
   assert.match(main, /opacity: root\.dodgeOpacity/)
+  // Clicks stay live: ghost no longer zeroes the input mask.
+  assert.match(main, /width: root\.menuOpen \? win\.width : \(!root\.present \? 0 : stage\.width\)/)
+  assert.doesNotMatch(main, /root\.ghost \|\| !root\.present/)
+})
+
+test('hover-scroll cycles the active bot and drag moves the stage', () => {
+  const cycle = qmlFunction(main, 'cycleBot')
+  assert.match(cycle, /selectBot\(list\[next\]\.id\)/)
+  assert.match(main, /onWheel: function \(wheel\)/)
+  assert.match(main, /root\.cycleBot\(dy > 0 \? -1 : 1\)/)
+  assert.match(qmlFunction(main, 'dragMove'), /root\.posRight =/)
+  assert.match(qmlFunction(main, 'dragMove'), /root\.posBottom =/)
 })
 
 test('reduced motion stops loops and zeroes one-shot timing', () => {
@@ -1905,7 +1918,7 @@ test('the composer attaches pasted images, chosen files, and dropped files', () 
 
 test('the companion steps aside while Omarchy\'s screensaver runs', () => {
   assert.match(main, /readonly property string screensaverName: "org\.omarchy\.screensaver"/)
-  const handle = qmlFunction(main, 'screensaverEvent')
+  const handle = qmlFunction(main, 'hyprWindowEvent')
   // The terminal-window screensaver (class) and the native overlay (namespace).
   assert.match(handle, /name === "openwindow"[\s\S]*parts\[2\] === root\.screensaverName/)
   assert.match(handle, /name === "closewindow"/)
@@ -1913,8 +1926,29 @@ test('the companion steps aside while Omarchy\'s screensaver runs', () => {
   assert.match(handle, /name === "closelayer" && data === root\.screensaverName/)
   assert.match(main, /visible: root\.present && root\.targetScreen !== null && root\.layerRuleTried && !root\.screensaverUp/)
   // A missed close event is caught by a periodic check while hidden.
-  assert.match(main, /running: root\.screensaverUp\n\s*onTriggered: if \(!screensaverCheck\.running\) screensaverCheck\.running = true/)
+  assert.match(main, /running: root\.screensaverUp \|\| root\.grokAppOpen\n\s*onTriggered: if \(!screensaverCheck\.running\) screensaverCheck\.running = true/)
   assert.match(main, /"\/usr\/bin\/hyprctl -j clients; echo; \/usr\/bin\/hyprctl -j layers"/)
+})
+
+test('reply cues toast the active bot and peek for other bots', () => {
+  const can = qmlFunction(main, 'canShowReplyCue')
+  assert.match(can, /!root\.bubbleOpen/)
+  assert.match(can, /!root\.grokAppOpen/)
+  assert.match(main, /readonly property string grokAppClass: "grok-bot"/)
+  assert.match(main, /readonly property int cueActiveMs: 5000/)
+  assert.match(main, /readonly property int cuePeekMs: 3000/)
+  assert.match(main, /readonly property int cuePeekBubbleMs: 2000/)
+  const announce = qmlFunction(main, 'announceReply')
+  assert.match(announce, /showActiveCue/)
+  assert.match(announce, /showPeekCue/)
+  assert.match(qmlFunction(main, 'deliver'), /announceReply/)
+  assert.match(qmlFunction(main, 'appendReply'), /announceReply/)
+  assert.match(qmlFunction(main, 'answerWaiting'), /announceReply/)
+  assert.match(qmlFunction(main, 'openBubble'), /clearReplyCue/)
+  assert.match(main, /id: peekMark/)
+  assert.match(main, /id: activeCueCard/)
+  assert.match(main, /id: peekCueCard/)
+  assert.match(main, /textFormat: Text\.PlainText/)
 })
 
 test('the chat and appearance pages crossfade, pinned to the edge the card grows from', () => {
