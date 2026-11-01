@@ -37,7 +37,7 @@ For an exported agents directory containing `*/profile.json`, use `bin/grokbot-s
 
 In Grok Bot, open Bob's chat-header menu, then **Routines → Omarchy desktop companion**. This routine must already exist or be created/configured in the app; installing the plugin does not create it. Obtain its **Webhook URL** and **Sender key**.
 
-The routine receives the prompt, bot name and ID, an ask ID, and a `replyWith` command. For an asynchronous answer to appear in the desktop bubble, the routine needs access to the Omarchy computer and must run that reply command with the answer. An immediate textual webhook response is also supported. Verify the answer actually returns to the bubble; accepting the webhook alone does not establish the return path.
+The routine receives the prompt, bot name and ID, an ask ID, and a `replyWith` argument array and `replyInput` instructions. For an asynchronous answer to appear in the desktop bubble, the routine needs access to the Omarchy computer and must execute that array directly and write the answer to stdin. Never append answer text to arguments or interpolate it into shell code. Existing routines using the old string command must be migrated; use `bin/grokbot-desktop-ctl reply <askId> < answer.txt` on the Omarchy host. The private socket is required, with no argv fallback. An immediate textual webhook response is also supported. Verify the answer actually returns to the bubble; accepting the webhook alone does not establish the return path.
 
 From the plugin directory:
 

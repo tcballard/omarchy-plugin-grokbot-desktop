@@ -267,3 +267,25 @@ test('the plugin registers its IPC handler with Omarchy socket dispatch', () => 
   assert.match(main, /ShellIpc\s*\{\s*target: "io.github.tcballard.grokbot-desktop"/)
   assert.match(main, /function dictate\(text: string\): string \{ return root.dictateText\(text\) \}/)
 })
+
+test('asynchronous replies preserve private Unicode answers on the socket only', async t => {
+  const f = await fixture(t)
+  await f.serve()
+  const result = await f.run('grokbot-desktop-ctl', ['reply', '0a1b2c3d4e5f'], transcript)
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(f.requests[0], `${target}\x1freply\x1f0a1b2c3d4e5f\x1f${transcript}\x1e`)
+  privateProcesses(f.observed)
+  assert.deepEqual(f.calls(), [])
+})
+
+test('reply failures never fall back to arguments or echo the answer', async t => {
+  const f = await fixture(t)
+  for (const input of [transcript, `${sentinel}\x1e`, sentinel.repeat(500)]) {
+    const result = await f.run('grokbot-desktop-ctl', ['reply', 'abc123'], input)
+    assert.notEqual(result.status, 0)
+    assert.ok(!`${result.stdout}${result.stderr}`.includes(sentinel))
+  }
+  const args = await f.run('grokbot-desktop-ctl', ['reply', 'abc123', sentinel])
+  assert.equal(args.status, 2)
+  assert.deepEqual(f.calls(), [])
+})

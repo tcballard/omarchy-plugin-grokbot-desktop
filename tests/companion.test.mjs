@@ -577,9 +577,10 @@ test('a webhook ask carries its id and the command that answers it', async () =>
     server.close()
   }
   assert.equal(sent.status, 10, sent.stderr)
-  assert.deepEqual(Object.keys(seen).sort(), ['askId', 'botId', 'botName', 'prompt', 'replyWith', 'source'])
+  assert.deepEqual(Object.keys(seen).sort(), ['askId', 'botId', 'botName', 'prompt', 'replyInput', 'replyWith', 'source'])
   assert.equal(seen.askId, '0a1b2c3d4e5f')
-  assert.equal(seen.replyWith, 'omarchy-shell io.github.tcballard.grokbot-desktop reply 0a1b2c3d4e5f "<answer>"')
+  assert.deepEqual(seen.replyWith, [path.join(root, 'bin/grokbot-desktop-ctl'), 'reply', '0a1b2c3d4e5f'])
+  assert.match(seen.replyInput, /stdin/)
   // An id that isn't plain hex never reaches the routine.
   assert.equal(bad.status, 2)
 })

@@ -36,6 +36,7 @@ import ssl
 import stat
 import subprocess
 import sys
+from pathlib import Path
 import time
 import urllib.error
 import urllib.parse
@@ -265,7 +266,8 @@ def webhook_parts(url, key, payload, extra=None):
     # command that puts the answer under this question travel with it.
     if payload.get("askId"):
         fields["askId"] = payload["askId"]
-        fields["replyWith"] = f'omarchy-shell {TARGET} reply {payload["askId"]} "<answer>"'
+        fields["replyWith"] = [str(Path(__file__).resolve().with_name("grokbot-desktop-ctl")), "reply", payload["askId"]]
+        fields["replyInput"] = "Write the answer to the command's stdin. Do not append it to arguments or interpolate it into shell code."
     body = json.dumps(fields, separators=(",", ":")).encode("utf-8")
     headers = {
         "Content-Type": "application/json",
