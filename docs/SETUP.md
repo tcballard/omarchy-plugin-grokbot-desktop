@@ -1,6 +1,6 @@
 # Set up Grok Bot Desktop Companion
 
-The companion targets Omarchy 4 with Hyprland and Quickshell. It needs Python 3 for its helpers. Node.js 22+ is for development tests, not the running companion. The accepted machine reports Omarchy `dev (573b518be)`; this is not a claim that every Omarchy 4 release has been tested.
+The companion targets Omarchy 4 with Hyprland and Quickshell. It needs Python 3 for its helpers. Node.js 22+ is for development tests, not the running companion. Ordinary IPC (toggle, summon, ask, …) works on packaged stable Omarchy via `IpcHandler`. Private-socket wake-phrase routing and `reply` need Omarchy with `ShellIpc` (Omarchy #13435; accepted on `dev (573b518be)`). The plugin prefers `ShellIpc` when present and falls back to `IpcHandler` otherwise.
 
 ## 1. Install and show the companion
 
@@ -93,7 +93,7 @@ bin/grokbot-voice-watch --enable --install-voxtype-hook
 
 The installer refuses to overwrite an existing post-process command. If one exists, integrate the printed block manually. Keep `fallback_on_empty = false`. See [the README](../README.md#dictation) for the routing details.
 
-Wake-phrase routing requires Omarchy's `ShellIpc` socket support (Omarchy #13435, September 2026). Restart the shell after updating this plugin: `omarchy restart shell`. The router uses stdin and the private socket for transcript text, and fails without a command-line fallback if that socket is unavailable. For manual delivery, use `bin/grokbot-desktop-ctl dictate < transcript.txt`; text arguments are refused. The optional wtype wrapper also types through stdin.
+Wake-phrase routing requires Omarchy's `ShellIpc` socket support (Omarchy #13435, September 2026); packaged stable builds that lack `ShellIpc` still load the companion over plain `IpcHandler`, but private-socket delivery will not succeed there. Restart the shell after updating this plugin: `omarchy restart shell`. The router uses stdin and the private socket for transcript text, and fails without a command-line fallback if that socket is unavailable. For manual delivery, use `bin/grokbot-desktop-ctl dictate < transcript.txt`; text arguments are refused. The optional wtype wrapper also types through stdin.
 
 ## 6. Optional launcher and close helper
 

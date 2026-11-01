@@ -2024,58 +2024,47 @@ Item {
     return screens.length > 0 ? screens[0] : null
   }
 
-  ShellIpc {
-    target: "io.github.tcballard.grokbot-desktop"
+  // Prefer ShellIpc (Omarchy #13435 private socket). Fall back to IpcHandler on
+  // packaged stable builds where ShellIpc is not a type (see issue #23).
+  Loader {
+    id: ipcLoader
 
-    function summon(): string { root.summon(); return "ok" }
-    function show(): string { root.showCompanion(); return "ok" }
-    function hide(): string { root.hideCompanion(); return "ok" }
-    // For a show/hide shortcut.
-    function toggleVisible(): string {
-      if (root.present) root.hideCompanion()
-      else root.showCompanion()
-      return root.present ? "shown" : "hidden"
+    function loadIpcHandlerBridge() {
+      var url = Qt.resolvedUrl("qml/CompanionIpcHandler.qml")
+      var comp = Qt.createComponent(url)
+      function activate() {
+        ipcLoader.setSource(url, { host: root })
+      }
+      if (comp.status === Component.Ready) activate()
+      else if (comp.status === Component.Loading) {
+        comp.statusChanged.connect(function () {
+          if (comp.status === Component.Ready) activate()
+          else if (comp.status === Component.Error)
+            console.warn("Grok Bot desktop: IpcHandler bridge failed:", comp.errorString())
+        })
+      } else {
+        console.warn("Grok Bot desktop: IpcHandler bridge failed:", comp.errorString())
+      }
     }
-    function toggle(): string { root.toggleBubble(); return "ok" }
-    function settings(): string { root.openSettings(); return "ok" }
-    function clear(): string { return root.clearConversation() }
-    function ask(prompt: string): string {
-      var text = root.plainLine(prompt, 4000)
-      if (text === "") return "empty"
-      return root.launchAsk(text)
+
+    function loadIpcBridge() {
+      var url = Qt.resolvedUrl("qml/CompanionShellIpc.qml")
+      var comp = Qt.createComponent(url)
+      function activateShell() {
+        ipcLoader.setSource(url, { host: root })
+      }
+      if (comp.status === Component.Ready) activateShell()
+      else if (comp.status === Component.Loading) {
+        comp.statusChanged.connect(function () {
+          if (comp.status === Component.Ready) activateShell()
+          else if (comp.status === Component.Error) loadIpcHandlerBridge()
+        })
+      } else {
+        loadIpcHandlerBridge()
+      }
     }
-    function dictate(text: string): string { return root.dictateText(text) }
-    function bot(name: string): string {
-      var found = root.matchBot(name)
-      if (!found) return "unknown bot"
-      return root.selectBot(found.id)
-    }
-    function appearance(shape: string, color: string): string {
-      if (!Shapes.known(shape)) return "unknown shape"
-      if (!Palette.accepts(color)) return "unknown color"
-      root.syncOn = false
-      root.customShape = shape
-      root.customColor = color
-      root.retargetAppearance(false)
-      root.scheduleSave()
-      return "ok"
-    }
-    function animate(name: string): string { return root.playAnimation(name) }
-    function say(title: string, text: string): string { return root.sayNotice(title, text, []) }
-    function reply(target: string, text: string): string { return root.receiveReply(target, text) }
-    function sayLink(title: string, text: string, label: string, url: string): string {
-      var link = root.linkButton(label, url)
-      if (!link) return "invalid link"
-      return root.sayNotice(title, text, [link])
-    }
-    function sayLinks(title: string, text: string, label1: string, url1: string, label2: string, url2: string): string {
-      var first = root.linkButton(label1, url1)
-      var second = root.linkButton(label2, url2)
-      if (!first || !second) return "invalid link"
-      return root.sayNotice(title, text, [first, second])
-    }
-    function dismiss(): string { return root.dismissSurfaces() ? "dismissed" : "nothing" }
-    function ping(): string { return "ok" }
+
+    Component.onCompleted: loadIpcBridge()
   }
 
   PanelWindow {
