@@ -1349,8 +1349,25 @@ Item {
   function toggleDictation() {
     if (root.dictateHelper.indexOf("/bin/grokbot-dictate") < 0 || root.dictateHelper.indexOf("..") >= 0)
       return "error"
-    Quickshell.execDetached(["/usr/bin/python3", root.dictateHelper])
+    if (dictateProc.running) return "busy"
+    dictateProc.running = true
     return "ok"
+  }
+
+  // The helper prints a transcript only for backends that hand it back instead of
+  // pasting it (Hex: its paste would land in the app window behind the card). It
+  // arrives on stdout, never on a command line, and goes in at the field's cursor.
+  Process {
+    id: dictateProc
+    command: ["/usr/bin/python3", root.dictateHelper]
+    stdout: StdioCollector { id: dictateOut }
+    onExited: function (code) {
+      var text = root.cleanText(dictateOut.text, 4000)
+      if (code !== 0 || text === "") return
+      root.dictating = false
+      root.openBubble()
+      if (bubblePanel) bubblePanel.insertText(text)
+    }
   }
 
   // Attaching runs grokbot-attach, which saves private copies and prints

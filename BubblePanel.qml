@@ -127,6 +127,17 @@ Rectangle {
     promptField.selectAll()
   }
 
+  // Dictated text goes in at the cursor, with a space when it follows a word.
+  function insertText(value) {
+    var text = String(value || "")
+    if (text === "") return
+    promptField.forceActiveFocus()
+    var at = promptField.cursorPosition
+    var before = promptField.text.slice(0, at)
+    if (before !== "" && !/\s$/.test(before)) text = " " + text
+    promptField.insert(at, text)
+  }
+
   // Ctrl+V attaches an image when the clipboard holds one; otherwise the
   // helper reports none and the text is pasted as usual.
   function pasteText() {
