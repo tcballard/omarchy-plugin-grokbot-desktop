@@ -247,3 +247,25 @@ and the same 18 socket-permission failures. The new tests exercise real local
 workers and the desktop compatibility client; webhook receipt-only transport is
 mocked. Native QML and live Grok/Hermes/Omarchy acceptance remain pending. Mixed
 provider discovery/configuration/picker integration and rename are not complete.
+
+### Dots investigation — 2026-11-02
+
+Requested provider: OpenAI's personal Dots in ChatGPT, connecting to an existing
+Dot rather than creating a separate model-backed agent. Status: blocked pending
+a verified messaging interface; no runtime adapter or selectable placeholder added.
+
+Reviewed official [Dots setup](https://help.openai.com/en/articles/20001530-getting-started-with-your-dot),
+[connected computers/apps](https://learn.chatgpt.com/docs/dots/computers-and-apps),
+[Dots overview](https://learn.chatgpt.com/docs/dots), and
+[API overview](https://developers.openai.com/api/reference/overview).
+These document user-facing messaging and connected tools, but this investigation
+did not establish a supported developer endpoint and authentication flow for
+sending a message to an existing personal Dot and receiving its correlated reply.
+This is a research finding, not a claim that no such interface can exist.
+
+Unblock with a documented API/CLI or a verified, explicitly configured messaging
+bridge, including Dot identity, authentication, response correlation and lifecycle
+semantics. Slack/Teams access is a possible bridge to investigate, not an implemented
+provider. Connected-app/MCP access alone does not establish an inbound Dot messaging
+API. An ordinary OpenAI model/API connection must not be labelled as the user's
+personal Dot. No session-cookie extraction or invented endpoints are used.
