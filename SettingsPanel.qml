@@ -110,8 +110,8 @@ Item {
         text: app.syncOn ? "Synced · " + app.botLabel() : "Custom"
         color: app.syncOn ? Theme.ok : Theme.textMuted
         font.pixelSize: 11
-        font.weight: Font.DemiBold
         font.family: app.fontFamily
+        font.weight: Font.DemiBold
         textFormat: Text.PlainText
       }
       HoverArea { label: app.syncOn ? "Stop syncing appearance with the bot" : "Sync appearance with the bot"; onActivated: app.setSync(!app.syncOn) }
@@ -135,6 +135,55 @@ Item {
       width: flick.width
       spacing: 12
 
+      Button {
+        width: parent.width
+        text: app.discoveringProviders ? "Discovering providers…" : "Refresh providers (GrokBot / Hermes)"
+        enabled: !app.discoveringProviders
+        onClicked: app.refreshProviders()
+      }
+      Text {
+        width: parent.width
+        text: app.providerStatus
+        visible: text !== ""
+        wrapMode: Text.Wrap
+        textFormat: Text.PlainText
+        color: Theme.textMuted
+        font.pixelSize: 11
+        font.family: app.fontFamily
+      }
+      Text {
+        text: "Open Bot Avatar · " + app.botLabel()
+        textFormat: Text.PlainText
+        color: Theme.text
+        font.pixelSize: 12
+        font.family: app.fontFamily
+      }
+      TextArea {
+        id: avatarJson
+        font.family: app.fontFamily
+        width: parent.width
+        height: 96
+        placeholderText: "Paste Open Bot Avatar v1 JSON"
+        textFormat: TextEdit.PlainText
+        wrapMode: TextEdit.Wrap
+        selectByMouse: true
+        onTextChanged: if (text.length > 16384) text = text.slice(0, 16384)
+      }
+      Row {
+        spacing: 6
+        Button { text: "Import"; onClicked: app.importAvatar(avatarJson.text) }
+        Button { text: "Export"; onClicked: { avatarJson.text = app.exportAvatar(); avatarJson.selectAll() } }
+        Button { text: "Remove"; onClicked: app.removeAvatar() }
+      }
+      Text {
+        width: parent.width
+        text: app.avatarStatus || "Geometry is saved for this agent. Colour and motion follow your appearance settings."
+        wrapMode: Text.Wrap
+        textFormat: Text.PlainText
+        color: Theme.textMuted
+        font.pixelSize: 11
+        font.family: app.fontFamily
+      }
       Column {
         width: parent.width
         spacing: 7
@@ -152,7 +201,7 @@ Item {
             color: app.syncingRoster ? Theme.textMuted : Theme.text
             font.family: app.fontFamily
             font.pixelSize: 12
-            font.weight: Font.DemiBold
+        font.weight: Font.DemiBold
           }
           HoverArea {
             enabled: !app.syncingRoster
@@ -374,8 +423,8 @@ Item {
               text: modelData.label
               color: active ? Theme.text : Theme.textMuted
               font.pixelSize: 12
+        font.family: app.fontFamily
               font.weight: active ? Font.DemiBold : Font.Normal
-              font.family: app.fontFamily
               textFormat: Text.PlainText
             }
             Text {
@@ -468,8 +517,8 @@ Item {
                 text: drawer.title(modelData)
                 color: active ? Theme.text : Theme.textMuted
                 font.pixelSize: 11
+        font.family: app.fontFamily
                 font.weight: active ? Font.DemiBold : Font.Normal
-                font.family: app.fontFamily
                 textFormat: Text.PlainText
               }
               HoverArea { label: drawer.title(modelData); onActivated: app.setSize(modelData) }
@@ -501,8 +550,8 @@ Item {
             text: "Dodge"
             color: app.dodgeOn ? Theme.text : Theme.textMuted
             font.pixelSize: 11
+        font.family: app.fontFamily
             font.weight: app.dodgeOn ? Font.DemiBold : Font.Normal
-            font.family: app.fontFamily
             textFormat: Text.PlainText
           }
           HoverArea { label: "Dodge: fade and let clicks through when the pointer comes near"; onActivated: app.setDodge(!app.dodgeOn) }
@@ -517,8 +566,8 @@ Item {
           : "Dodge is off: " + app.botLabel() + " stays solid and takes clicks wherever the pointer is."
         color: Theme.textFaint
         font.pixelSize: 11
-        wrapMode: Text.WordWrap
         font.family: app.fontFamily
+        wrapMode: Text.WordWrap
         textFormat: Text.PlainText
       }
     }

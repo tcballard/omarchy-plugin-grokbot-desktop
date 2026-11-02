@@ -91,7 +91,7 @@ Rectangle {
       if (!wanted[bot.id]) continue
       out.push({
         id: String(bot.id || ""),
-        label: String(bot.shortName || bot.name || "Bot"),
+        label: String(bot.shortName || bot.name || "Bot") + (bot.provider && bot.provider !== "grokbot" ? " · " + bot.provider : ""),
         shape: String(bot.avatarShape || "bean"),
         color: String(bot.avatarColor || "orange")
       })
@@ -112,7 +112,7 @@ Rectangle {
       if (seen[id]) continue
       out.push({
         id: id,
-        label: String(bot.shortName || bot.name || "Bot"),
+        label: String(bot.shortName || bot.name || "Bot") + (bot.provider && bot.provider !== "grokbot" ? " · " + bot.provider : ""),
         shape: String(bot.avatarShape || "bean"),
         color: String(bot.avatarColor || "orange")
       })
@@ -125,6 +125,17 @@ Rectangle {
   function focusPrompt() {
     promptField.forceActiveFocus()
     promptField.selectAll()
+  }
+
+  // Dictated text goes in at the cursor, with a space when it follows a word.
+  function insertText(value) {
+    var text = String(value || "")
+    if (text === "") return
+    promptField.forceActiveFocus()
+    var at = promptField.cursorPosition
+    var before = promptField.text.slice(0, at)
+    if (before !== "" && !/\s$/.test(before)) text = " " + text
+    promptField.insert(at, text)
   }
 
   // Ctrl+V attaches an image when the clipboard holds one; otherwise the
@@ -302,6 +313,7 @@ Rectangle {
             // widest size; the role takes what is left and elides.
             readonly property real roleRoom: header.width - 80 - 22 - 8 - 22 - 12 - 6 * 3 - nameText.implicitWidth
             CompanionMark {
+              avatarDefinition: app.avatarFor(app.chosenBotId)
               width: 22
               height: 22
               y: 7
@@ -425,6 +437,7 @@ Rectangle {
               border.width: active ? 1.5 : 1
               border.color: active ? app.ringColor(app.paletteFill(modelData.color)) : Theme.edge
               CompanionMark {
+                avatarDefinition: app.avatarFor(modelData.id)
                 x: 8
                 y: 6
                 width: 16
@@ -515,6 +528,7 @@ Rectangle {
               border.width: active ? 1.5 : 1
               border.color: active ? app.ringColor(app.paletteFill(modelData.color)) : Theme.edge
               CompanionMark {
+                avatarDefinition: app.avatarFor(modelData.id)
                 x: 8
                 y: 6
                 width: 16

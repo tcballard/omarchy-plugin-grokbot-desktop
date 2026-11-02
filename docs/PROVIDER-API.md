@@ -287,3 +287,9 @@ Run `python3 tests/provider-api.py` and `python3 tests/grokbot-api.py` for contr
 real child-process pipe exchange plus real GrokBot local-worker and mocked Hermes gateway cases, not a real
 Hermes server. Run `./tests/run` for the wider repository suite. A desktop release
 still requires mixed-provider, native QML, and live Omarchy acceptance.
+
+## v0.2.0 desktop binding
+
+The appearance page refreshes Hermes profiles and optional example agents through `bin/agent-desktop-roster`. Grok identities retain their legacy IDs for settings compatibility; Hermes and example identities use `<provider>:<native-id>`. A roster row carries `provider` and `agentId` separately, and the shared one-shot client sends only the native identity to its adapter. Exact ambiguous display names are rejected by reply routing.
+
+Provider runtime paths are configured in `~/.config/omarchy/agent-desktop.json`; see [candidate testing](TESTING-v0.2.0.md). Existing Grok credentials and dispatch configuration are preserved. The desktop currently consumes completed replies; the richer Hermes API methods remain available to protocol clients. Open Bot Avatar definitions belong to the desktop appearance settings and are never included in model prompts. Dots is out of scope.

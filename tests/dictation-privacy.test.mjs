@@ -264,8 +264,17 @@ test('non-dictation control commands keep their existing interface', async t => 
 
 test('the plugin registers its IPC handler with Omarchy socket dispatch', () => {
   const main = fs.readFileSync(path.join(root, 'Main.qml'), 'utf8')
-  assert.match(main, /ShellIpc\s*\{\s*target: "io.github.tcballard.grokbot-desktop"/)
-  assert.match(main, /function dictate\(text: string\): string \{ return root.dictateText\(text\) \}/)
+  const shellIpc = fs.readFileSync(path.join(root, 'qml/CompanionShellIpc.qml'), 'utf8')
+  const ipcHandler = fs.readFileSync(path.join(root, 'qml/CompanionIpcHandler.qml'), 'utf8')
+  assert.match(main, /qml\/CompanionShellIpc\.qml/)
+  assert.match(main, /qml\/CompanionIpcHandler\.qml/)
+  assert.match(main, /loadIpcBridge\(/)
+  assert.match(shellIpc, /ShellIpc\s*\{/)
+  assert.match(shellIpc, /target:\s*"io\.github\.tcballard\.grokbot-desktop"/)
+  assert.match(shellIpc, /function dictate\(text: string\): string \{ return host\.dictateText\(text\) \}/)
+  assert.match(ipcHandler, /IpcHandler\s*\{/)
+  assert.match(ipcHandler, /target:\s*"io\.github\.tcballard\.grokbot-desktop"/)
+  assert.match(ipcHandler, /function dictate\(text: string\): string \{ return host\.dictateText\(text\) \}/)
 })
 
 test('asynchronous replies preserve private Unicode answers on the socket only', async t => {

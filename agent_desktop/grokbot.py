@@ -164,7 +164,7 @@ class GrokBot:
             caps = agents[agent]['capabilities']
             if attachments and not caps['attachments']:
                 raise Fault('unsupported', 'This Grok Bot transport does not accept attachments.')
-            seconds = params.get('timeoutSeconds', 600 if caps['deferredReplies'] else 180)
+            seconds = params.get('timeoutSeconds', self.transport.ask_timeout(self.transport.plugin_entry(), self.transport.desktop_config(), 600 if caps['deferredReplies'] else 180))
             if type(seconds) not in (int, float) or not 1 <= seconds <= 1800:
                 raise Fault('invalid_request', 'timeoutSeconds must be between 1 and 1800.')
             delivery = request if self.transport.ASK_ID.fullmatch(request) else uuid.uuid4().hex

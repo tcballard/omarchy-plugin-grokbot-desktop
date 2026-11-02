@@ -10,6 +10,8 @@ import "qml/shapes.js" as Shapes
 import "qml/palette.js" as Palette
 import "qml/dictation.js" as Dictation
 import "qml/theme.js" as Theme
+import "qml/screens.js" as Screens
+import "qml/openbotavatar.js" as Avatar
 
 // Grok Bot desktop companion. A service inside omarchy-shell: a transparent
 // layer-shell window, click-through except for the mark (and the bubble or
@@ -69,6 +71,75 @@ Item {
     }
   }
 
+  property var providerBots: []
+  property string providerStatus: ""
+  readonly property bool discoveringProviders: providerProc.running
+  property var avatarDefinitions: ({})
+  property string avatarStatus: ""
+
+  function refreshProviders() {
+    if (!providerProc.running) providerProc.running = true
+  }
+
+  Process {
+    id: providerProc
+    command: ["/usr/bin/setpriv", "--pdeathsig", "TERM", "/usr/bin/python3", "-I", root.localPath(Qt.resolvedUrl("bin/agent-desktop-roster"))]
+    clearEnvironment: true
+    environment: root.askEnvironment()
+    stdout: StdioCollector { id: providerOut }
+    stderr: StdioCollector { id: providerErr }
+    onExited: function(code) {
+      if (code !== 0) {
+        root.providerStatus = root.cleanText(providerErr.text, 400) || "Provider discovery failed."
+        return
+      }
+      try {
+        var data = JSON.parse(providerOut.text)
+        var failed = (data.errors || []).map(function(error) { return String(error).split(":")[0] })
+        var retained = root.providerBots.filter(function(bot) { return failed.indexOf(bot.provider) >= 0 })
+        root.providerBots = root.parseBots(JSON.stringify({ bots: data.bots })).concat(retained)
+        root.providerStatus = (data.errors || []).join(" · ") || "Providers refreshed."
+        root.applyBots(botsFile.text())
+      } catch (e) { root.providerStatus = "Invalid provider roster; previous agents retained." }
+    }
+  }
+
+  function avatarFor(id) {
+    return root.avatarDefinitions[id] || null
+  }
+
+  function importAvatar(raw) {
+    if (String(raw).length > 16384) { root.avatarStatus = "Avatar JSON must be under 16 KiB."; return false }
+    try {
+      var result = Avatar.validateAvatar(JSON.parse(raw))
+      if (!result.ok) { root.avatarStatus = result.errors.join(" · ").slice(0, 400); return false }
+      var next = Object.assign({}, root.avatarDefinitions)
+      if (!next[root.chosenBotId] && Object.keys(next).length >= 12) {
+        root.avatarStatus = "At most 12 custom avatars can be stored. Remove one first."; return false
+      }
+      next[root.chosenBotId] = result.value
+      if (JSON.stringify(next).length > 65536) { root.avatarStatus = "Stored avatars exceed 64 KiB."; return false }
+      root.avatarDefinitions = next
+      root.saveSettings()
+      root.avatarStatus = "Imported " + result.value.name + " for " + root.botLabel() + "."
+      return true
+    } catch (e) { root.avatarStatus = "Invalid avatar JSON."; return false }
+  }
+
+  function exportAvatar() {
+    var definition = root.avatarFor(root.chosenBotId)
+    root.avatarStatus = definition ? "Select and copy this JSON to save or share it." : "This agent uses a built-in shape."
+    return definition ? JSON.stringify(definition, null, 2) : ""
+  }
+
+  function removeAvatar() {
+    var next = Object.assign({}, root.avatarDefinitions)
+    delete next[root.chosenBotId]
+    root.avatarDefinitions = next
+    root.saveSettings()
+    root.avatarStatus = "Built-in shape restored."
+  }
+
   property bool ready: false
   property bool present: true
   property bool bubbleOpen: false
@@ -81,6 +152,18 @@ Item {
   // backend reports its state here, so every exit path clears it.
   property bool dictating: false
   property bool replyUnread: false
+  // Floating reply cues: a toast for the active bot, or a peeking avatar for
+  // another bot. Shown only while the companion bubble is closed and the
+  // Grok Bot desktop app is not open.
+  property string cueKind: ""
+  property string cueText: ""
+  property string cueBotId: ""
+  property real cueActiveShown: 0
+  property real cuePeekOut: 0
+  property real cuePeekBubbleShown: 0
+  readonly property int cueActiveMs: 5000
+  readonly property int cuePeekMs: 3000
+  readonly property int cuePeekBubbleMs: 2000
   property bool dragging: false
   property bool ghost: false
   property bool claimed: false
@@ -147,7 +230,7 @@ Item {
   Behavior on dragLift { NumberAnimation { duration: root.ms(180); easing.type: Easing.OutCubic } }
   property real dragTilt: 0
   property real dragTiltTarget: 0
-  property real lastDragX: 0
+  property real lastDragGlobalX: 0
   property real lastDragAt: 0
   property real idleY: 0
   property real hopY: 0
@@ -209,11 +292,19 @@ Item {
   property string themeForeground: ""
   property string themeBackground: ""
   property real dwellSince: 0
-  property real dragCursorX: 0
-  property real dragCursorY: 0
-  property int dragRight: 0
-  property int dragBottom: 0
-  property string startMonitor: ""
+  property real dragGrabX: 0
+  property real dragGrabY: 0
+  property string dragScreenName: ""
+  // Output the mark is crossing onto, and the one kept while the bubble or
+  // menu is open. Plain { name, x, y, width, height }, not a ShellScreen.
+  property var carryScreen: null
+  property string homeMonitor: ""
+  property bool dragDetached: false
+  property bool pointerHeld: false
+  property var hostWin: null
+  property var hostMark: null
+  property var hostStage: null
+  property var hostBubble: null
 
   readonly property color accent: root.themeAccent !== "" ? root.themeAccent : Commons.Color.accent
   readonly property color ink: root.themeForeground !== "" ? root.themeForeground : Commons.Color.foreground
@@ -294,10 +385,10 @@ Item {
 
   readonly property bool surfacesOpen: root.bubbleOpen || root.menuOpen
 
-  // Mark placement in output coordinates. The window covers the output, so
-  // these are also window coordinates.
-  readonly property int screenW: win.screen ? win.screen.width : 0
-  readonly property int screenH: win.screen ? win.screen.height : 0
+  // Mark placement in the active output's coordinates. Each layer covers
+  // its own output, so these are also that window's coordinates.
+  readonly property int screenW: root.activeScreen ? root.activeScreen.width : 0
+  readonly property int screenH: root.activeScreen ? root.activeScreen.height : 0
   readonly property real stageW: root.shownSize + 24
   readonly property real stageH: root.shownSize + 52
   readonly property real stageScreenX: {
@@ -427,6 +518,8 @@ Item {
       if (!item || !item.id || !item.name) continue
       out.push({
         id: String(item.id),
+        agentId: String(item.agentId || item.id),
+        provider: item.provider === "hermes" || item.provider === "example" ? item.provider : "grokbot",
         name: String(item.name),
         shortName: String(item.shortName || ""),
         description: String(item.description || ""),
@@ -448,7 +541,10 @@ Item {
     var parsed = root.parseBots(text)
     if (parsed.length === 0) parsed = root.parseBots(bundledBots.text())
     if (parsed.length === 0) return
-    root.bots = parsed
+    // Grok IDs retain their legacy namespace; other providers use explicit prefixes.
+    var ids = {}
+    parsed.forEach(function(bot) { ids[bot.id] = true })
+    root.bots = parsed.concat((root.providerBots || []).filter(function(bot) { return !ids[bot.id] }))
     if (root.rosterRead) root.settleChosenBot()
     if (root.ready) root.retargetAppearance(true)
   }
@@ -457,6 +553,7 @@ Item {
   // bot, then the first, as Grok Bot itself falls back.
   function settleChosenBot() {
     if (root.findBot(root.chosenBotId)) return
+    if (/^(hermes|example):/.test(root.chosenBotId)) return
     var primary = root.primaryBot()
     root.chosenBotId = primary ? primary.id : root.defaultBotId
   }
@@ -476,7 +573,12 @@ Item {
   }
 
   function currentBot() {
-    return root.findBot(root.chosenBotId) || root.primaryBot()
+    var found = root.findBot(root.chosenBotId)
+    if (!found && /^(hermes|example):/.test(root.chosenBotId)) {
+      return { id: root.chosenBotId, provider: root.chosenBotId.split(":")[0],
+        name: "Unavailable agent", shortName: "Unavailable agent", description: "Refresh providers to reconnect" }
+    }
+    return found || root.primaryBot()
   }
 
   function botLabel() {
@@ -531,18 +633,15 @@ Item {
     var i
     if (q === "") return null
     for (i = 0; i < root.bots.length; i++) if (root.bots[i].id === q) return root.bots[i]
+    var matched = null
     for (i = 0; i < root.bots.length; i++) {
       var bot = root.bots[i]
-      var name = String(bot.name || "").toLowerCase()
-      var shortName = String(bot.shortName || "").toLowerCase()
-      if (name === lower || shortName === lower) return bot
+      if (String(bot.name || "").toLowerCase() === lower || String(bot.shortName || "").toLowerCase() === lower) {
+        if (matched) return null
+        matched = bot
+      }
     }
-    for (i = 0; i < root.bots.length; i++) {
-      var item = root.bots[i]
-      var label = String(item.shortName || item.name || "").toLowerCase()
-      if (label.indexOf(lower) === 0 || String(item.name || "").toLowerCase().indexOf(lower) === 0) return item
-    }
-    return null
+    return matched
   }
 
   function destinationShape() {
@@ -583,7 +682,14 @@ Item {
 
   function startMorph(nextShape, nextColor) {
     // The picker-pose contour and eyes, before the desktop mark turns its
-    // face: the header and other plain marks share this snapshot.
+    // face: the header and other plain marks share this snapshot. Before the
+    // layer for this output exists, fall back to the resting shape.
+    var mark = root.hostMark || {
+      blended: { points: Shapes.get(root.shapeTo).points, eyes: Shapes.eyes(root.shapeTo) },
+      stemLevel: 0,
+      fillColor: root.fillFrom,
+      eyeColor: root.eyeFrom
+    }
     var face = mark.blended.points
     var eyesNow = mark.blended.eyes
     root.stemFrom = mark.stemLevel
@@ -605,6 +711,14 @@ Item {
 
   function loadSettings() {
     root.chosenBotId = String(root.setting("botId", root.defaultBotId))
+    var avatars = root.setting("avatarDefinitions", {})
+    var valid = {}
+    if (avatars && typeof avatars === "object" && JSON.stringify(avatars).length <= 65536) {
+      Object.keys(avatars).slice(0, 12).forEach(function(id) {
+        try { var check = Avatar.validateAvatar(avatars[id]); if (check.ok) valid[id] = check.value } catch (e) {}
+      })
+    }
+    root.avatarDefinitions = valid
     var recent = root.setting("recentBots", [])
     root.recentBots = Array.isArray(recent) ? recent.filter(function (id) { return typeof id === "string" && id.length <= 64 }).slice(0, 6) : []
     root.syncOn = root.setting("syncAppearance", true) !== false
@@ -620,6 +734,8 @@ Item {
     root.anchorName = anchor === "bl" || anchor === "tr" || anchor === "tl" ? anchor : "br"
     root.sizeName = String(root.setting("size", "medium"))
     root.sizePx = root.settingInt("sizePx", 128, 48, 320)
+    var monitor = String(root.setting("monitor", ""))
+    if (/^[A-Za-z0-9._-]{1,64}$/.test(monitor)) root.homeMonitor = monitor
     root.posRight = root.settingInt("marginX", 24, 0, 4000)
     root.posBottom = root.settingInt("marginY", 24, 0, 4000)
     if (root.bots.length === 0) root.applyBots("")
@@ -631,9 +747,11 @@ Item {
 
   Component.onCompleted: {
     root.loadSettings()
+    root.refreshProviders()
     root.latchMonitor()
     cursorProc.running = root.cursorHelper !== ""
     layerRuleProc.running = true
+    grokAppCheck.running = true
   }
 
   // Hyprland animates layer surfaces as they map, which would pop the
@@ -668,7 +786,7 @@ Item {
       if (!event) return
       var name = String(event.name)
       if (name === "configreloaded" && !layerRuleProc.running) layerRuleProc.running = true
-      else root.screensaverEvent(name, String(event.data || ""))
+      else root.hyprWindowEvent(name, String(event.data || ""))
     }
   }
 
@@ -680,14 +798,23 @@ Item {
   property var screensaverWindows: []
   property int screensaverLayers: 0
   readonly property bool screensaverUp: root.screensaverWindows.length > 0 || root.screensaverLayers > 0
+  // Reply cues stay quiet while the Grok Bot desktop app itself is open.
+  readonly property string grokAppClass: "grok-bot"
+  property var grokAppWindows: []
+  readonly property bool grokAppOpen: root.grokAppWindows.length > 0
 
-  function screensaverEvent(name, data) {
+  function hyprWindowEvent(name, data) {
     if (name === "openwindow") {
       var parts = data.split(",")
-      if (parts.length >= 3 && parts[2] === root.screensaverName)
-        root.screensaverWindows = root.screensaverWindows.concat([parts[0]])
+      if (parts.length >= 3) {
+        if (parts[2] === root.screensaverName)
+          root.screensaverWindows = root.screensaverWindows.concat([parts[0]])
+        if (parts[2] === root.grokAppClass && root.grokAppWindows.indexOf(parts[0]) < 0)
+          root.grokAppWindows = root.grokAppWindows.concat([parts[0]])
+      }
     } else if (name === "closewindow") {
       root.screensaverWindows = root.screensaverWindows.filter(function (address) { return address !== data })
+      root.grokAppWindows = root.grokAppWindows.filter(function (address) { return address !== data })
     } else if (name === "openlayer" && data === root.screensaverName) {
       root.screensaverLayers++
     } else if (name === "closelayer" && data === root.screensaverName) {
@@ -697,10 +824,11 @@ Item {
 
   // A missed close event must not leave the companion hidden, so while it is
   // hidden it checks every 20 seconds that a screensaver is still there.
+  // The same poll refreshes whether the Grok Bot app is open.
   Timer {
     interval: 20000
     repeat: true
-    running: root.screensaverUp
+    running: root.screensaverUp || root.grokAppOpen
     onTriggered: if (!screensaverCheck.running) screensaverCheck.running = true
   }
 
@@ -710,11 +838,46 @@ Item {
     stdout: StdioCollector { id: screensaverCheckOut }
     onExited: function (code) {
       if (code !== 0) return
-      if (String(screensaverCheckOut.text).indexOf(root.screensaverName) < 0) {
+      var text = String(screensaverCheckOut.text)
+      if (text.indexOf(root.screensaverName) < 0) {
         root.screensaverWindows = []
         root.screensaverLayers = 0
       }
+      root.applyGrokAppClients(text)
     }
+  }
+
+  Process {
+    id: grokAppCheck
+    command: ["/usr/bin/hyprctl", "-j", "clients"]
+    stdout: StdioCollector { id: grokAppCheckOut }
+    onExited: function (code) {
+      if (code !== 0) return
+      root.applyGrokAppClients(String(grokAppCheckOut.text))
+    }
+  }
+
+  function applyGrokAppClients(text) {
+    var blob = String(text || "")
+    var clientsEnd = blob.indexOf("\n\n")
+    if (clientsEnd >= 0) blob = blob.slice(0, clientsEnd)
+    var found = []
+    try {
+      var clients = JSON.parse(blob)
+      var i
+      for (i = 0; i < clients.length; i++) {
+        if (clients[i] && clients[i]["class"] === root.grokAppClass && clients[i].address)
+          found.push(String(clients[i].address))
+      }
+    } catch (e) {
+      if (blob.indexOf('"' + root.grokAppClass + '"') >= 0 && root.grokAppWindows.length > 0) return
+      found = []
+    }
+    root.grokAppWindows = found
+  }
+
+  onGrokAppOpenChanged: {
+    if (root.grokAppOpen && !root.canShowReplyCue()) root.clearReplyCue()
   }
 
   function scheduleSave() { saveTimer.restart() }
@@ -729,6 +892,7 @@ Item {
     settings.marginX = root.posRight
     settings.marginY = root.posBottom
     settings.botId = root.chosenBotId
+    settings.avatarDefinitions = root.avatarDefinitions
     settings.recentBots = root.recentBots
     settings.syncAppearance = root.syncOn
     settings.shape = root.customShape
@@ -739,6 +903,33 @@ Item {
     settings.motion = root.motionName
     settings.anchor = root.anchorName
     settings.idleMotion = root.motionName !== "calm"
+    if (/^[A-Za-z0-9._-]{1,64}$/.test(root.homeMonitor)) settings.monitor = root.homeMonitor
+    root.shell.updateEntryInline(root.pluginId, settings)
+  }
+
+  // A drop writes the output and the two margins onto the existing entry.
+  // Every other key is copied from the file, so a drag cannot rewrite the
+  // bot, the size, or the motion.
+  function saveDraggedPosition(settled) {
+    if (!settled || !root.shell || typeof root.shell.updateEntryInline !== "function") return
+    userConfig.reload()
+    if (typeof userConfig.waitForJob === "function") userConfig.waitForJob()
+    var entry = root.ownEntry()
+    var settings = {}
+    var key
+    var known = false
+    for (key in entry) {
+      if (key === "id") continue
+      settings[key] = entry[key]
+      known = true
+    }
+    if (!known) {
+      root.saveSettings()
+      return
+    }
+    settings.marginX = settled.marginX
+    settings.marginY = settled.marginY
+    settings.monitor = settled.monitor
     root.shell.updateEntryInline(root.pluginId, settings)
   }
 
@@ -770,8 +961,10 @@ Item {
   // A reply or status for the bot `id`: shown if its conversation is on
   // screen, otherwise kept with it and marked unread.
   function deliver(id, body) {
+    var botId = id === "" ? root.threadBotId : id
     if (id === "" || id === root.threadBotId) {
       root.bubbleBody = body
+      root.announceReply(botId, body)
       return true
     }
     var next = Object.assign({}, root.threads)
@@ -780,6 +973,7 @@ Item {
     next[id] = thread
     root.threads = next
     root.markUnread(id)
+    root.announceReply(botId, body)
     return false
   }
 
@@ -804,12 +998,33 @@ Item {
     return root.botLabel()
   }
 
+  // Hover the mark and scroll to step through the roster. Positive delta
+  // moves forward; negative moves back. Wraps at both ends.
+  function cycleBot(delta) {
+    var list = root.bots
+    if (!list || list.length < 2) return root.botLabel()
+    var step = Math.round(Number(delta) || 0)
+    if (step === 0) return root.botLabel()
+    var at = 0
+    var i
+    for (i = 0; i < list.length; i++) {
+      if (list[i].id === root.threadBotId) {
+        at = i
+        break
+      }
+    }
+    var next = (at + step) % list.length
+    if (next < 0) next += list.length
+    return root.selectBot(list[next].id)
+  }
+
   // Picking a shape or colour swaps the avatar at once, as Grok Bot's
   // picker does; only a switch to another bot morphs.
   function selectShape(name) {
     if (!Shapes.known(name)) return "unknown shape"
     root.syncOn = false
     root.customShape = name
+    if (root.avatarFor(root.chosenBotId)) root.removeAvatar()
     root.retargetAppearance(false)
     root.scheduleSave()
     return "ok"
@@ -931,9 +1146,10 @@ Item {
     root.cardPage = "chat"
     root.bubbleOpen = true
     root.replyUnread = false
+    root.clearReplyCue()
     root.menuOpen = false
     root.wake()
-    Qt.callLater(function () { if (bubblePanel) bubblePanel.focusPrompt() })
+    Qt.callLater(function () { if (root.hostBubble) root.hostBubble.focusPrompt() })
   }
 
   function closeBubble() {
@@ -1115,6 +1331,7 @@ Item {
       root.archiveExchange()
       root.noticeLinks = links || []
       root.bubbleBody = text
+      root.announceReply(botId, text)
       return true
     }
     var next = Object.assign({}, root.threads)
@@ -1131,6 +1348,7 @@ Item {
     next[botId] = thread
     root.threads = next
     root.markUnread(botId)
+    root.announceReply(botId, text)
     return false
   }
 
@@ -1156,6 +1374,7 @@ Item {
       if (root.awaitingId === askId) {
         root.bubbleBody = text
         root.awaitingId = ""
+        root.announceReply(botId, text)
         return true
       }
       var index = root.indexWaiting(root.history, askId)
@@ -1163,6 +1382,7 @@ Item {
       var history = root.history.slice()
       history[index] = Object.assign({}, history[index], { body: text, wait: "" })
       root.history = history
+      root.announceReply(botId, text)
       return true
     }
     var next = Object.assign({}, root.threads)
@@ -1180,6 +1400,7 @@ Item {
     next[botId] = thread
     root.threads = next
     root.markUnread(botId)
+    root.announceReply(botId, text)
     return false
   }
 
@@ -1255,6 +1476,7 @@ Item {
       root.bubbleBody = words
       root.flashExpression("alert", 1200)
       syllableAnim.restart()
+      // summon opens the bubble, so no floating cue while the card is up.
       return "ok"
     }
     root.summon()
@@ -1349,8 +1571,25 @@ Item {
   function toggleDictation() {
     if (root.dictateHelper.indexOf("/bin/grokbot-dictate") < 0 || root.dictateHelper.indexOf("..") >= 0)
       return "error"
-    Quickshell.execDetached(["/usr/bin/python3", root.dictateHelper])
+    if (dictateProc.running) return "busy"
+    dictateProc.running = true
     return "ok"
+  }
+
+  // The helper prints a transcript only for backends that hand it back instead of
+  // pasting it (Hex: its paste would land in the app window behind the card). It
+  // arrives on stdout, never on a command line, and goes in at the field's cursor.
+  Process {
+    id: dictateProc
+    command: ["/usr/bin/python3", root.dictateHelper]
+    stdout: StdioCollector { id: dictateOut }
+    onExited: function (code) {
+      var text = root.cleanText(dictateOut.text, 4000)
+      if (code !== 0 || text === "") return
+      root.dictating = false
+      root.openBubble()
+      if (bubblePanel) bubblePanel.insertText(text)
+    }
   }
 
   // Attaching runs grokbot-attach, which saves private copies and prints
@@ -1436,7 +1675,7 @@ Item {
       })
       if (saved.length > 0) root.pendingFiles = root.pendingFiles.concat(saved).slice(0, root.fileLimit)
       if (code === 4) {
-        if (root.attachQuiet && bubblePanel) bubblePanel.pasteText()
+        if (root.attachQuiet && root.hostBubble) root.hostBubble.pasteText()
         else root.attachNote = "There's no image on the clipboard."
       } else if (code !== 0 || String(attachErr.text || "").trim() !== "") {
         var reason = root.cleanText(attachErr.text, 200)
@@ -1486,13 +1725,17 @@ Item {
 
   function launchAsk(prompt) {
     if (askProc.running) return "busy"
+    if (!root.findBot(root.chosenBotId)) {
+      root.failAsk("Selected agent is unavailable. Refresh providers or select another agent.")
+      return "error"
+    }
     root.openBubble()
     root.archiveExchange()
     root.askedText = String(prompt || "")
     root.askedFiles = root.pendingFiles
     root.pendingFiles = []
     root.attachNote = ""
-    if (bubblePanel) bubblePanel.attachMenuOpen = false
+    if (root.hostBubble) root.hostBubble.attachMenuOpen = false
     if (!root.trustedBin("/usr/bin/setpriv") || !root.trustedBin("/usr/bin/python3")) {
       root.failAsk("Couldn't find trusted setpriv and python3.")
       return "error"
@@ -1505,7 +1748,8 @@ Item {
     root.pendingAskId = root.newAskId()
     root.pendingJson = JSON.stringify({
       askId: root.pendingAskId,
-      botId: bot ? bot.id : root.defaultBotId,
+      botId: bot ? bot.agentId || bot.id : root.defaultBotId,
+      provider: bot ? bot.provider || "grokbot" : "grokbot",
       botName: root.botLabel(),
       prompt: prompt,
       host: "",
@@ -1531,7 +1775,7 @@ Item {
   function stopAsk() {
     if (!root.asking) return
     root.cancelAsk()
-    root.deliver(root.askBotId, "Stopped.")
+    root.deliver(root.askBotId, "Stopped waiting. Remote work may continue; check the provider.")
     root.expression = "idle"
   }
 
@@ -1539,6 +1783,103 @@ Item {
     if (root.bubbleOpen) return
     root.replyUnread = true
     root.hop()
+  }
+
+  // Heads-up toasts for replies while the companion card is closed and the
+  // Grok Bot app is not open on the desktop.
+  function canShowReplyCue(botId) {
+    var bot = root.findBot(botId || root.cueBotId || root.chosenBotId)
+    return root.present && !root.bubbleOpen && !(root.grokAppOpen && (!bot || bot.provider === "grokbot")) && !root.screensaverUp
+  }
+
+  function previewSnippet(text) {
+    return root.plainLine(text, 160)
+  }
+
+  function announceReply(botId, text) {
+    if (!root.canShowReplyCue(botId)) return
+    var preview = root.previewSnippet(text)
+    if (preview === "") return
+    if (botId === "" || botId === root.threadBotId) root.showActiveCue(preview)
+    else root.showPeekCue(botId, preview)
+  }
+
+  function clearReplyCue() {
+    activeCueTimer.stop()
+    peekBubbleTimer.stop()
+    peekHideTimer.stop()
+    peekSlideAnim.stop()
+    root.cueKind = ""
+    root.cueText = ""
+    root.cueBotId = ""
+    root.cueActiveShown = 0
+    root.cuePeekOut = 0
+    root.cuePeekBubbleShown = 0
+  }
+
+  function showActiveCue(text) {
+    peekBubbleTimer.stop()
+    peekHideTimer.stop()
+    peekSlideAnim.stop()
+    root.cuePeekOut = 0
+    root.cuePeekBubbleShown = 0
+    root.cueBotId = root.threadBotId
+    root.cueKind = "active"
+    root.cueText = text
+    root.cueActiveShown = 1
+    activeCueTimer.restart()
+  }
+
+  function showPeekCue(botId, text) {
+    if (!root.findBot(botId)) return
+    activeCueTimer.stop()
+    root.cueActiveShown = 0
+    root.cueKind = "peek"
+    root.cueBotId = botId
+    root.cueText = text
+    root.cuePeekBubbleShown = 1
+    peekSlideAnim.stop()
+    peekSlideAnim.from = root.cuePeekOut
+    peekSlideAnim.to = 1
+    peekSlideAnim.start()
+    peekBubbleTimer.restart()
+    peekHideTimer.restart()
+  }
+
+  Timer {
+    id: activeCueTimer
+    interval: root.cueActiveMs
+    onTriggered: {
+      root.cueActiveShown = 0
+      root.cueKind = ""
+    }
+  }
+
+  Timer {
+    id: peekBubbleTimer
+    interval: root.cuePeekBubbleMs
+    onTriggered: root.cuePeekBubbleShown = 0
+  }
+
+  Timer {
+    id: peekHideTimer
+    interval: root.cuePeekMs
+    onTriggered: {
+      peekSlideAnim.stop()
+      peekSlideAnim.from = root.cuePeekOut
+      peekSlideAnim.to = 0
+      peekSlideAnim.start()
+      root.cueKind = ""
+      root.cueBotId = ""
+    }
+  }
+
+  NumberAnimation {
+    id: peekSlideAnim
+    target: root
+    property: "cuePeekOut"
+    duration: root.ms(280)
+    easing.type: Easing.OutCubic
   }
 
   Process {
@@ -1576,7 +1917,7 @@ Item {
 
   Timer {
     id: askTimeout
-    interval: 180000
+    interval: 1830000
     onTriggered: {
       root.cancelAsk()
       if (root.deliver(root.askBotId, "That took too long, so I stopped waiting.")) root.replyLanded()
@@ -1592,13 +1933,33 @@ Item {
   }
 
   function cursorLine(line) {
-    var match = /^(-?\d{1,6}) (-?\d{1,6})$/.exec(String(line).slice(0, 32))
+    var text = String(line).trim()
+    // The layer that took the press loses it at the output edge. The helper
+    // reports the left button, and nothing else, so the drag can finish there.
+    if (text === "down") {
+      root.pointerHeld = true
+      return
+    }
+    if (text === "up") {
+      root.pointerHeld = false
+      if (root.dragging && root.dragDetached) root.endDrag()
+      return
+    }
+    var match = /^(-?\d{1,6}) (-?\d{1,6})$/.exec(text.slice(0, 32))
     if (!match) return
     root.cursorX = Number(match[1])
     root.cursorY = Number(match[2])
     root.cursorKnown = true
     root.lastMoveAt = Date.now()
     if (root.sleepHold || root.expression === "sleep") root.wake()
+    if (root.dragging && root.dragScreenName !== "") {
+      var origin = Screens.byName(root.screenList, root.dragScreenName)
+      if (root.dragDetached || !origin || !Screens.contains(origin, root.cursorX, root.cursorY)) {
+        root.dragDetached = true
+        root.dragGlobal(root.cursorX, root.cursorY)
+        if (!root.pointerHeld) root.endDrag()
+      }
+    }
     root.updateGazeTarget()
     gazeFrames.running = true
     root.pointerNear = root.pointerIsNear()
@@ -1606,10 +1967,13 @@ Item {
   }
 
   function updateGazeTarget() {
-    if (!root.cursorKnown || !win.screen) return
-    var local = mark.mapToItem(win.contentItem, mark.width / 2, mark.height / 2)
-    var dx = root.cursorX - (win.screen.x + local.x)
-    var dy = root.cursorY - (win.screen.y + local.y)
+    var screen = root.activeScreen
+    var host = root.hostWin
+    var mark = root.hostMark
+    if (!root.cursorKnown || !screen || !host || !host.screen || host.screen.name !== screen.name || !mark) return
+    var local = mark.mapToItem(host.contentItem, mark.width / 2, mark.height / 2)
+    var dx = root.cursorX - (screen.x + local.x)
+    var dy = root.cursorY - (screen.y + local.y)
     var dist = Math.sqrt(dx * dx + dy * dy)
     if (dist < 1) {
       root.gazeTargetX = 0
@@ -1670,17 +2034,21 @@ Item {
   Component.onDestruction: {
     cursorProc.running = false
     syncProc.running = false
+    providerProc.running = false
     if (askProc.running) askProc.running = false
   }
 
   function stageRect() {
-    if (!win.screen) return null
-    var point = stage.mapToItem(win.contentItem, 0, 0)
+    var screen = root.activeScreen
+    var host = root.hostWin
+    var item = root.hostStage
+    if (!screen || !host || !host.screen || host.screen.name !== screen.name || !item) return null
+    var point = item.mapToItem(host.contentItem, 0, 0)
     return {
-      x: win.screen.x + point.x,
-      y: win.screen.y + point.y,
-      w: stage.width,
-      h: stage.height
+      x: screen.x + point.x,
+      y: screen.y + point.y,
+      w: item.width,
+      h: item.height
     }
   }
 
@@ -1708,9 +2076,10 @@ Item {
     return Math.sqrt(dx * dx + dy * dy)
   }
 
-  // Dodge fades with distance: faint as the pointer arrives, and while it
-  // rests on the mark the mark visibly fades back in over the dwell before
-  // it takes clicks again.
+  // Dodge fades with distance as the pointer approaches. Once the pointer
+  // is over the mark the avatar returns to full opacity immediately; the
+  // stage stays in the input mask the whole time so clicks and drags work
+  // without waiting for a dwell.
   function updateDodge() {
     if (!root.dodgeOn || !root.present || root.dragging || root.surfacesOpen || !root.cursorKnown || !root.pointerIsNear()) {
       root.ghost = false
@@ -1721,16 +2090,16 @@ Item {
     }
     var floor = 0.28
     if (root.pointerInside()) {
-      if (root.dwellSince === 0) root.dwellSince = Date.now()
-      var held = (Date.now() - root.dwellSince) / root.dwellMs
-      if (held >= 1) root.claimed = true
-      root.dodgeOpacity = root.claimed ? 1 : floor + (1 - floor) * Math.max(0, Math.min(1, held))
+      root.dwellSince = 0
+      root.claimed = true
+      root.ghost = false
+      root.dodgeOpacity = 1
     } else {
       root.dwellSince = 0
       root.claimed = false
+      root.ghost = true
       root.dodgeOpacity = floor + (1 - floor) * Math.max(0, Math.min(1, root.pointerGap() / 36))
     }
-    root.ghost = !root.claimed
   }
 
   readonly property int dwellMs: 380
@@ -1954,30 +2323,36 @@ Item {
   // Drag follows the mark's own pointer events in window coordinates, so it
   // tracks at the input rate rather than the cursor helper's 30Hz polls.
   function beginDrag(px, py) {
-    root.dragging = true
     root.ghost = false
-    root.dragCursorX = px
-    root.dragCursorY = py
-    root.dragRight = root.posRight
-    root.lastDragX = px
+    root.dragDetached = false
+    root.pointerHeld = true
+    root.carryScreen = root.activeScreen
+    root.dragScreenName = root.carryScreen ? root.carryScreen.name : ""
+    root.dragGrabX = px - root.stageScreenX
+    root.dragGrabY = py - root.stageScreenY
+    root.lastDragGlobalX = (root.carryScreen ? root.carryScreen.x : 0) + px
     root.lastDragAt = Date.now()
-    root.dragBottom = root.posBottom
+    root.dragging = true
   }
 
   function dragMove(px, py) {
-    if (!win.screen) return
-    var maxRight = Math.max(0, root.screenW - root.stageW)
-    var maxBottom = Math.max(0, root.screenH - root.stageH)
-    var dx = px - root.dragCursorX
-    var dy = py - root.dragCursorY
-    var nextX = root.anchorFromRight ? root.dragRight - dx : root.dragRight + dx
-    var nextY = root.anchorFromBottom ? root.dragBottom - dy : root.dragBottom + dy
-    root.posRight = Math.max(0, Math.min(maxRight, Math.round(nextX)))
-    root.posBottom = Math.max(0, Math.min(maxBottom, Math.round(nextY)))
+    var origin = Screens.byName(root.screenList, root.dragScreenName)
+    if (!origin) return
+    root.dragGlobal(origin.x + px, origin.y + py)
+  }
+
+  function dragGlobal(gx, gy) {
+    var dest = Screens.atPoint(root.screenList, gx, gy)
+    if (!dest) dest = Screens.byName(root.screenList, root.dragScreenName)
+    if (!dest) return
+    root.carryScreen = dest
+    var placed = Screens.place(dest, root.anchorFromRight, root.anchorFromBottom, root.stageW, root.stageH, root.dragGrabX, root.dragGrabY, gx, gy)
+    root.posRight = placed.x
+    root.posBottom = placed.y
     var now = Date.now()
     var dt = Math.max(4, now - root.lastDragAt)
-    root.dragTiltTarget = Math.max(-8, Math.min(8, (px - root.lastDragX) / dt * 4))
-    root.lastDragX = px
+    root.dragTiltTarget = Math.max(-8, Math.min(8, (gx - root.lastDragGlobalX) / dt * 4))
+    root.lastDragGlobalX = gx
     root.lastDragAt = now
   }
 
@@ -1997,13 +2372,24 @@ Item {
 
   function endDrag() {
     landAnim.restart()
+    var screen = root.carryScreen || root.activeScreen
+    var settled = Screens.settled(screen && screen.name, root.posRight, root.posBottom)
+    if (settled) {
+      root.homeMonitor = settled.monitor
+      root.posRight = settled.marginX
+      root.posBottom = settled.marginY
+    }
     root.dragging = false
-    root.saveSettings()
+    root.dragDetached = false
+    root.dragScreenName = ""
+    root.carryScreen = null
+    if (settled) root.saveDraggedPosition(settled)
   }
 
   function latchMonitor() {
-    if (root.startMonitor === "" && Hyprland.focusedMonitor)
-      root.startMonitor = String(Hyprland.focusedMonitor.name || "")
+    if (root.homeMonitor !== "" || !Hyprland.focusedMonitor) return
+    var name = String(Hyprland.focusedMonitor.name || "")
+    if (/^[A-Za-z0-9._-]{1,64}$/.test(name)) root.homeMonitor = name
   }
 
   Connections {
@@ -2011,77 +2397,123 @@ Item {
     function onFocusedMonitorChanged() { root.latchMonitor() }
   }
 
-  readonly property string monitorSetting: {
-    var value = String(root.setting("monitor", ""))
-    return /^[A-Za-z0-9._-]{1,64}$/.test(value) ? value : ""
+  function claimHost(panel, markItem, stageItem, bubble) {
+    root.hostWin = panel
+    root.hostMark = markItem
+    root.hostStage = stageItem
+    root.hostBubble = bubble
   }
 
-  readonly property var targetScreen: {
-    var screens = Quickshell.screens
-    var wanted = root.monitorSetting !== "" ? root.monitorSetting : root.startMonitor
+  function reclaimHost() {
+    var list = outputWindows.instances || []
     var i
-    for (i = 0; i < screens.length; i++) if (screens[i].name === wanted) return screens[i]
-    return screens.length > 0 ? screens[0] : null
+    for (i = 0; i < list.length; i++) {
+      var inst = list[i]
+      if (inst && inst.activeHere) {
+        root.claimHost(inst, inst.markItem, inst.stageItem, inst.bubbleItem)
+        return
+      }
+    }
   }
 
-  ShellIpc {
-    target: "io.github.tcballard.grokbot-desktop"
-
-    function summon(): string { root.summon(); return "ok" }
-    function show(): string { root.showCompanion(); return "ok" }
-    function hide(): string { root.hideCompanion(); return "ok" }
-    // For a show/hide shortcut.
-    function toggleVisible(): string {
-      if (root.present) root.hideCompanion()
-      else root.showCompanion()
-      return root.present ? "shown" : "hidden"
-    }
-    function toggle(): string { root.toggleBubble(); return "ok" }
-    function settings(): string { root.openSettings(); return "ok" }
-    function clear(): string { return root.clearConversation() }
-    function ask(prompt: string): string {
-      var text = root.plainLine(prompt, 4000)
-      if (text === "") return "empty"
-      return root.launchAsk(text)
-    }
-    function dictate(text: string): string { return root.dictateText(text) }
-    function bot(name: string): string {
-      var found = root.matchBot(name)
-      if (!found) return "unknown bot"
-      return root.selectBot(found.id)
-    }
-    function appearance(shape: string, color: string): string {
-      if (!Shapes.known(shape)) return "unknown shape"
-      if (!Palette.accepts(color)) return "unknown color"
-      root.syncOn = false
-      root.customShape = shape
-      root.customColor = color
-      root.retargetAppearance(false)
-      root.scheduleSave()
-      return "ok"
-    }
-    function animate(name: string): string { return root.playAnimation(name) }
-    function say(title: string, text: string): string { return root.sayNotice(title, text, []) }
-    function reply(target: string, text: string): string { return root.receiveReply(target, text) }
-    function sayLink(title: string, text: string, label: string, url: string): string {
-      var link = root.linkButton(label, url)
-      if (!link) return "invalid link"
-      return root.sayNotice(title, text, [link])
-    }
-    function sayLinks(title: string, text: string, label1: string, url1: string, label2: string, url2: string): string {
-      var first = root.linkButton(label1, url1)
-      var second = root.linkButton(label2, url2)
-      if (!first || !second) return "invalid link"
-      return root.sayNotice(title, text, [first, second])
-    }
-    function dismiss(): string { return root.dismissSurfaces() ? "dismissed" : "nothing" }
-    function ping(): string { return "ok" }
+  readonly property var screenList: {
+    var raw = Quickshell.screens
+    var out = []
+    var i
+    for (i = 0; i < raw.length; i++) out.push(Screens.snapshot(raw[i]))
+    return out
   }
 
-  PanelWindow {
+  readonly property var focusedMonitorData: {
+    var mon = Hyprland.focusedMonitor
+    if (!mon) return null
+    return { name: String(mon.name || ""), x: mon.x, y: mon.y }
+  }
+
+  readonly property var activeScreen: Screens.choose(
+    root.screenList,
+    root.homeMonitor,
+    root.dragging ? root.carryScreen : null,
+    root.focusedMonitorData
+  )
+
+  function shellScreen(info) {
+    if (!info) return null
+    var raw = Quickshell.screens
+    var i
+    for (i = 0; i < raw.length; i++) if (raw[i].name === info.name) return raw[i]
+    return null
+  }
+
+  readonly property var targetScreen: root.shellScreen(root.activeScreen)
+
+  // Prefer ShellIpc (Omarchy #13435 private socket). Fall back to IpcHandler on
+  // packaged stable builds where ShellIpc is not a type (see issue #23).
+  Loader {
+    id: ipcLoader
+
+    function loadIpcHandlerBridge() {
+      var url = Qt.resolvedUrl("qml/CompanionIpcHandler.qml")
+      var comp = Qt.createComponent(url)
+      function activate() {
+        ipcLoader.setSource(url, { host: root })
+      }
+      if (comp.status === Component.Ready) activate()
+      else if (comp.status === Component.Loading) {
+        comp.statusChanged.connect(function () {
+          if (comp.status === Component.Ready) activate()
+          else if (comp.status === Component.Error)
+            console.warn("Grok Bot desktop: IpcHandler bridge failed:", comp.errorString())
+        })
+      } else {
+        console.warn("Grok Bot desktop: IpcHandler bridge failed:", comp.errorString())
+      }
+    }
+
+    function loadIpcBridge() {
+      var url = Qt.resolvedUrl("qml/CompanionShellIpc.qml")
+      var comp = Qt.createComponent(url)
+      function activateShell() {
+        ipcLoader.setSource(url, { host: root })
+      }
+      if (comp.status === Component.Ready) activateShell()
+      else if (comp.status === Component.Loading) {
+        comp.statusChanged.connect(function () {
+          if (comp.status === Component.Ready) activateShell()
+          else if (comp.status === Component.Error) loadIpcHandlerBridge()
+        })
+      } else {
+        loadIpcHandlerBridge()
+      }
+    }
+
+    Component.onCompleted: loadIpcBridge()
+  }
+
+  Variants {
+    id: outputWindows
+    model: Quickshell.screens
+
+    PanelWindow {
     id: win
-    screen: root.targetScreen
-    visible: root.present && root.targetScreen !== null && root.layerRuleTried && !root.screensaverUp
+    required property var modelData
+    // A layer surface does not move to another output once it is mapped, so
+    // each output has its own window and only the active one is shown. The
+    // window the drag started on stays mapped until release, or the press
+    // grab dies at the edge.
+    readonly property bool activeHere: root.activeScreen !== null && modelData.name === root.activeScreen.name
+    readonly property bool holdingDrag: root.dragging && modelData.name === root.dragScreenName
+    property var markItem: mark
+    property var stageItem: stage
+    property var bubbleItem: bubblePanel
+    screen: modelData
+    visible: root.present && root.targetScreen !== null && root.layerRuleTried && !root.screensaverUp && (activeHere || holdingDrag)
+    onActiveHereChanged: if (activeHere) root.claimHost(win, markItem, stageItem, bubbleItem)
+    Component.onCompleted: if (activeHere) root.claimHost(win, markItem, stageItem, bubbleItem)
+    Component.onDestruction: {
+      if (root.hostWin === win) root.claimHost(null, null, null, null)
+      Qt.callLater(root.reclaimHost)
+    }
     // The window always covers the whole output and never changes size, so
     // the mark cannot move when the card opens or closes: a layer surface
     // that grows or shrinks is re-placed (and animated) by the compositor.
@@ -2096,22 +2528,26 @@ Item {
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.namespace: root.layerNamespace
     WlrLayershell.layer: WlrLayer.Top
-    WlrLayershell.keyboardFocus: root.surfacesOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+    WlrLayershell.keyboardFocus: root.surfacesOpen && activeHere ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
 
     // Only the mark and the open card take the pointer, so the desktop stays
     // usable while a reply is on screen. The right-click menu is the one
     // modal surface: while it is open a click anywhere closes it.
+    // Dodge may fade the mark, but the stage stays in the mask so click,
+    // drag, and scroll always reach it without waiting for a dwell.
     mask: Region {
-      x: root.menuOpen ? 0 : stage.x
-      y: root.menuOpen ? 0 : stage.y
-      width: root.menuOpen ? win.width : (root.ghost || !root.present ? 0 : stage.width)
-      height: root.menuOpen ? win.height : (root.ghost || !root.present ? 0 : stage.height)
+      // While dragging, the grab has to survive all the way to the output
+      // edge. A mask the size of the mark cancels the press there.
+      x: (root.dragging && (win.holdingDrag || win.activeHere)) || (win.activeHere && root.menuOpen) ? 0 : stage.x
+      y: (root.dragging && (win.holdingDrag || win.activeHere)) || (win.activeHere && root.menuOpen) ? 0 : stage.y
+      width: !win.activeHere && !(root.dragging && win.holdingDrag) ? 0 : ((root.dragging && (win.holdingDrag || win.activeHere)) || root.menuOpen ? win.width : (!root.present ? 0 : stage.width))
+      height: !win.activeHere && !(root.dragging && win.holdingDrag) ? 0 : ((root.dragging && (win.holdingDrag || win.activeHere)) || root.menuOpen ? win.height : (!root.present ? 0 : stage.height))
       Region {
         x: bubblePanel.x
         y: bubblePanel.y
-        width: root.bubbleOpen ? bubblePanel.width : 0
-        height: root.bubbleOpen ? bubblePanel.height : 0
+        width: win.activeHere && root.bubbleOpen ? bubblePanel.width : 0
+        height: win.activeHere && root.bubbleOpen ? bubblePanel.height : 0
       }
     }
 
@@ -2129,7 +2565,7 @@ Item {
       id: bubblePanel
       app: root
       // Out of the way while the file chooser is open.
-      readonly property bool shown: root.bubbleOpen && !root.choosingFiles
+      readonly property bool shown: root.bubbleOpen && !root.choosingFiles && win.activeHere
       growsUp: y < stage.y
       visible: opacity > 0.01
       opacity: shown ? 1 : 0
@@ -2165,7 +2601,7 @@ Item {
     Rectangle {
       id: menuCard
       visible: opacity > 0.01
-      opacity: root.menuOpen ? 1 : 0
+      opacity: root.menuOpen && win.activeHere ? 1 : 0
       scale: root.menuOpen ? 1 : 0.92
       transformOrigin: x < stage.x ? (root.anchorFromBottom ? Item.BottomRight : Item.TopRight) : (root.anchorFromBottom ? Item.BottomLeft : Item.TopLeft)
       Behavior on opacity { NumberAnimation { duration: root.ms(root.menuOpen ? 140 : 100); easing.type: Easing.OutCubic } }
@@ -2236,18 +2672,166 @@ Item {
 
     Item {
       id: stage
-      opacity: root.cornerFade
+      opacity: win.activeHere ? root.cornerFade : 0
 
       // Lives on an item so it resolves the layer window it belongs to.
       Shortcut {
         sequence: "Escape"
-        enabled: root.surfacesOpen
+        enabled: root.surfacesOpen && win.activeHere
         onActivated: root.stepBack()
       }
       width: root.stageW
       height: root.stageH
       x: root.stageScreenX
       y: root.stageScreenY
+
+      // Floating reply toast for the active bot. Drawn above the stage so it
+      // does not widen the pointer mask; clamped so a corner placement keeps
+      // the bubble on screen.
+      Item {
+        id: activeCueCard
+        visible: opacity > 0.01
+        opacity: root.cueActiveShown * root.dodgeOpacity
+        z: 5
+        width: 288
+        height: activeCueBody.height + 8
+        x: {
+          var ideal = (parent.width - width) / 2
+          var screenX = root.stageScreenX + ideal
+          if (screenX < 8) ideal = 8 - root.stageScreenX
+          if (screenX + width > root.screenW - 8) ideal = root.screenW - 8 - width - root.stageScreenX
+          return ideal
+        }
+        y: -height - 6
+        transformOrigin: Item.Bottom
+        scale: 0.9 + 0.1 * Math.min(1, root.cueActiveShown)
+        Behavior on opacity { NumberAnimation { duration: root.ms(220); easing.type: Easing.OutCubic } }
+        Behavior on scale { NumberAnimation { duration: root.ms(260); easing.type: Easing.OutBack } }
+
+        Rectangle {
+          id: activeCueBody
+          width: parent.width
+          height: activeCueLabel.implicitHeight + 22
+          radius: 16
+          color: Theme.surface
+          border.width: 1
+          border.color: Theme.lifted
+          Text {
+            id: activeCueLabel
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: 12
+            text: root.cueText
+            color: Theme.text
+            font.pixelSize: 13
+            font.family: root.fontFamily
+            wrapMode: Text.Wrap
+            maximumLineCount: 4
+            elide: Text.ElideRight
+            textFormat: Text.PlainText
+          }
+        }
+        Rectangle {
+          width: 12
+          height: 12
+          rotation: 45
+          color: Theme.surface
+          border.width: 1
+          border.color: Theme.lifted
+          anchors.horizontalCenter: activeCueBody.horizontalCenter
+          anchors.verticalCenter: activeCueBody.bottom
+          z: -1
+        }
+      }
+
+      // A non-active bot peeks out from behind the mark when its reply lands.
+      CompanionMark {
+        avatarDefinition: root.avatarFor(root.cueBotId)
+        id: peekMark
+        readonly property var bot: root.findBot(root.cueBotId)
+        readonly property real peekSide: root.anchorFromRight ? -1 : 1
+        visible: root.cuePeekOut > 0.01
+        width: root.shownSize * 0.56
+        height: width
+        x: (parent.width - width) / 2 + peekSide * root.shownSize * (0.22 + 0.38 * root.cuePeekOut)
+        y: parent.height - 32 - height - (root.shownSize - height) * 0.08
+        z: 0
+        opacity: root.cuePeekOut * root.dodgeOpacity * 0.98
+        scale: 0.9 + 0.1 * root.cuePeekOut
+        shapeFrom: bot ? String(bot.avatarShape || "blob") : "blob"
+        shapeTo: shapeFrom
+        morph: 1
+        cutout: true
+        darkSurface: root.desktopDark
+        colorName: bot ? String(bot.avatarColor || "blue") : "blue"
+        accent: root.accent
+        lively: false
+        expression: "alert"
+        eyeOpen: 1
+        reduceMotion: root.reduceMotion
+        transformOrigin: Item.Bottom
+        Behavior on opacity { NumberAnimation { duration: root.ms(200); easing.type: Easing.OutCubic } }
+        Behavior on scale { NumberAnimation { duration: root.ms(280); easing.type: Easing.OutBack } }
+      }
+
+      // Toast for the peeking bot.
+      Item {
+        id: peekCueCard
+        visible: opacity > 0.01
+        opacity: root.cuePeekBubbleShown * root.dodgeOpacity
+        z: 5
+        width: 260
+        height: peekCueBody.height + 8
+        x: {
+          var ideal = peekMark.x + peekMark.width / 2 - width / 2
+          var screenX = root.stageScreenX + ideal
+          if (screenX < 8) ideal = 8 - root.stageScreenX
+          if (screenX + width > root.screenW - 8) ideal = root.screenW - 8 - width - root.stageScreenX
+          return ideal
+        }
+        y: peekMark.y - height - 6
+        transformOrigin: Item.Bottom
+        scale: 0.9 + 0.1 * Math.min(1, root.cuePeekBubbleShown)
+        Behavior on opacity { NumberAnimation { duration: root.ms(200); easing.type: Easing.OutCubic } }
+        Behavior on scale { NumberAnimation { duration: root.ms(240); easing.type: Easing.OutBack } }
+
+        Rectangle {
+          id: peekCueBody
+          width: parent.width
+          height: peekCueLabel.implicitHeight + 20
+          radius: 14
+          color: Theme.surface
+          border.width: 1
+          border.color: Theme.lifted
+          Text {
+            id: peekCueLabel
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: 10
+            text: root.cueText
+            color: Theme.text
+            font.pixelSize: 12
+            font.family: root.fontFamily
+            wrapMode: Text.Wrap
+            maximumLineCount: 3
+            elide: Text.ElideRight
+            textFormat: Text.PlainText
+          }
+        }
+        Rectangle {
+          width: 10
+          height: 10
+          rotation: 45
+          color: Theme.surface
+          border.width: 1
+          border.color: Theme.lifted
+          anchors.horizontalCenter: peekCueBody.horizontalCenter
+          anchors.verticalCenter: peekCueBody.bottom
+          z: -1
+        }
+      }
 
       // Soft contact shadow. It shrinks and fades as the mark lifts off the
       // floor, so bobbing and hopping read as height rather than sliding.
@@ -2317,7 +2901,9 @@ Item {
       }
 
       CompanionMark {
+        avatarDefinition: root.avatarFor(root.chosenBotId)
         id: mark
+        z: 1
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 32
@@ -2387,6 +2973,8 @@ Item {
       }
 
       MouseArea {
+        // Fill the stage so the whole mark, name tag, and padding stay
+        // hittable. Reply toasts sit above the stage and stay click-through.
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         hoverEnabled: true
@@ -2402,11 +2990,16 @@ Item {
         onPressed: function (mouse) {
           pressAt = windowPoint(mouse)
           moved = false
+          root.claimed = true
+          root.ghost = false
+          root.dodgeOpacity = 1
           if (mouse.button === Qt.RightButton) {
             root.menuOpen = !root.menuOpen
             mouse.accepted = true
             return
           }
+          // Super/Meta still starts a drag immediately; plain press waits
+          // for a short move so a click can open the bubble.
           if (mouse.modifiers & Qt.MetaModifier) root.beginDrag(pressAt.x, pressAt.y)
         }
         onPositionChanged: function (mouse) {
@@ -2414,7 +3007,7 @@ Item {
           var p = windowPoint(mouse)
           var dx = p.x - pressAt.x
           var dy = p.y - pressAt.y
-          if (!root.dragging && (Math.abs(dx) > 6 || Math.abs(dy) > 6 || (mouse.modifiers & Qt.MetaModifier)))
+          if (!root.dragging && (Math.abs(dx) > 4 || Math.abs(dy) > 4 || (mouse.modifiers & Qt.MetaModifier)))
             root.beginDrag(pressAt.x, pressAt.y)
           if (root.dragging) root.dragMove(p.x, p.y)
         }
@@ -2428,6 +3021,21 @@ Item {
             root.hop()
           }
         }
+        onCanceled: function () {
+          // Leaving the output cancels the press. The drag continues from
+          // the cursor helper until the left button comes up.
+          if (root.dragging) {
+            root.dragDetached = true
+            if (!root.pointerHeld) root.endDrag()
+          }
+        }
+        onWheel: function (wheel) {
+          if (root.dragging || root.menuOpen) return
+          var dy = wheel.angleDelta.y !== 0 ? wheel.angleDelta.y : wheel.pixelDelta.y
+          if (dy === 0) return
+          wheel.accepted = true
+          root.cycleBot(dy > 0 ? -1 : 1)
+        }
         onContainsMouseChanged: {
           root.hovering = containsMouse
           if (containsMouse) {
@@ -2438,5 +3046,6 @@ Item {
         }
       }
     }
+  }
   }
 }

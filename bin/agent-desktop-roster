@@ -1,0 +1,46 @@
+#!/usr/bin/python3 -I
+"""Discover configured providers without sending prompts or changing credentials."""
+import asyncio
+import json
+from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from agent_desktop.config import client_for, configuration
+from agent_desktop.protocol import Fault, identifier
+
+async def main():
+    config = configuration()
+    configured = config.get('providers', {})
+    if not isinstance(configured, dict):
+        raise Fault('invalid_config', 'providers must be an object.')
+    bots, errors = [], []
+    for provider in ('hermes', 'example'):
+        if provider not in configured and not (provider == 'hermes' and (Path.home()/'.hermes/config.yaml').is_file()):
+            continue
+        client = client_for(provider)
+        try:
+            async with asyncio.timeout(15):
+                await client.start()
+                await client.send('roster', 'agents.list')
+                reply = await client.read()
+                if 'error' in reply:
+                    raise Fault('unavailable', reply['error'].get('message', 'Provider unavailable.'))
+                rows = reply.get('result', {}).get('agents')
+                if not isinstance(rows, list) or len(rows) > 128:
+                    raise Fault('invalid_response', 'Invalid provider roster.')
+                for row in rows:
+                    native = identifier(row.get('id'))
+                    bots.append({**row, 'id': provider+':'+native, 'agentId': native, 'provider': provider,
+                                 'description': provider.title()})
+        except (Fault, OSError, ValueError, TimeoutError) as exc:
+            errors.append(provider+': '+str(exc)[:240])
+        finally:
+            await client.close()
+    print(json.dumps({'bots': bots, 'errors': errors}, ensure_ascii=False))
+
+if __name__ == '__main__':
+    try:
+        asyncio.run(main())
+    except (Fault, OSError, ValueError) as exc:
+        print(str(exc)[:400], file=sys.stderr)
+        sys.exit(1)

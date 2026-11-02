@@ -1,11 +1,11 @@
 # Agent Desktop v0.2.0: multi-provider feature scope
 
-Status: scoped, implementation not started.
+Status: v0.2.0-rc.1 test candidate; see TESTING-v0.2.0.md for current implementation and limits.
 Date: 2 November 2026.
 Feature branch: `feature/multi-provider-companion`.
 Base: `928f73a00114a60fec673d204bd20be36199a0a7` (v0.1.2 main).
 Owner decision: consolidate personal-agent companions as **Agent Desktop** (Omarchy Agent Desktop in platform-qualified copy), with target repository slug `omarchy-plugin-agent-desktop`. The existing repository will be renamed in place.
-Release: **v0.2.0 delivers multi-provider support and the Agent Desktop rename.** Costumes are deferred to a later feature release; no version is assigned to them.
+Release: **v0.2.0 includes stability fixes, multi-provider support, Agent Desktop branding and Open Bot Avatar v1 import/export with native rendering.** Costumes are deferred to a later feature release; no version is assigned to them.
 
 ## Outcome
 
@@ -21,15 +21,14 @@ This is a desktop integration project. Agent runtimes continue to own their memo
 | --- | --- |
 | Shared provider contract v1 and deterministic fake adapter | Public adapter marketplace, dynamic downloads, third-party SDK |
 | Grok webhook adapter and roster discovery | New Grok API functionality not supported by its actual integration |
-| Hermes gateway adapter with explicit CLI fallback | Reimplementing Hermes or bundling its agent runtime |
+| Hermes gateway adapter using the configured Hermes environment | Reimplementing Hermes or bundling its agent runtime |
 | Existing local coding-agent routes behind one adapter | New coding-agent integrations unrelated to consolidation |
 | Mixed roster, identities, shared config resolution | Cross-provider autonomous handoffs, shared memory or orchestration |
-| Capability-aware chat, approvals and history | Full-text search, transcript export, new durable chat database |
-| Existing appearance, attachments, dictation and privacy behaviour | Costumes and unrelated visual redesign |
+| Capability-aware API; completed replies in the desktop | Full-text search, transcript export, new durable chat database |
+| Existing appearance, attachments, dictation, privacy and Open Bot Avatar v1 import/export | Accessory costumes and unrelated visual redesign |
 | Repository/product rename and upgrade compatibility | New permanent plugin ID unless separately decided |
-| Extension checklist for OpenClaw, Dots and Muse | Promised support before a concrete supported interface is verified |
 
-OpenClaw, Dots and Muse are future candidates. Their exact upstream projects, API availability, authentication and terms are not established by this scope. No browser-session scraping or reverse-engineered credential extraction is assumed. An unavailable integration must be reported as unavailable, not emulated with a different agent.
+Dots is explicitly out of scope. OpenClaw and Muse are future candidates. Their exact upstream projects, API availability, authentication and terms are not established by this scope. No browser-session scraping or reverse-engineered credential extraction is assumed. An unavailable integration must be reported as unavailable, not emulated with a different agent.
 
 ## Architecture and ownership
 

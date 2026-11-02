@@ -14,7 +14,7 @@ After pulling a change into the installed checkout, run `omarchy restart shell` 
 
 Use the current Omarchy plugin linking workflow or Plugin Workbench after inspecting its current commands. `.omarchy-workbench.json` proposes `./tests/run`. It does not grant trust or execute that command by itself.
 
-Before a public release, document the exact verified install command and the installed host version. This repository has no published marketplace listing. Disable the plugin in the host's plugin manager before removing the linked copy.
+Before a public release, document the exact verified install command and the installed host version. The published marketplace build is v0.1.2; the v0.2.0 candidate needs new live acceptance. Disable the plugin in the host's plugin manager before removing the linked copy.
 
 ## What a live pass should include
 
@@ -30,6 +30,7 @@ Before a public release, document the exact verified install command and the ins
 - Theme changes update an `omarchy` colour without a shell restart beyond what the host already does.
 - With the bubble open, clicks elsewhere on the desktop reach the window underneath, and Esc steps back from the menu to the appearance page to closing the bubble.
 - Opening the bubble, starting a drag, and closing the bubble again leave the mark exactly where it was: the window covers the output and never resizes.
+- With two monitors, drag the mark past the edge: it crosses, and after release it stays on that monitor while the pointer moves back. This plugin's shell entry then has that output in `monitor` and the drop in `marginX` and `marginY`, with the other keys unchanged. A shell restart puts the mark back there.
 - `omarchy toggle animations` stops the breathing and bob and makes morphs and panel changes instant.
 - The mark and eyes stay crisp on a 1.5× or 2× output.
 - The mark hides while Omarchy's screensaver runs and returns after it.
@@ -62,3 +63,9 @@ python3 tools/measure-avatars.py picker-srgb.png /tmp/measured.json --js qml/sha
 ```
 
 The tool needs numpy, scipy, scikit-image, and Pillow. It rewrites only the block between the `MEASURED SHAPES` markers. Then run `node tools/look-table.mjs` to regenerate the `LOOK` table (each shape's face position, eye size, and how far its eyes can turn); the tests fail while it is stale. It expects the fourteen shapes in rows of four, five, and five; check the printed extents and eye angles before committing.
+
+## Native avatar checks
+
+`python3 tests/avatar-native.py` requires PySide6. Set `QT_QPA_PLATFORM=offscreen` for a headless run. This creates the actual Qt avatar component, renders bundled examples and exercises gaze/mood updates. It does not validate Quickshell or a running Omarchy desktop.
+
+The vendored Open Bot Avatar engine is built with `node scripts/vendor-avatar.mjs /path/to/open-bot-avatar`. Set `AVATAR_BUILD_PACKAGE` to the absolute package.json path of a build environment containing esbuild 0.25.12; Node 22.18+ is required. Neither Node nor esbuild is needed on the desktop at runtime. Keep the pinned revision in `data/open-bot-avatar-source.json` and MIT attribution when updating.

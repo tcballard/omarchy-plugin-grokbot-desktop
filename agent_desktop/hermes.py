@@ -275,6 +275,12 @@ class Hermes:
         return {"sessionId": link.state.session_id, "status": str((result or {}).get("status", "done"))}
 
     async def close(self):
+        async def interrupt(request):
+            try:
+                await asyncio.wait_for(self.call("request.cancel", {"requestId": request}), 2)
+            except (Fault, TimeoutError):
+                pass
+        await asyncio.gather(*(interrupt(request) for request in list(self.active)), return_exceptions=True)
         tasks = list(self.deadlines.values()) + [link.task for link in self.links.values()]
         for task in tasks:
             task.cancel()

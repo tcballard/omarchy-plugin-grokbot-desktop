@@ -223,6 +223,15 @@ class HermesTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(Fault) as caught:
                 self.adapter.profiles()
             self.assertEqual(caught.exception.code, 'invalid_config')
+    async def test_disconnect_interrupts_only_our_admitted_turn(self):
+        await self.send()
+        await self.adapter.close()
+        calls = [call for call in self.client.rpc.call_args_list if call.args[0] == 'session.interrupt']
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0].kwargs['session_id'], 'session-1')
+        self.assertEqual(calls[0].kwargs['execution_generation'], 3)
+        self.assertFalse(self.adapter.active)
+
     async def test_runtime_probe_fails_closed(self):
         with self.assertRaises(Fault) as caught:
             self.adapter.load_runtime()

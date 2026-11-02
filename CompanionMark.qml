@@ -10,6 +10,7 @@ import "qml/face.js" as Face
 // way Grok Bot draws them; they flatten into lid lines to blink or sleep.
 Item {
   id: mark
+  property var avatarDefinition: null
   property string shapeFrom: "teardrop"
   property string shapeTo: "teardrop"
   property real morph: 1
@@ -133,8 +134,8 @@ Item {
   Item {
     id: art
     anchors.fill: parent
-    visible: !mark.cutout
-    layer.enabled: mark.cutout
+    visible: !mark.avatarDefinition && !mark.cutout
+    layer.enabled: !mark.avatarDefinition && mark.cutout
     layer.textureSize: mark.layerSize
     layer.smooth: true
     layer.mipmap: true
@@ -212,7 +213,7 @@ Item {
     id: eyeMask
     anchors.fill: parent
     visible: false
-    layer.enabled: mark.cutout
+    layer.enabled: !mark.avatarDefinition && mark.cutout
     layer.textureSize: mark.layerSize
     layer.smooth: true
     layer.mipmap: true
@@ -229,12 +230,24 @@ Item {
 
   MultiEffect {
     anchors.fill: parent
-    visible: mark.cutout
+    visible: !mark.avatarDefinition && mark.cutout
     source: art
     maskEnabled: true
     maskSource: eyeMask
     maskInverted: true
     maskThresholdMin: 0.5
     maskSpreadAtMin: 1.0
+  }
+  OpenBotAvatar {
+    anchors.fill: parent
+    visible: mark.avatarDefinition !== null
+    definition: mark.avatarDefinition
+    bodyColor: mark.fillColor
+    inkColor: mark.eyeColor
+    gazeX: mark.gazeX
+    gazeY: mark.gazeY
+    mood: mark.expression === "work" || mark.expression === "think" ? "thinking" : mark.expression === "happy" ? "happy" : "idle"
+    animated: mark.lively
+    reducedMotion: mark.reduceMotion
   }
 }

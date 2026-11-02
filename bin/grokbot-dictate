@@ -1,23 +1,46 @@
 #!/usr/bin/python3
-"""Toggle the dictation backend selected in Omarchy.
+"""Toggle dictation with whichever backend is actually available.
 
-`omarchy dictation toggle` reads ~/.config/omarchy/defaults/dictation and
-starts Superwhisper or Voxtype. This helper calls that when `omarchy` is on
-PATH. Otherwise it calls the configured backend directly: `superwhisper record`
-or `voxtype record toggle`. The defaults file is only accepted when it names
-one of those two backends.
+Tries, in order, and stops at the first that takes the toggle:
+
+1. `omarchy dictation toggle` (Omarchy dev). Stable Omarchy has no such command
+   ("Unknown Omarchy command"), so that answer moves on instead of ending here.
+2. The backend named in ~/.config/omarchy/defaults/dictation, if it is one of
+   superwhisper, voxtype or hex.
+3. Superwhisper (`superwhisper record`), Voxtype (`voxtype record toggle`, which
+   fails while its daemon is not running), then Hex. Hex is opened with
+   `hex start` when it is not running.
+
+Hex does not paste into the companion's card: its synthetic paste goes to the focused
+app window, and the card is a shell layer, not one. So with Hex the button starts a
+locked recording (`hex dictation start`) and the next press finishes it with
+`hex dictation stop --print`, which hands the transcript back; this helper prints it on
+stdout, and the shell inserts it into the field. Nothing else is ever printed there.
+
+Every backend runs as a child process, so a failure falls through to the next
+one. Nothing private is passed: the transcript goes from the backend straight
+to the focused field.
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 BACKENDS = {
     "superwhisper": ["superwhisper", "record"],
     "voxtype": ["voxtype", "record", "toggle"],
+    "hex": ["hex", "dictation", "toggle"],
 }
+DEFAULT_ORDER = ["superwhisper", "voxtype", "hex"]
+HEX_NOT_RUNNING = 3
+HEX_NO_SPEECH = 4
+TIMEOUT = 20
+# Finishing a dictation waits for its transcript.
+TRANSCRIBE_TIMEOUT = 90
 
 
 def defaults_file() -> Path:
@@ -35,28 +58,74 @@ def read_backend() -> str:
     return line if line in BACKENDS else ""
 
 
-def exec_argv(argv: list[str]) -> bool:
+def run(argv: list[str], timeout: float = TIMEOUT):
+    """The finished child, or None when the command is missing or would not run."""
     path = shutil.which(argv[0])
     if not path:
+        return None
+    try:
+        return subprocess.run([path, *argv[1:]], stdin=subprocess.DEVNULL, capture_output=True,
+                              text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def ok(result) -> bool:
+    return result is not None and result.returncode == 0
+
+
+def hex_recording():
+    """True / False for Hex's dictation capture, or None when Hex is not answering."""
+    result = run(["hex", "status", "--json"])
+    if not ok(result):
+        return None
+    try:
+        capture = (json.loads(result.stdout) or {}).get("capture") or {}
+    except ValueError:
+        return None
+    return "record" in str(capture.get("state") or "").lower()
+
+
+def try_hex() -> bool:
+    if shutil.which("hex") is None:
         return False
-    os.execv(path, [path, *argv[1:]])
+    recording = hex_recording()
+    if recording is None:
+        # Control commands never launch Hex; `start` opens it and waits until it answers.
+        if not ok(run(["hex", "start"])):
+            return False
+        recording = False
+    if not recording:
+        return ok(run(["hex", "dictation", "start"]))
+    result = run(["hex", "dictation", "stop", "--print"], timeout=TRANSCRIBE_TIMEOUT)
+    if result is None:
+        return False
+    if result.returncode == HEX_NO_SPEECH:
+        return True
+    if result.returncode != 0:
+        return False
+    sys.stdout.write(result.stdout.strip())
+    sys.stdout.flush()
     return True
 
 
+def try_backend(name: str) -> bool:
+    if name == "hex":
+        return try_hex()
+    return ok(run(BACKENDS[name]))
+
+
 def main() -> int:
-    omarchy = shutil.which("omarchy")
-    if omarchy:
-        os.execv(omarchy, [omarchy, "dictation", "toggle"])
+    # On stable Omarchy this answers "Unknown Omarchy command", which is not the end of it.
+    if ok(run(["omarchy", "dictation", "toggle"])):
+        return 0
     configured = read_backend()
-    order = [configured] if configured else ["superwhisper", "voxtype"]
+    order = ([configured] if configured else []) + [name for name in DEFAULT_ORDER if name != configured]
     for name in order:
-        if name and exec_argv(BACKENDS[name]):
+        if try_backend(name):
             return 0
-    if configured:
-        for name in ("superwhisper", "voxtype"):
-            if name != configured and exec_argv(BACKENDS[name]):
-                return 0
-    print("No dictation command found. Install omarchy, superwhisper, or voxtype.", file=sys.stderr)
+    print("No dictation backend took the toggle. Start Hex, enable Voxtype, or install Superwhisper.",
+          file=sys.stderr)
     return 1
 
 

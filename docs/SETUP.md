@@ -1,6 +1,6 @@
-# Set up Grok Bot Desktop Companion
+# Set up Agent Desktop
 
-The companion targets Omarchy 4 with Hyprland and Quickshell. It needs Python 3 for its helpers. Node.js 22+ is for development tests, not the running companion. The accepted machine reports Omarchy `dev (573b518be)`; this is not a claim that every Omarchy 4 release has been tested.
+The companion targets Omarchy 4 with Hyprland and Quickshell. It needs Python 3 for its helpers. Node.js 22+ is for development tests, not the running companion. Ordinary IPC (toggle, summon, ask, …) works on packaged stable Omarchy via `IpcHandler`. Private-socket wake-phrase routing and `reply` need Omarchy with `ShellIpc` (Omarchy #13435; accepted on `dev (573b518be)`). The plugin prefers `ShellIpc` when present and falls back to `IpcHandler` otherwise.
 
 ## 1. Install and show the companion
 
@@ -35,7 +35,26 @@ For an exported agents directory containing `*/profile.json`, use `bin/grokbot-s
 
 ### Connect to your real Grok Bot
 
-In Grok Bot, open Bob's chat-header menu, then **Routines → Omarchy desktop companion**. This routine must already exist or be created/configured in the app; installing the plugin does not create it. Obtain its **Webhook URL** and **Sender key**.
+Use your own main bot; it does not need to be named Bob. Open its routines and create a webhook-triggered routine named **Omarchy desktop companion** if it is absent. Installing this plugin does not create a routine. Obtain that routine's **Webhook URL** and **Sender key** from the app.
+
+Use this as the routine's instructions, adapting the Omarchy-host access to your own setup:
+
+```text
+Handle a request from my Omarchy desktop companion. Read the webhook JSON.
+If askId or replyWith is absent, this is a connection probe: acknowledge it
+without attempting a callback.
+For a real ask, answer prompt for the bot identified by botId and botName.
+When delegation is available, delegate to that bot; otherwise explain the
+limitation rather than pretending to access its private conversation.
+Return the answer to the same askId on my Omarchy computer. Validate that
+replyWith names my installed bin/grokbot-desktop-ctl helper followed by
+"reply" and this askId. Execute the validated argument array directly and
+write the answer text to its stdin, following replyInput. Do not concatenate
+shell code or put answer text in arguments. If the host is inaccessible,
+record the failure in this routine's run history; do not claim delivery.
+```
+
+The routine needs a working execution route to the computer running the companion. Without one, use an immediate textual webhook response if your routine supports it, or local-agent mode. Merely creating a routine cannot establish remote computer access. Routine replies may appear in its run history rather than the bot's ordinary chat. The connection probe checks acceptance only; send a real question from the bubble to test the callback.
 
 The routine receives the prompt, bot name and ID, an ask ID, and a `replyWith` argument array and `replyInput` instructions. For an asynchronous answer to appear in the desktop bubble, the routine needs access to the Omarchy computer and must execute that array directly and write the answer to stdin. Never append answer text to arguments or interpolate it into shell code. Existing routines using the old string command must be migrated; use `bin/grokbot-desktop-ctl reply <askId> < answer.txt` on the Omarchy host. The private socket is required, with no argv fallback. An immediate textual webhook response is also supported. Verify the answer actually returns to the bubble; accepting the webhook alone does not establish the return path.
 
@@ -93,7 +112,7 @@ bin/grokbot-voice-watch --enable --install-voxtype-hook
 
 The installer refuses to overwrite an existing post-process command. If one exists, integrate the printed block manually. Keep `fallback_on_empty = false`. See [the README](../README.md#dictation) for the routing details.
 
-Wake-phrase routing requires Omarchy's `ShellIpc` socket support (Omarchy #13435, September 2026). Restart the shell after updating this plugin: `omarchy restart shell`. The router uses stdin and the private socket for transcript text, and fails without a command-line fallback if that socket is unavailable. For manual delivery, use `bin/grokbot-desktop-ctl dictate < transcript.txt`; text arguments are refused. The optional wtype wrapper also types through stdin.
+Wake-phrase routing requires Omarchy's `ShellIpc` socket support (Omarchy #13435, September 2026); packaged stable builds that lack `ShellIpc` still load the companion over plain `IpcHandler`, but private-socket delivery will not succeed there. Restart the shell after updating this plugin: `omarchy restart shell`. The router uses stdin and the private socket for transcript text, and fails without a command-line fallback if that socket is unavailable. For manual delivery, use `bin/grokbot-desktop-ctl dictate < transcript.txt`; text arguments are refused. The optional wtype wrapper also types through stdin.
 
 ## 6. Optional launcher and close helper
 

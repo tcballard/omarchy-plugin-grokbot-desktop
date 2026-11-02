@@ -1,3 +1,7 @@
+# Current release target
+
+v0.2.0 combines the stability fixes, GrokBot/Hermes provider integration and Open Bot Avatar v1 native characters. See [test candidate](TESTING-v0.2.0.md). Dots is out of scope. Accessory costumes remain deferred.
+
 # Roadmap
 
 ## v0.2.0: Agent Desktop and multi-provider support

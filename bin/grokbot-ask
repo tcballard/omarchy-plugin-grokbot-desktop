@@ -594,6 +594,14 @@ def agent_command(entry, desktop):
     return [resolved, *argv[1:]], name, False, ""
 
 
+def ask_timeout(entry, desktop, fallback):
+    try:
+        value = int(setting(entry, desktop, "askTimeoutSeconds"))
+    except (TypeError, ValueError):
+        return fallback
+    return max(30, min(1800, value))
+
+
 def persona(bot_name):
     name = plain(bot_name, 80) or "Bob"
     return (
@@ -655,7 +663,7 @@ def with_attachments(prompt, attachments):
     return f"{prompt}\n\nThe attached {noun} in the current directory: {names}. Look at them before answering."
 
 
-def run_agent(argv, stdin_text, env, label="agent", cwd=None):
+def run_agent(argv, stdin_text, env, label="agent", cwd=None, timeout=AGENT_TIMEOUT):
     blocked = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTERM})
     try:
         proc = subprocess.Popen(
@@ -695,7 +703,7 @@ def run_agent(argv, stdin_text, env, label="agent", cwd=None):
         ceilings = {out_fd: STDOUT_CEILING, err_fd: STDERR_CEILING}
         open_fds = [out_fd, err_fd]
         overflow = False
-        deadline = time.monotonic() + AGENT_TIMEOUT
+        deadline = time.monotonic() + timeout
         while open_fds:
             if time.monotonic() > deadline:
                 _kill_group(proc.pid)
@@ -889,7 +897,7 @@ def main(argv=None):
     # With images, the agent works in their directory so its file tools
     # can open them without reaching outside it.
     cwd = attachment_dir() if attachments else None
-    return run_agent(argv, text, child_env(agent, custom), agent or "agent command", cwd)
+    return run_agent(argv, text, child_env(agent, custom), agent or "agent command", cwd, ask_timeout(entry, desktop, AGENT_TIMEOUT))
 
 
 if __name__ == "__main__":
