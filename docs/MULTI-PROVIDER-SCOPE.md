@@ -227,3 +227,23 @@ plugin structural checks and Python compilation passed. The full Node suite
 reported 89 passing and 18 failing tests, matching the pre-change checkout's
 Unix-socket `listen EPERM` failures in this environment. Native `qmllint` is not
 available. No QML was changed, and live Hermes/Omarchy validation remains pending.
+
+### GrokBot through the shared API — 2026-11-02
+
+GrokBot now implements the same provider contract, reusing its existing roster,
+configuration, webhook and local-agent transport. Desktop asks use the shared API
+client instead of launching `grokbot-ask` directly. Deferred webhook replies have
+an explicit event and correlated callback method in protocol v1.1; the existing
+desktop reply IPC and waiting exchanges remain compatible. The shared client also
+runs the reference provider without Grok-specific dispatch code.
+
+Cancellation now closes the full client/adapter/worker chain and stops local-agent
+descendants before reaping the group leader. Remote webhook cancellation reports
+that remote work may continue. Raw worker diagnostics are not exposed over the API.
+
+Validation: 19 protocol tests, 10 GrokBot API/lifecycle tests and 5 existing Python
+sync tests pass. All 80 companion tests pass. The full Node run remains 89 passing
+and the same 18 socket-permission failures. The new tests exercise real local
+workers and the desktop compatibility client; webhook receipt-only transport is
+mocked. Native QML and live Grok/Hermes/Omarchy acceptance remain pending. Mixed
+provider discovery/configuration/picker integration and rename are not complete.

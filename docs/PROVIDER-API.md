@@ -1,10 +1,10 @@
 # Agent Desktop Provider API v1
 
-This is the first implemented slice of the v0.2.0 multi-provider feature: a local,
-versioned endpoint, a reference adapter, a hook client, and a Hermes gateway adapter.
-The existing desktop still uses its Grok/local paths. Mixed-provider QML routing,
-provider configuration, migration, and the product/repository rename are subsequent
-work on the feature branch. This is not a v0.2.0 release or live Hermes acceptance.
+This is the in-development v0.2.0 provider boundary: a local, versioned endpoint,
+reference adapter, shared client, and GrokBot and Hermes adapters. Desktop asks now
+go through the shared API client using GrokBot's existing configuration. The
+mixed-provider picker, migration, and product/repository rename remain pending.
+This is not a v0.2.0 release or live Hermes acceptance.
 
 The public integration boundary is **Agent Desktop Protocol v1**, not Hermes's
 Python or gateway internals. Third-party hooks can invoke the endpoint below;
@@ -73,9 +73,9 @@ Ignore unknown events after validating epoch/sequence; unsupported methods retur
 `unsupported`. Never send events to an adapter's input stream.
 
 `hello` must be the first successful operation. Its result contains
-`protocol:{major:1,minor:0}`, `provider`, `adapterVersion`, `maxFrameBytes`, and
+`protocol:{major:1,minor:1}`, `provider`, `adapterVersion`, `maxFrameBytes`, and
 `capabilities`. Major changes are breaking; v1 field meanings remain fixed.
-Minor versions may add optional fields/events/capabilities. A missing capability
+Minor versions may add optional fields/events/capabilities. Version 1.1 adds deferred replies and `message.reply`; existing v1 clients can continue to await terminal events. A missing capability
 means unsupported. A second handshake on the same connection is rejected.
 
 Each adapter process has a fresh random `epoch`. Event sequence starts at 1 and
@@ -103,16 +103,17 @@ an agent by `(providerInstanceId, nativeAgentId)`, not its display name, and sco
 requests/events to that process connection and epoch. Two Hermes installations
 can both advertise `default`. Their names and native IDs must not merge them.
 Provider commands come only from explicit trusted user configuration, never from
-the roster. The mixed-provider registry/desktop controller is not implemented yet.
+the roster. The mixed-provider registry/picker is not implemented yet; the current desktop has a one-shot compatibility client.
 
 | Capability | Meaning |
 | --- | --- |
 | `streaming` | Emits cumulative response snapshots before completion |
 | `cancellation` | `request`, `session`, or `none`; session scope can affect other viewers |
-| `attachments` | Supports attachment payloads; both supplied adapters currently return false |
+| `attachments` | Supports attachment payloads; GrokBot local-agent mode accepts private staged file paths; Hermes/example return false |
 | `history` | Supports `history.list` |
 | `prompts` | Emits actionable approval/clarification prompts when supported |
 | `multiSelect` | Supports multiple-choice selection arrays; currently false |
+| `deferredReplies` | Emits `message.deferred` for an acknowledged request whose reply arrives later |
 | `compaction` | Supports `session.compact` when the upstream version exposes it |
 
 Clients must check capabilities. Do not silently drop attachments, change
@@ -124,11 +125,12 @@ providers, or turn an unsupported operation into a different action.
 | --- | --- | --- |
 | `hello` | None | Protocol version and capabilities above |
 | `agents.list` | None | Complete roster snapshot |
-| `message.send` | `agentId`, unique `requestId`, `text` (1–4000 characters), optional `timeoutSeconds` | `{requestId,sessionId,accepted:true}` means upstream admission, not completion |
+| `message.send` | `agentId`, unique `requestId`, `text` (1–4000 characters), optional `timeoutSeconds` | `{requestId,sessionId,accepted:true}` means the adapter owns the request, not completion; GrokBot returns `delivery:"pending"` until its worker reports an outcome |
 | `request.cancel` | `requestId` | `{requestId,status:"confirmed"}`, plus `scope:"session"` for Hermes |
 | `history.list` | `agentId`, optional `sessionId`, optional `cursor` | `{sessionId,items,nextCursor,historyBoundary:"last_compaction",snapshot:true}` |
 | `prompt.answer` | `agentId`, required `sessionId`, `promptId`, string `answer` | `{promptId,accepted:true}` only after acknowledgement |
 | `session.compact` | `agentId`, required `sessionId` | `{sessionId,status}` from upstream |
+| `message.reply` | `requestId`, `deliveryId`, `text` | Correlated callback acknowledgement; only adapters advertising `deferredReplies` |
 | `shutdown` | None | `{stopped:true}` then adapter exits |
 
 Hermes accepts `timeoutSeconds` between 1 and 1800, default 600. It starts the turn
@@ -153,6 +155,7 @@ All event params contain `agentId` and `sessionId`. Foreground events also conta
 
 | Event | Additional parameters and semantics |
 | --- | --- |
+| `message.deferred` | `deliveryId`, `remoteMayContinue:true`: upstream acknowledged, final answer still pending |
 | `agent.status` | `availability` |
 | `message.delta` | `text`: cumulative snapshot, **replace** displayed text; do not concatenate |
 | `message.progress` | `text`: separate temporary status |
@@ -178,7 +181,7 @@ a timeout is not evidence that Hermes rejected the answer.
 Errors have `{code,message,retryable}`. Codes include `invalid_request`,
 `handshake_required`, `incompatible_version`, `unsupported`, `duplicate_id`,
 `limit_exceeded`, `unavailable`, `offline`, `invalid_config`, `busy`,
-`stale_session`, `stale_prompt`, `deadline_exceeded`, `delivery_unknown`, and
+`stale_session`, `stale_prompt`, `stale_request`, `deadline_exceeded`, `delivery_unknown`, and
 `internal_error`. Messages are bounded diagnostics, not raw upstream errors.
 `retryable` is a hint for reconnect/discovery, never permission to replay a
 side-effecting call. A `delivery_unknown` result requires inspecting the upstream
@@ -189,6 +192,58 @@ instead of unbounded memory or silent loss of terminal events. Writes have a
 5-second drain timeout. The host owns the adapter child and must reap it on exit.
 Hermes owns its gateway and conversation: adapter shutdown detaches without
 stopping that shared service or deleting any user data.
+
+## GrokBot setup and desktop compatibility
+
+```bash
+printf 'Hello from my hook' | python3 -I examples/provider-client.py --provider grokbot
+```
+
+The shared client selects the first advertised bot unless `--agent ID` is given.
+GrokBot reads the same `~/.config/omarchy/grokbot-bots.json` roster as the desktop,
+using the bundled roster only when the file is absent. Invalid or duplicate
+identities fail discovery. Dispatch settings, config precedence, key files,
+webhook headers, trusted local-agent selection, and private staged attachments
+are still handled by the existing `bin/grokbot-ask` worker. The adapter never
+selects a transport from a roster field or silently substitutes Hermes.
+
+A GrokBot `message.send` response with `delivery:"pending"` acknowledges adapter
+ownership, not remote webhook acceptance. Wait for `message.finished` or
+`message.deferred`; never treat this response as a completed answer. Worker errors
+become bounded protocol errors without forwarding raw stderr. This makes the
+admission stage explicit for a transport that has no native asynchronous receipt.
+
+A webhook acknowledgement becomes `message.deferred`, not a successful terminal
+event. A long-lived host forwards the authenticated/local callback using
+`message.reply` with the original `requestId` and returned `deliveryId`. Unknown,
+late, duplicate and mismatched callbacks are rejected. Callback identity can be
+known before the HTTP acknowledgement; an early matching callback is accepted.
+This method exists only on the private provider connection; it is not an
+unauthenticated HTTP callback server. A host adding network ingress must secure
+it before forwarding a callback.
+
+The existing desktop still receives webhook callbacks through its established
+`reply` IPC method. Its compatibility client maps `message.deferred` to the
+existing exit-10 waiting state and detaches, leaving that generic waiting-exchange
+logic responsible for the final reply. Existing hexadecimal ask IDs are preserved
+as delivery IDs, so current webhook routines need no changes. Other API request
+IDs receive a generated delivery ID. The sample hook exits 10 on deferral; it does
+not claim completion or wait for callbacks it cannot receive.
+
+GrokBot cancellation returns `scope:"local"`: the local worker is terminated and
+reaped. For webhooks, `remoteMayContinue:true` means the remote routine cannot be
+retracted. Local-agent descendants in the worker's process group are stopped too.
+GrokBot turn deadlines are 180 seconds in local-agent mode and 600 seconds in
+webhook mode by default (configurable 1–1800); the worker retains its existing
+network/agent limits. The desktop compatibility client retains its 180-second
+foreground deadline and existing ten-minute deferred-reply waiting behaviour.
+
+Attachments are an optional array of up to four absolute paths to files already
+staged by the desktop's attachment helper. The existing ownership, runtime-directory
+and size checks apply. Webhook mode refuses attachments. No prompt, reply or key
+is added to command arguments. The plugin ID, saved settings and webhook reply
+command remain unchanged. The `agent_desktop` package must be included with the
+runtime files when installing this branch.
 
 ## Hermes setup and compatibility
 
@@ -228,7 +283,7 @@ native API translation behind this boundary. Use the [example adapter](../agent_
 and [server](../agent_desktop/protocol.py) as a Python reference, or implement the
 same frames independently. No OpenClaw, Dots, or Muse API assumptions are baked in.
 
-Run `python3 tests/provider-api.py` for contract/lifecycle tests. They include a
-real child-process pipe exchange plus mocked Hermes gateway cases, not a real
+Run `python3 tests/provider-api.py` and `python3 tests/grokbot-api.py` for contract/lifecycle tests. They include a
+real child-process pipe exchange plus real GrokBot local-worker and mocked Hermes gateway cases, not a real
 Hermes server. Run `./tests/run` for the wider repository suite. A desktop release
 still requires mixed-provider, native QML, and live Omarchy acceptance.

@@ -1,0 +1,51 @@
+#!/usr/bin/python3 -I
+"""Compatibility boundary between the desktop's one-shot ask and Provider API v1."""
+import argparse
+import asyncio
+from pathlib import Path
+import signal
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from agent_desktop.client import Client
+from agent_desktop.protocol import Fault, decode, identifier, text, MAX_PROMPT, MAX_FRAME
+
+
+async def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--provider', choices=['grokbot', 'hermes', 'example'], default='grokbot')
+    args = parser.parse_args()
+    payload = decode(sys.stdin.buffer.read(MAX_FRAME + 1))
+    params = dict(agentId=identifier(payload.get('botId')), requestId=identifier(payload.get('askId')),
+                  text=text(payload.get('prompt'), MAX_PROMPT), attachments=payload.get('attachments', []))
+    client = Client(args.provider)
+    task = asyncio.current_task()
+    asyncio.get_running_loop().add_signal_handler(signal.SIGTERM, task.cancel)
+    try:
+        async with asyncio.timeout(180):
+            await client.start()
+            event, result = await client.exchange(params, deferred=True)
+            if event == 'message.deferred':
+                if result.get('deliveryId') != params['requestId']:
+                    raise Fault('invalid_response', 'Reply identity changed; cannot route a deferred reply.')
+                return 10
+            if result.get('status') != 'completed':
+                error = result.get('error', {})
+                raise Fault(str(error.get('code', 'failed')), str(error.get('message', 'The request stopped.'))[:400])
+            sys.stdout.write(text(result.get('text'), 65536) + '\n')
+            return 0
+    finally:
+        await client.close()
+
+
+if __name__ == '__main__':
+    try:
+        sys.exit(asyncio.run(main()))
+    except Fault as exc:
+        print(exc.message, file=sys.stderr)
+        sys.exit(1)
+    except (OSError, TimeoutError, ValueError):
+        print('Provider connection failed; inspect the agent before retrying.', file=sys.stderr)
+        sys.exit(1)
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        sys.exit(130)

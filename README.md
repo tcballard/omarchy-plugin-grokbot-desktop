@@ -29,9 +29,10 @@ Accepted by the owner on an XPS running Omarchy `dev (573b518be)`; see [acceptan
 ## Agent Desktop v0.2.0 development
 
 The multi-provider feature is being built on `feature/multi-provider-companion`.
-The first slice provides a [versioned provider API and Hermes hook endpoint](docs/PROVIDER-API.md),
-a runnable example, and protocol tests. Desktop provider selection and the rename
-to Agent Desktop are still pending; the existing installation remains Grok Bot Desktop.
+The [versioned provider API](docs/PROVIDER-API.md) now includes GrokBot and Hermes
+adapters, a shared client, a runnable example, and protocol tests. Desktop asks
+use the shared client with the GrokBot adapter and existing settings. The mixed
+provider picker, live Hermes acceptance, and rename to Agent Desktop remain pending.
 See the [feature scope](docs/MULTI-PROVIDER-SCOPE.md).
 
 ## Install

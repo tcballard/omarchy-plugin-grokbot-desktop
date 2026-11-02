@@ -41,7 +41,7 @@ Item {
 
   readonly property string bundledBotsPath: root.localPath(Qt.resolvedUrl("data/bots.json"))
   readonly property string cursorHelper: root.localPath(Qt.resolvedUrl("bin/grokbot-cursor"))
-  readonly property string askHelper: root.localPath(Qt.resolvedUrl("bin/grokbot-ask"))
+  readonly property string askHelper: root.localPath(Qt.resolvedUrl("bin/agent-desktop-ask"))
   readonly property string dictateHelper: root.localPath(Qt.resolvedUrl("bin/grokbot-dictate"))
   readonly property string attachHelper: root.localPath(Qt.resolvedUrl("bin/grokbot-attach"))
 
@@ -1497,7 +1497,7 @@ Item {
       root.failAsk("Couldn't find trusted setpriv and python3.")
       return "error"
     }
-    if (root.askHelper.indexOf("/bin/grokbot-ask") < 0 || root.askHelper.indexOf("..") >= 0) {
+    if (root.askHelper.indexOf("/bin/agent-desktop-ask") < 0 || root.askHelper.indexOf("..") >= 0) {
       root.failAsk("The ask helper is not the bundled script.")
       return "error"
     }

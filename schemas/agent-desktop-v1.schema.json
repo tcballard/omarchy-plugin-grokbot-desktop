@@ -10,7 +10,7 @@
       "properties": {
         "v": {"const": 1},
         "id": {"$ref": "#/$defs/id"},
-        "method": {"enum": ["hello", "agents.list", "message.send", "request.cancel", "prompt.answer", "history.list", "session.compact", "shutdown"]},
+        "method": {"enum": ["hello", "agents.list", "message.send", "request.cancel", "prompt.answer", "history.list", "session.compact", "message.reply", "shutdown"]},
         "params": {"type": "object"}
       },
       "not": {"anyOf": [{"required": ["event"]}, {"required": ["result"]}, {"required": ["error"]}]}

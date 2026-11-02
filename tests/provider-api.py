@@ -44,7 +44,7 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.call('hello', result={}))['error']['code'], 'invalid_request')
         self.assertEqual((await self.call('hello', v=2))['error']['code'], 'incompatible_version')
         self.assertEqual((await self.call('hello', v=True))['error']['code'], 'incompatible_version')
-        self.assertEqual((await self.call('hello'))['result']['protocol'], {'major': 1, 'minor': 0})
+        self.assertEqual((await self.call('hello'))['result']['protocol'], {'major': 1, 'minor': 1})
         self.assertIn('error', await self.call('hello'))
     async def test_unique_operation_ids_and_unknown_method(self):
         await self.call('hello', id='same')

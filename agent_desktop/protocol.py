@@ -11,7 +11,7 @@ MAX_TEXT = 65536
 MAX_PROMPT = 4000
 IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 METHODS = {"hello", "agents.list", "message.send", "request.cancel", "prompt.answer",
-           "history.list", "session.compact", "shutdown"}
+           "history.list", "session.compact", "message.reply", "shutdown"}
 
 
 class Fault(Exception):
@@ -171,7 +171,7 @@ class Server:
                 if self.ready:
                     raise Fault("invalid_request", "Handshake already completed.")
                 self.ready = True
-                self.reply(op, {"protocol": {"major": 1, "minor": 0}, "provider": self.backend.name,
+                self.reply(op, {"protocol": {"major": 1, "minor": 1}, "provider": self.backend.name,
                                 "adapterVersion": "0.1.0", "maxFrameBytes": MAX_FRAME,
                                 "capabilities": self.backend.capabilities})
                 return True
