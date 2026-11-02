@@ -54,12 +54,11 @@ test('settings navigation and provider choice preserve the active agent until a 
   currentBot(){return this.bots.find(bot=>bot.id===this.chosenBotId)},
   selectBot(id){this.chosenBotId=id},refreshProviders(){refreshed++},wake(){}
  });
- root.openSettings();assert.equal(root.settingsSection,'home');assert.equal(root.settingsProvider,'grokbot');
+ root.openSettings();assert.equal(root.settingsSection,'appearance');assert.equal(root.settingsProvider,'grokbot');
  root.chooseProvider('hermes');assert.equal(root.chosenBotId,'hermes:default');
  root.chooseProvider('hermes');assert.equal(refreshed,0);
  root.bots=root.bots.filter(bot=>bot.provider==='hermes');
  root.chooseProvider('grokbot');assert.equal(refreshed,1);assert.equal(root.chosenBotId,'hermes:default');
  root.settingsSection='avatar';root.closeSettings();assert.equal(root.settingsSection,'appearance');
- root.closeSettings();assert.equal(root.settingsSection,'home');
  root.closeSettings();assert.equal(root.cardPage,'chat');
 });

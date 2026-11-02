@@ -55,6 +55,6 @@ Workbench registration and command trust remain explicit user actions. Portable 
 
 ## Settings navigation
 
-`PreferencesPanel.qml` is the settings entry point: Providers and Appearance are separate pages. `SettingsPanel.qml` retains the original shape, colour, motion and placement picker. Optional Open Bot Avatar import/export lives one level below Appearance. Provider selection uses the same `selectBot` path as the conversation picker, preserving agent-specific threads and drafts.
+`PreferencesPanel.qml` is the settings entry point: Providers, Appearance and Behaviour are separate pages in a persistent sidebar. Settings expands to a 780px card, clamped to the output; narrow views put the same categories above the content. Related controls use bordered SettingsGroup sections. `SettingsPanel.qml` retains the original shape, colour, motion and placement picker. Optional Open Bot Avatar import/export lives one level below Appearance. Provider selection uses the same `selectBot` path as the conversation picker, preserving agent-specific threads and drafts.
 
 `HermesSettings.qml` edits only Hermes connection paths through `bin/agent-desktop-config` over stdin. The helper validates paths, preserves unrelated JSON keys, refuses symlink targets and writes atomically with private permissions. Credentials remain owned by the existing Hermes installation.

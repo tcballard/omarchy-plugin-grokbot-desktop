@@ -66,7 +66,7 @@ Imports are geometry-only v1 definitions validated by the upstream engine, cappe
 ## Desktop acceptance checklist
 
 - Stable Omarchy: the plugin loads through IpcHandler without a QVariant warning. Newer shells retain ShellIpc. Private stdin webhook replies and desktop-wide dictation still require the newer private socket; the fallback does not bypass that requirement.
-- Settings opens a compact menu. Appearance starts with shapes and colours; custom avatar import is a secondary page. Back/Esc steps through pages to chat.
+- Settings opens a wider view with a persistent Appearance/Behaviour/Providers sidebar and grouped controls. Appearance starts with shapes and colours; custom avatar import is a secondary page. Close/Esc returns to chat (Esc from custom avatar returns to Appearance first). Check the compact category layout on a narrow output.
 - Switch GrokBot/Hermes in Providers; the chosen agent receives subsequent messages. Save Hermes connection paths and verify they survive restart without changing Grok configuration.
 - Existing Grok agent selection, appearance and webhook configuration survive restart and the upgrade.
 - Local Grok agent asks and webhook callback replies still work. Stop terminates local descendants; remote webhook work may continue.

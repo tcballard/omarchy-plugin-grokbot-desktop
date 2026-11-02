@@ -47,12 +47,16 @@ capture('settings')
 click('Appearance')
 assert root.property('settingsSection') == 'appearance'
 capture('appearance')
+click('Behaviour')
+click('Hyper')
+assert root.property('motionName') == 'hyper'
+capture('behaviour')
+click('Appearance')
 click('Custom avatar…')
 assert root.property('settingsSection') == 'avatar'
 capture('custom-avatar')
-click('Back')
+click('Back to appearance')
 assert root.property('settingsSection') == 'appearance'
-click('Back to settings')
 click('Providers')
 click('Hermes')
 assert root.property('chosenBotId') == 'hermes:default'
@@ -61,5 +65,15 @@ click('Connection settings')
 capture('hermes-connection')
 click('GrokBot')
 assert root.property('chosenBotId') == 'bob'
+click('Appearance')
+click('Use agent’s appearance')
+assert root.property('syncOn') is False
+root.setProperty('width', 480)
+capture('compact-settings')
+click('Providers')
+click('Hermes')
+assert root.property('chosenBotId') == 'hermes:default'
+click('Close settings')
+assert root.property('cardPage') == 'chat'
 assert not messages, messages
 print('PASS native settings rendering, page navigation and provider selection')

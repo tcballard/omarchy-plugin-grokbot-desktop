@@ -5,10 +5,11 @@ import "../qml/palette.js" as Palette
 
 Rectangle {
   id: mock
-  width: 432
+  width: 780
   height: Math.min(760, panel.implicitHeight + 32)
   color: "#141416"
-  property string settingsSection: "home"
+  property string settingsSection: "appearance"
+  property string cardPage: "appearance"
   property string settingsProvider: "grokbot"
   property string fontFamily: "Sans Serif"
   property var bots: [{id:"bob",name:"Bob the Bot",provider:"grokbot"}, {id:"hermes:default",name:"Personal assistant",provider:"hermes"}]
@@ -42,6 +43,8 @@ Rectangle {
   function selectBot(id) { chosenBotId = id }
   function selectShape(name) { canonicalShape = name }
   function selectColor(name) { shownColor = name }
+  function setMotion(value) { motionName = value }
+  function setSync(value) { syncOn = value }
   function loadHermesSettings() {}
-  PreferencesPanel { id: panel; x:16; y:16; width:400; height:mock.height-32; app:mock }
+  PreferencesPanel { id: panel; x:16; y:16; width:mock.width-32; height:mock.height-32; app:mock }
 }

@@ -183,7 +183,7 @@ Item {
   property bool present: true
   property bool bubbleOpen: false
   property string cardPage: "chat"
-  property string settingsSection: "home"
+  property string settingsSection: "appearance"
   property string settingsProvider: "grokbot"
   readonly property bool settingsOpen: root.bubbleOpen && root.cardPage === "appearance"
   property bool menuOpen: false
@@ -1201,7 +1201,7 @@ Item {
   }
 
   function openSettings() {
-    root.settingsSection = "home"
+    root.settingsSection = "appearance"
     root.settingsProvider = (root.currentBot() || {}).provider || "grokbot"
     root.present = true
     root.cardPage = "appearance"
@@ -1212,7 +1212,6 @@ Item {
 
   function closeSettings() {
     if (root.settingsSection === "avatar") root.settingsSection = "appearance"
-    else if (root.settingsSection !== "home") root.settingsSection = "home"
     else root.cardPage = "chat"
   }
 
@@ -2638,7 +2637,7 @@ Item {
       }
       Behavior on opacity { NumberAnimation { duration: root.ms(bubblePanel.shown ? 160 : 120); easing.type: bubblePanel.shown ? Easing.OutCubic : Easing.InCubic } }
       Behavior on scale { NumberAnimation { duration: root.ms(bubblePanel.shown ? 220 : 120); easing.type: bubblePanel.shown ? Easing.OutCubic : Easing.InCubic } }
-      width: Math.min(464, Math.max(320, win.width - 24))
+      width: Math.min(464 + 316 * bubblePanel.pageT, Math.max(320, win.width - 24))
       maxHeight: {
         var above = stage.y - 20
         var below = win.height - stage.y - stage.height - 20

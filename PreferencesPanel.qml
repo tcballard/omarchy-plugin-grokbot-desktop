@@ -5,84 +5,131 @@ import "qml/theme.js" as Theme
 Item {
   id: panel
   property var app: null
-  readonly property string section: app ? app.settingsSection : "home"
-  implicitHeight: section === "appearance" ? appearance.implicitHeight : 50 + content.implicitHeight
+  readonly property string section: app && app.settingsSection !== "home" ? app.settingsSection : "appearance"
+  readonly property bool compact: width < 580
+  readonly property real sidebarWidth: compact ? width : 176
+  implicitHeight: 620
 
-  SettingsPanel {
-    id: appearance
-    anchors.fill: parent
-    app: panel.app
-    visible: panel.section === "appearance"
+  Rectangle {
+    id: sidebar
+    width: panel.sidebarWidth
+    height: panel.compact ? 132 : parent.height
+    radius: 12
+    color: Theme.field
+    Column {
+      x: 12; y: 18
+      width: parent.width - 24
+      spacing: 6
+      Text {
+        width: parent.width
+        text: "Settings"
+        color: Theme.text
+        font.family: app.fontFamily; font.pixelSize: 19; font.weight: Font.DemiBold
+        textFormat: Text.PlainText
+      }
+      Text {
+        width: parent.width
+        text: "Agent Desktop"
+        color: Theme.textMuted
+        font.family: app.fontFamily; font.pixelSize: 11
+        textFormat: Text.PlainText; wrapMode: Text.Wrap
+      }
+    }
+    Flow {
+      x: 12; y: 82
+      width: parent.width - 24
+      spacing: 6
+      Repeater {
+        model: [{id:"appearance", name:"Appearance"}, {id:"behaviour", name:"Behaviour"}, {id:"providers", name:"Providers"}]
+        delegate: Rectangle {
+          required property var modelData
+          width: panel.compact ? (parent.width - 12) / 3 : parent.width; height: 38; radius: 7
+          readonly property bool selected: panel.section === modelData.id || (panel.section === "avatar" && modelData.id === "appearance")
+          color: selected ? Theme.selected : "transparent"
+          border.width: selected ? 1 : 0
+          border.color: Theme.edgeStrong
+          Rectangle { x: 0; y: 10; width: 3; height: 18; radius: 1; color: app.accent; visible: parent.selected }
+          Text {
+            x: 10; anchors.verticalCenter: parent.verticalCenter
+            text: modelData.name
+            color: Theme.text
+            font.family: app.fontFamily; font.pixelSize: 12
+            font.weight: parent.selected ? Font.DemiBold : Font.Normal
+            textFormat: Text.PlainText
+          }
+          HoverArea { label: modelData.name; onActivated: app.settingsSection = modelData.id }
+        }
+      }
+    }
+    Column {
+      x: 12; width: parent.width - 24
+      visible: !panel.compact
+      anchors.bottom: parent.bottom; anchors.bottomMargin: 16
+      spacing: 5
+      Text { text: "SELECTED AGENT"; color: Theme.textFaint; font.family: app.fontFamily; font.pixelSize: 9; textFormat: Text.PlainText }
+      Text { width: parent.width; text: app.botLabel(); color: Theme.textMuted; font.family: app.fontFamily; font.pixelSize: 11; textFormat: Text.PlainText; wrapMode: Text.Wrap }
+    }
   }
 
   Item {
-    id: header
-    visible: panel.section !== "appearance"
-    width: parent.width
-    height: 36
-    Rectangle {
-      width: 32; height: 32; radius: 16
-      anchors.verticalCenter: parent.verticalCenter
-      color: Theme.raised
-      border.width: 1; border.color: Theme.edge
-      Text {
-        anchors.centerIn: parent
-        text: "‹"
-        font.family: app.fontFamily; font.pixelSize: 24
-        textFormat: Text.PlainText; color: Theme.text
-      }
-      HoverArea { label: panel.section === "home" ? "Back to chat" : "Back"; onActivated: app.closeSettings() }
-    }
-    Text {
-      x: 42
-      anchors.verticalCenter: parent.verticalCenter
-      text: panel.section === "home" ? "Settings" : panel.section === "providers" ? "Providers" : "Custom avatar"
-      font.family: app.fontFamily; font.pixelSize: 15; font.weight: Font.DemiBold
-      textFormat: Text.PlainText; color: Theme.text
-    }
-  }
-
-  Flickable {
-    id: settingsFlick
-    visible: panel.section !== "appearance"
-    anchors.top: header.bottom; anchors.topMargin: 14
-    anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
-    contentHeight: content.implicitHeight
-    clip: true
-    boundsBehavior: Flickable.StopAtBounds
-    ScrollBar.vertical: ScrollBar { policy: settingsFlick.contentHeight > settingsFlick.height ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff }
-    Column {
-      id: content
-      width: parent.width
-      spacing: 12
+    id: page
+    x: panel.compact ? 0 : sidebar.width + 20
+    y: panel.compact ? sidebar.height + 16 : 0
+    width: parent.width - x
+    height: parent.height - y
+    Item {
+      id: header
+      width: parent.width; height: 64
       Column {
-        width: parent.width
-        visible: panel.section === "home"
-        spacing: 10
-        SettingsAction {
-          width: parent.width; fontFamily: app.fontFamily
-          title: "Providers"
-          detail: "Choose GrokBot or Hermes and manage your agents"
-          onActivated: app.settingsSection = "providers"
-        }
-        SettingsAction {
-          width: parent.width; fontFamily: app.fontFamily
-          title: "Appearance"
-          detail: "Shape, colour, motion and placement"
-          onActivated: app.settingsSection = "appearance"
+        width: parent.width - 40
+        spacing: 6
+        Text {
+          text: panel.section === "appearance" ? "Appearance" : panel.section === "providers" ? "Providers" : panel.section === "behaviour" ? "Behaviour" : "Custom avatar"
+          font.family: app.fontFamily; font.pixelSize: 20; font.weight: Font.DemiBold
+          textFormat: Text.PlainText; color: Theme.text
         }
         Text {
           width: parent.width
-          text: "Using " + app.botLabel() + " · " + ((app.currentBot() || {}).provider === "hermes" ? "Hermes" : "GrokBot")
+          text: panel.section === "appearance" ? "Personalise your desktop companion" : panel.section === "providers" ? "Choose the agent behind your companion" : panel.section === "behaviour" ? "Motion, size and desktop placement" : "Optional · Open Bot Avatar"
           font.family: app.fontFamily; font.pixelSize: 11
-          textFormat: Text.PlainText; color: Theme.textMuted
-          wrapMode: Text.Wrap
+          textFormat: Text.PlainText; color: Theme.textMuted; wrapMode: Text.Wrap
         }
       }
+      Rectangle {
+        anchors.right: parent.right
+        width: 30; height: 30; radius: 8
+        color: Theme.raised
+        Text { anchors.centerIn: parent; text: "×"; color: Theme.textMuted; font.pixelSize: 20; textFormat: Text.PlainText }
+        HoverArea { label: "Close settings"; onActivated: app.cardPage = "chat" }
+      }
+    }
+    SettingsPanel {
+      id: appearance
+      anchors.top: header.bottom
+      anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
+      app: panel.app
+      embedded: true
+      visible: panel.section === "appearance" || panel.section === "behaviour"
+    }
+    Flickable {
+      id: settingsFlick
+      visible: panel.section === "providers" || panel.section === "avatar"
+      anchors.top: header.bottom
+      anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
+      contentHeight: content.implicitHeight
+      clip: true
+      boundsBehavior: Flickable.StopAtBounds
+      onVisibleChanged: contentY = 0
+      ScrollBar.vertical: ScrollBar { policy: settingsFlick.contentHeight > settingsFlick.height ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff }
       Column {
+        id: content
+        width: parent.width
+        spacing: 16
+      SettingsGroup {
         width: parent.width
         visible: panel.section === "providers"
-        spacing: 10
+        title: "Agent provider"
+        fontFamily: app.fontFamily
         Row {
           width: parent.width; spacing: 8
           Repeater {
@@ -144,10 +191,12 @@ Item {
           app: panel.app
         }
       }
-      Column {
+      SettingsGroup {
         width: parent.width
         visible: panel.section === "avatar"
-        spacing: 10
+        title: "Custom character"
+        fontFamily: app.fontFamily
+        SettingsAction { width: parent.width; fontFamily: app.fontFamily; title: "Back to appearance"; onActivated: app.settingsSection = "appearance" }
         Text {
           width: parent.width
           text: "An optional character for " + app.botLabel() + ". Your usual shapes and colours are always available in Appearance."
@@ -182,6 +231,7 @@ Item {
           textFormat: Text.PlainText; color: Theme.textMuted
           wrapMode: Text.Wrap
         }
+      }
       }
     }
   }
