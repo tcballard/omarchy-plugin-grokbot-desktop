@@ -17,9 +17,14 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: "22"
+      - name: Install native Qt system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libopengl0 libgl1
       - run: python3 -m pip install PySide6==6.12.0 PyYAML==6.0.3
       - run: ./tests/run
       - name: Native Qt avatar rendering and QML syntax
         env:
           QT_QPA_PLATFORM: offscreen
+          QT_QUICK_BACKEND: software
         run: python3 tests/avatar-native.py
