@@ -1,5 +1,19 @@
 # Roadmap
 
+## Active feature: multi-provider companion and repository rename
+
+Scoped on 2 November 2026 in [MULTI-PROVIDER-SCOPE.md](MULTI-PROVIDER-SCOPE.md). Implementation is not started.
+
+- Work branch: `feature/multi-provider-companion`, based on v0.1.2 main (`928f73a`).
+- One companion and mixed roster for Grok, Hermes and existing local agents, behind a versioned provider contract.
+- OpenClaw, Dots and Muse are future integration candidates; their usable interfaces must be verified before support is promised.
+- Repository and product rename are in scope; final name/slug is pending. Retain the permanent plugin ID and existing configuration/IPC compatibility.
+- Keep main releasable during feature development. Reconcile this branch with the costume work before either feature merges; the costume-specific branch policy below does not authorize merging this feature into main.
+- This is a feature release, not a v0.1.x patch. The existing v0.2.0 costume scope is preserved; version/order remains to be decided.
+- Track implementation, migration, acceptance and release progress in the linked scope record.
+
+The earlier roadmap below is retained as historical planning context; its untagged-first-release notes do not describe the current v0.1.2 release status.
+
 ## Current local additions
 
 Requested after the v0.1.0 testing pass: an app-roster Sync button in Appearance & bots and a persistent name badge beneath the companion. The owner accepted these after restarting the shell on the XPS; the 30 October acceptance record covers the candidate with explicit limitations. Full CI must pass before release. They are additions to the untagged first-release candidate, not a v0.1.n patch.
