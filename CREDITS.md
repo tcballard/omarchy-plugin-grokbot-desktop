@@ -13,3 +13,13 @@ The mark outlines and eyes in `qml/shapes.js` are measured by `tools/measure-ava
 `assets/fonts/Inter-Regular.ttf` and `assets/fonts/Inter-SemiBold.ttf` are [Inter](https://github.com/rsms/inter) 4.1 by Rasmus Andersson and the Inter Project Authors, under the SIL Open Font License 1.1 (`assets/fonts/OFL-Inter.txt`), subset to Latin, Greek, and Cyrillic. They stand in for Apple's SF Pro, which Grok Bot's app uses and which may only be used on Apple platforms.
 
 The bundled roster in `data/bots.json` uses ids, names, shapes, and colours from Tom Ballard's Grok Bot export. Descriptions in the repository are shortened public role lines, not the bots' private instructions. Crediting an inspiration does not grant permission to copy its code or artwork.
+
+## Hermes gateway adapter
+
+`agent_desktop/hermes_gateway.py` adapts the Bot Chat transport, event bookkeeping,
+and history presentation from [Yani3rt/omarchy-plugin-hermes-blob](https://github.com/Yani3rt/omarchy-plugin-hermes-blob),
+`bin/hermes-blob-bridge` at commit `3cc1649084efb98989a7cd335c009f30c44e426f`.
+Credit to Yani3rt for the Hermes integration. That fork carries the MIT license,
+Copyright (c) 2026 Tom Ballard; its license notice is preserved in this repository's
+[LICENSE](LICENSE). The public Agent Desktop protocol and adapter wrapper are new
+work here. Hermes itself remains a separately installed dependency.

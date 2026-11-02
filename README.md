@@ -26,6 +26,14 @@ Accepted by the owner on an XPS running Omarchy `dev (573b518be)`; see [acceptan
 
 **Inspired by [Clippy for Omarchy](https://github.com/jankeesvw/omarchy-clippy) and [Clanky](https://github.com/rdoupe/omarchy-clanky).** The layer-shell window, click-through mask, dodge behaviour, cursor helper, and speech-bubble IPC follow those companions. Plugin conventions come from [Build Omarchy Plugins](https://github.com/tcballard/build-omarchy-plugins).
 
+## Agent Desktop v0.2.0 development
+
+The multi-provider feature is being built on `feature/multi-provider-companion`.
+The first slice provides a [versioned provider API and Hermes hook endpoint](docs/PROVIDER-API.md),
+a runnable example, and protocol tests. Desktop provider selection and the rename
+to Agent Desktop are still pending; the existing installation remains Grok Bot Desktop.
+See the [feature scope](docs/MULTI-PROVIDER-SCOPE.md).
+
 ## Install
 
 Intended for Omarchy 4 (Quattro) on Hyprland. A live session on Try Omarchy (`Virtual-1`, 1280×800) is recorded in [acceptance evidence](docs/ACCEPTANCE.json). The command to try, once you have reviewed the code, is:

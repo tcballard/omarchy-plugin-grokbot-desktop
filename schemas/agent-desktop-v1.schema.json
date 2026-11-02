@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agent-desktop:protocol:1",
+  "title": "Agent Desktop Protocol v1 envelopes",
+  "description": "Envelope schema; method/event field requirements and semantics are normative in docs/PROVIDER-API.md.",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": ["v", "id", "method"],
+      "properties": {
+        "v": {"const": 1},
+        "id": {"$ref": "#/$defs/id"},
+        "method": {"enum": ["hello", "agents.list", "message.send", "request.cancel", "prompt.answer", "history.list", "session.compact", "shutdown"]},
+        "params": {"type": "object"}
+      },
+      "not": {"anyOf": [{"required": ["event"]}, {"required": ["result"]}, {"required": ["error"]}]}
+    },
+    {
+      "type": "object",
+      "required": ["v", "epoch", "id"],
+      "properties": {
+        "v": {"const": 1},
+        "epoch": {"type": "string", "minLength": 1},
+        "id": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
+        "result": {"type": "object"},
+        "error": {"$ref": "#/$defs/error"}
+      },
+      "oneOf": [{"required": ["result"]}, {"required": ["error"]}],
+      "not": {"anyOf": [{"required": ["event"]}, {"required": ["method"]}]}
+    },
+    {
+      "type": "object",
+      "required": ["v", "epoch", "seq", "event", "params"],
+      "properties": {
+        "v": {"const": 1},
+        "epoch": {"type": "string", "minLength": 1},
+        "seq": {"type": "integer", "minimum": 1},
+        "event": {"type": "string", "minLength": 1},
+        "params": {"type": "object", "required": ["agentId"], "properties": {"agentId": {"$ref": "#/$defs/id"}}}
+      },
+      "not": {"anyOf": [{"required": ["id"]}, {"required": ["method"]}, {"required": ["result"]}, {"required": ["error"]}]}
+    }
+  ],
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"},
+    "error": {"type": "object", "required": ["code", "message", "retryable"], "properties": {
+      "code": {"type": "string"}, "message": {"type": "string"}, "retryable": {"type": "boolean"}
+    }}
+  }
+}

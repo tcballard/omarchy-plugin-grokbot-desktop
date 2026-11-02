@@ -205,10 +205,25 @@ Removal preserves provider configuration, credentials and upstream conversations
 - [x] Dedicated branch created from current main.
 - [x] Feature scope and rename boundaries recorded.
 - [ ] Shared fixes reviewed and integrated.
-- [ ] Contract/controller and three initial adapters implemented.
+- [x] First protocol slice: v1 JSON Lines server, envelope schema, hook client, reference adapter, and Hermes gateway wrapper with portable tests. See [Provider API](PROVIDER-API.md).
+- [ ] Contract/controller and three initial adapters implemented. The current slice is headless; mixed-provider desktop routing, Grok/local adapters, configuration and live Hermes acceptance remain pending.
 - [ ] Mixed-provider acceptance and migration verified.
 - [x] Product name and target repository slug selected; v0.2.0 assigned to multi-provider support.
 - [ ] Repository/listing rename coordinated and executed.
 - [ ] Release candidate validated and published.
 
 Update this record and the existing roadmap as work progresses. Do not create parallel status documents.
+
+### First implementation slice — 2026-11-02
+
+Implemented the standalone provider endpoint and developer hook client before
+connecting the desktop UI. The reference adapter completes a real pipe-based
+request; the Hermes adapter covers discovery, admission, streaming, prompts,
+history, compaction, cancellation and deadlines behind the same v1 boundary.
+Hermes gateway behaviour is mocked in these tests; no live compatibility claim.
+
+Validation: 19 provider API tests passed; 5 existing Python sync tests passed;
+plugin structural checks and Python compilation passed. The full Node suite
+reported 89 passing and 18 failing tests, matching the pre-change checkout's
+Unix-socket `listen EPERM` failures in this environment. Native `qmllint` is not
+available. No QML was changed, and live Hermes/Omarchy validation remains pending.
