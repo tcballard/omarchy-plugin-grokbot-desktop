@@ -1,11 +1,11 @@
-# Multi-provider desktop companion: feature scope
+# Agent Desktop v0.2.0: multi-provider feature scope
 
 Status: scoped, implementation not started.
 Date: 2 November 2026.
 Feature branch: `feature/multi-provider-companion`.
 Base: `928f73a00114a60fec673d204bd20be36199a0a7` (v0.1.2 main).
-Owner decision: consolidate personal-agent companions and rename this repository to reflect the broader product. New repository slug and product name are pending.
-Release: feature release, never a v0.1.x patch. Do not assign v0.2.0 without reconciling the existing costume roadmap.
+Owner decision: consolidate personal-agent companions as **Agent Desktop** (Omarchy Agent Desktop in platform-qualified copy), with target repository slug `omarchy-plugin-agent-desktop`. The existing repository will be renamed in place.
+Release: **v0.2.0 delivers multi-provider support and the Agent Desktop rename.** Costumes are deferred to a later feature release; no version is assigned to them.
 
 ## Outcome
 
@@ -144,7 +144,7 @@ Normal status/diagnostics return identities, availability and lifecycle, not exc
 
 ## Rename and migration
 
-Repository rename is in scope; product name and new slug are pending owner choice. Use neutral internal terms now and avoid a speculative final name in paths.
+Target product name: **Agent Desktop**. Target repository: `tcballard/omarchy-plugin-agent-desktop` (lowercase slug). Rename the existing repository in place so its history and collaboration remain together. The remote rename is a rollout task, not completed by this scope update.
 
 Repository name, display name and permanent plugin ID are separate:
 - Keep `io.github.tcballard.grokbot-desktop` as the permanent ID for this feature.
@@ -153,7 +153,7 @@ Repository name, display name and permanent plugin ID are separate:
 - A new permanent ID would be a separate migration decision with marketplace coordination.
 
 Rename checklist:
-1. Choose the product name/slug and check the intended repository destination.
+1. Check availability of the chosen destination `tcballard/omarchy-plugin-agent-desktop` before the in-place rename.
 2. Inventory repository references in README, manifests, badges, workflows, release packaging, installation commands and marketplace metadata.
 3. Prepare neutral display copy and adapter docs; preserve licenses, source credits and authorship.
 4. Convert legacy dispatch/roster config through an explicit schema migration. Preserve the original backup, provider settings, unknown keys and secret file ownership/modes. Migration is atomic, repeatable, conflict-aware and does not overwrite unrelated shell entries.
@@ -171,7 +171,7 @@ Recheck at release; historical approval does not cover a new feature commit.
 
 | Stage | Deliverable | Exit condition |
 | --- | --- | --- |
-| 0. Scope | This record, roadmap link, isolated branch | Base and non-goals recorded; name/version pending |
+| 0. Scope | This record, roadmap link, isolated branch | Base and non-goals recorded; Agent Desktop name, target slug and v0.2.0 assigned |
 | 1. Shared fixes | Review #24–26 and #24 fork follow-ups | IPC, dictation and cancellation regressions pass; preserve provenance |
 | 2. Contract | v1 schemas, controller, fake adapter, config/identity model | Two same-name agents cannot cross-route; invalid/stale events rejected |
 | 3. Existing behaviour | Grok and local adapters | Existing requests, callbacks, privacy, attachments and UI regressions pass |
@@ -194,8 +194,8 @@ Removal preserves provider configuration, credentials and upstream conversations
 
 ## Decisions still open
 
-- Final product name and repository slug: owner choice; blocks public rename/branding, not adapter implementation.
-- Feature release version/order relative to costumes: decide before release; costumes remain separately scoped.
+- Destination availability and rename execution timing: verify before the in-place rename.
+- Later costume release number: unassigned; costumes do not block v0.2.0.
 - Tested Hermes version range and future provider interfaces: implementation investigation.
 - Marketplace source-rename procedure: verify with current supported workflow before changing listing metadata.
 
@@ -207,7 +207,8 @@ Removal preserves provider configuration, credentials and upstream conversations
 - [ ] Shared fixes reviewed and integrated.
 - [ ] Contract/controller and three initial adapters implemented.
 - [ ] Mixed-provider acceptance and migration verified.
-- [ ] Product name selected; repository/listing rename coordinated.
+- [x] Product name and target repository slug selected; v0.2.0 assigned to multi-provider support.
+- [ ] Repository/listing rename coordinated and executed.
 - [ ] Release candidate validated and published.
 
 Update this record and the existing roadmap as work progresses. Do not create parallel status documents.
