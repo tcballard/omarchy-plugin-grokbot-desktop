@@ -79,7 +79,7 @@ The companion sits in a corner. Clicks outside the mark pass through, and they k
 | Escape | Steps back: closes the menu, then leaves the appearance page, then closes the bubble |
 | Tab, then Enter or Space | Moves between the bubble's controls and presses the focused one |
 | Switch Bot | Morphs into that Bot's shape and colour when sync is on, and routes the next ask there. Each bot keeps its own conversation, as a scrolling history of up to 40 exchanges, and its unsent draft for the session (never written to disk); a reply to a bot you have switched away from waits in its conversation with a dot on its chip, which shows on the header pill while the row is folded away and on the mark while the bubble is closed. One ask runs at a time. Before a conversation the bots sit in a row under the header; once one starts the row folds away and the header pill (the bot's name and chevron; its role slides out on hover) is the switch button, which unfolds every bot until you pick one |
-| Pointer nearby, dodge on | Fades the closer the pointer gets (down to 28%) and lets clicks through. Rest on the mark and it fades back in over about 0.4s, then takes clicks |
+| Pointer nearby, dodge on | Fades as the pointer approaches (down to 28%). The mark remains clickable and restores immediately on hover; clicks outside the mark/card still pass through |
 | Pointer idle for 2 minutes | The capsule eyes close into lid lines |
 
 Bob (`e0195a7d-f804-4688-9191-e2cf3574a6d1`, teardrop, orange) is the default. Asking Bob sends Bob's id, so a Grok Bot routine named for the Omarchy desktop companion can delegate to the other bots. This plugin only delivers the payload.

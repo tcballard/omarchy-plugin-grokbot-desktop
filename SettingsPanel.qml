@@ -554,7 +554,7 @@ Item {
             font.weight: app.dodgeOn ? Font.DemiBold : Font.Normal
             textFormat: Text.PlainText
           }
-          HoverArea { label: "Dodge: fade and let clicks through when the pointer comes near"; onActivated: app.setDodge(!app.dodgeOn) }
+          HoverArea { label: "Dodge: fade nearby and restore immediately on hover"; onActivated: app.setDodge(!app.dodgeOn) }
         }
       }
 
@@ -562,7 +562,7 @@ Item {
       Text {
         width: parent.width
         text: app.dodgeOn
-          ? "Dodge is on: as the pointer comes near, " + app.botLabel() + " fades and lets clicks through to the window behind. Rest the pointer on " + app.botLabel() + " to bring it back."
+          ? "Dodge is on: as the pointer comes near, " + app.botLabel() + " fades but still accepts clicks. Move the pointer onto " + app.botLabel() + " to restore it immediately."
           : "Dodge is off: " + app.botLabel() + " stays solid and takes clicks wherever the pointer is."
         color: Theme.textFaint
         font.pixelSize: 11

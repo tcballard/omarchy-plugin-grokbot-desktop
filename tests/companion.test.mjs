@@ -1608,9 +1608,9 @@ test('a conversation hides the other bots behind the header switch', () => {
 
 test('the appearance page says what Dodge does', () => {
   const page = read('SettingsPanel.qml')
-  assert.match(page, /"Dodge is on: as the pointer comes near, " \+ app\.botLabel\(\) \+ " fades and lets clicks through/)
+  assert.match(page, /"Dodge is on: as the pointer comes near, " \+ app\.botLabel\(\) \+ " fades but still accepts clicks/)
   assert.match(page, /"Dodge is off: " \+ app\.botLabel\(\) \+ " stays solid and takes clicks/)
-  assert.match(page, /label: "Dodge: fade and let clicks through when the pointer comes near"/)
+  assert.match(page, /label: "Dodge: fade nearby and restore immediately on hover"/)
 })
 
 test('the desktop mark turns its face as Grok Bot moves Bob', async () => {
