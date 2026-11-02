@@ -52,3 +52,9 @@ Workbench registration and command trust remain explicit user actions. Portable 
 ## Open Bot Avatar v1
 
 `qml/openbotavatar.js` vendors the pinned MIT upstream geometry validator and frame engine. `OpenBotAvatar.qml` draws its paths and affine transforms through Qt Shapes, with no browser or runtime Node dependency. Assignments are geometry-only JSON stored under `avatarDefinitions` in this plugin's existing shell entry, keyed by desktop agent identity. Import validates before saving, export returns the normalized definition, and removal affects only that agent. The main mark, header, roster chips and reply peek use the same definition. Existing measured shapes remain the default.
+
+## Settings navigation
+
+`PreferencesPanel.qml` is the settings entry point: Providers and Appearance are separate pages. `SettingsPanel.qml` retains the original shape, colour, motion and placement picker. Optional Open Bot Avatar import/export lives one level below Appearance. Provider selection uses the same `selectBot` path as the conversation picker, preserving agent-specific threads and drafts.
+
+`HermesSettings.qml` edits only Hermes connection paths through `bin/agent-desktop-config` over stdin. The helper validates paths, preserves unrelated JSON keys, refuses symlink targets and writes atomically with private permissions. Credentials remain owned by the existing Hermes installation.

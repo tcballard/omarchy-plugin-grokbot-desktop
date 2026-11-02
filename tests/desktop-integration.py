@@ -45,6 +45,37 @@ class DesktopIntegration(unittest.TestCase):
         result=self.run_helper('agent-desktop-roster')
         self.assertNotEqual(result.returncode,0)
         self.assertEqual(file.read_text(),'{broken')
+    def test_hermes_settings_save_preserves_other_providers_and_private_keys(self):
+        file = self.config/'agent-desktop.json'
+        original = {'extra': True, 'providers': {'grokbot': {'custom': 'kept'}, 'hermes': {'private': 'not-returned'}}}
+        file.write_text(json.dumps(original))
+        payload = {'action':'save', 'root':str(self.home), 'agentDir':str(self.home), 'python':'/usr/bin/python3'}
+        result = self.run_helper('agent-desktop-config', payload)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        saved = json.loads(file.read_text())
+        self.assertEqual(saved['providers']['grokbot'], original['providers']['grokbot'])
+        self.assertEqual(saved['providers']['hermes']['private'], 'not-returned')
+        self.assertTrue(saved['extra'])
+        self.assertNotIn('not-returned', result.stdout)
+        self.assertEqual(file.stat().st_mode & 0o777, 0o600)
+        read = self.run_helper('agent-desktop-config', {'action':'read'})
+        self.assertEqual(json.loads(read.stdout), {key:payload[key] for key in ('root','agentDir','python')})
+    def test_invalid_hermes_paths_and_broken_config_are_kept(self):
+        file = self.config/'agent-desktop.json'
+        for initial in ('{broken', '{"providers":{"example":{}}}'):
+            file.write_text(initial)
+            result = self.run_helper('agent-desktop-config', {'action':'save', 'root':'relative', 'agentDir':str(self.home), 'python':'/usr/bin/python3'})
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(file.read_text(), initial)
+    def test_hermes_settings_refuses_symlink_and_oversized_requests(self):
+        target = self.home/'target.json'
+        target.write_text('{}')
+        (self.config/'agent-desktop.json').symlink_to(target)
+        payload = {'action':'save', 'root':str(self.home), 'agentDir':str(self.home), 'python':'/usr/bin/python3'}
+        self.assertNotEqual(self.run_helper('agent-desktop-config', payload).returncode, 0)
+        self.assertEqual(target.read_text(), '{}')
+        payload['extra'] = 'a' * 17000
+        self.assertNotEqual(self.run_helper('agent-desktop-config', payload).returncode, 0)
     def test_timeouts_obey_existing_shell_precedence_and_bounds(self):
         transport=legacy_module()
         self.assertEqual(transport.ask_timeout({}, {}, 180),180)

@@ -71,6 +71,45 @@ Item {
     }
   }
 
+  property var hermesSettings: ({})
+  property string providerConfigStatus: ""
+  readonly property bool providerConfigBusy: providerConfigProc.running
+  property string providerConfigInput: ""
+  property bool savingProviderConfig: false
+
+  function loadHermesSettings() {
+    if (providerConfigProc.running) return
+    root.savingProviderConfig = false
+    root.providerConfigInput = JSON.stringify({ action: "read" })
+    providerConfigProc.running = true
+  }
+
+  function saveHermesSettings(home, source, python) {
+    if (providerConfigProc.running) return
+    root.savingProviderConfig = true
+    root.providerConfigInput = JSON.stringify({ action: "save", root: home, agentDir: source, python: python })
+    providerConfigProc.running = true
+  }
+
+  Process {
+    id: providerConfigProc
+    command: ["/usr/bin/python3", "-I", root.localPath(Qt.resolvedUrl("bin/agent-desktop-config"))]
+    clearEnvironment: true
+    environment: ({ HOME: root.homePath })
+    stdinEnabled: true
+    stdout: StdioCollector { id: providerConfigOut }
+    stderr: StdioCollector { id: providerConfigErr }
+    onStarted: { write(root.providerConfigInput); stdinEnabled = false }
+    onExited: function(code) {
+      stdinEnabled = true
+      if (code !== 0) { root.providerConfigStatus = root.cleanText(providerConfigErr.text, 400); return }
+      try { root.hermesSettings = JSON.parse(providerConfigOut.text) }
+      catch (e) { root.providerConfigStatus = "Could not read connection settings."; return }
+      root.providerConfigStatus = root.savingProviderConfig ? "Connection saved." : ""
+      if (root.savingProviderConfig) root.refreshProviders()
+    }
+  }
+
   property var providerBots: []
   property string providerStatus: ""
   readonly property bool discoveringProviders: providerProc.running
@@ -144,6 +183,8 @@ Item {
   property bool present: true
   property bool bubbleOpen: false
   property string cardPage: "chat"
+  property string settingsSection: "home"
+  property string settingsProvider: "grokbot"
   readonly property bool settingsOpen: root.bubbleOpen && root.cardPage === "appearance"
   property bool menuOpen: false
   property bool switcherOpen: false
@@ -1160,6 +1201,8 @@ Item {
   }
 
   function openSettings() {
+    root.settingsSection = "home"
+    root.settingsProvider = (root.currentBot() || {}).provider || "grokbot"
     root.present = true
     root.cardPage = "appearance"
     root.bubbleOpen = true
@@ -1167,7 +1210,21 @@ Item {
     root.wake()
   }
 
-  function closeSettings() { root.cardPage = "chat" }
+  function closeSettings() {
+    if (root.settingsSection === "avatar") root.settingsSection = "appearance"
+    else if (root.settingsSection !== "home") root.settingsSection = "home"
+    else root.cardPage = "chat"
+  }
+
+  function chooseProvider(provider) {
+    root.settingsProvider = provider
+    if ((root.currentBot() || {}).provider === provider) return
+    for (var i = 0; i < root.bots.length; i++) {
+      if (root.bots[i].provider === provider) { root.selectBot(root.bots[i].id); return }
+    }
+    root.refreshProviders()
+  }
+
 
   // Esc steps back one level: the menu, then the appearance page, then the
   // bubble.
@@ -2035,6 +2092,7 @@ Item {
     cursorProc.running = false
     syncProc.running = false
     providerProc.running = false
+    providerConfigProc.running = false
     if (askProc.running) askProc.running = false
   }
 
@@ -2632,7 +2690,7 @@ Item {
         spacing: 4
         Repeater {
           model: (root.canClear ? [{ "label": "Clear conversation", "action": "clear" }] : []).concat([
-            { "label": "Appearance & bots", "action": "settings" },
+            { "label": "Settings", "action": "settings" },
             { "label": "Hide companion", "action": "hide" }
           ])
           delegate: Rectangle {

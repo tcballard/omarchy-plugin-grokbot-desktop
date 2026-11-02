@@ -71,7 +71,7 @@ Item {
           ctx.stroke()
         }
       }
-      HoverArea { label: "Back to chat"; onActivated: app.closeSettings() }
+      HoverArea { label: "Back to settings"; onActivated: app.settingsSection = "home" }
     }
 
     Text {
@@ -134,91 +134,6 @@ Item {
       id: body
       width: flick.width
       spacing: 12
-
-      Button {
-        width: parent.width
-        text: app.discoveringProviders ? "Discovering providers…" : "Refresh providers (GrokBot / Hermes)"
-        enabled: !app.discoveringProviders
-        onClicked: app.refreshProviders()
-      }
-      Text {
-        width: parent.width
-        text: app.providerStatus
-        visible: text !== ""
-        wrapMode: Text.Wrap
-        textFormat: Text.PlainText
-        color: Theme.textMuted
-        font.pixelSize: 11
-        font.family: app.fontFamily
-      }
-      Text {
-        text: "Open Bot Avatar · " + app.botLabel()
-        textFormat: Text.PlainText
-        color: Theme.text
-        font.pixelSize: 12
-        font.family: app.fontFamily
-      }
-      TextArea {
-        id: avatarJson
-        font.family: app.fontFamily
-        width: parent.width
-        height: 96
-        placeholderText: "Paste Open Bot Avatar v1 JSON"
-        textFormat: TextEdit.PlainText
-        wrapMode: TextEdit.Wrap
-        selectByMouse: true
-        onTextChanged: if (text.length > 16384) text = text.slice(0, 16384)
-      }
-      Row {
-        spacing: 6
-        Button { text: "Import"; onClicked: app.importAvatar(avatarJson.text) }
-        Button { text: "Export"; onClicked: { avatarJson.text = app.exportAvatar(); avatarJson.selectAll() } }
-        Button { text: "Remove"; onClicked: app.removeAvatar() }
-      }
-      Text {
-        width: parent.width
-        text: app.avatarStatus || "Geometry is saved for this agent. Colour and motion follow your appearance settings."
-        wrapMode: Text.Wrap
-        textFormat: Text.PlainText
-        color: Theme.textMuted
-        font.pixelSize: 11
-        font.family: app.fontFamily
-      }
-      Column {
-        width: parent.width
-        spacing: 7
-        Rectangle {
-          width: parent.width
-          height: 34
-          radius: 10
-          color: Theme.raised
-          border.width: 1
-          border.color: Theme.edge
-          Text {
-            anchors.centerIn: parent
-            text: app.syncingRoster ? "Syncing…" : "Sync bots from Grok Bot"
-            textFormat: Text.PlainText
-            color: app.syncingRoster ? Theme.textMuted : Theme.text
-            font.family: app.fontFamily
-            font.pixelSize: 12
-        font.weight: Font.DemiBold
-          }
-          HoverArea {
-            enabled: !app.syncingRoster
-            label: "Sync bots from Grok Bot"
-            onActivated: app.syncRoster()
-          }
-        }
-        Text {
-          width: parent.width
-          text: app.syncStatus || "Refresh from the bot list saved by your Grok Bot app."
-          textFormat: Text.PlainText
-          wrapMode: Text.Wrap
-          color: Theme.textMuted
-          font.family: app.fontFamily
-          font.pixelSize: 11
-        }
-      }
 
       // Shapes as Grok Bot's picker lays them out: rows of four, five, and
       // five, every shape in the chosen colour, and a ring that follows the
@@ -355,6 +270,14 @@ Item {
             }
           }
         }
+      }
+
+      SettingsAction {
+        width: parent.width
+        fontFamily: app.fontFamily
+        title: "Custom avatar…"
+        detail: app.avatarFor(app.chosenBotId) ? "An imported character is active" : "Optional · import an Open Bot Avatar character"
+        onActivated: app.settingsSection = "avatar"
       }
 
       Rectangle {

@@ -190,7 +190,7 @@ Rectangle {
     onTriggered: voiceButton.wave = (voiceButton.wave + frameTime * 6.4) % 6.28318
   }
 
-  SettingsPanel {
+  PreferencesPanel {
     id: settingsPage
     app: bubble.app
     x: 16 + 24 * (1 - bubble.pageT)
@@ -259,7 +259,7 @@ Rectangle {
             onWidthChanged: requestPaint()
           }
           HoverArea {
-            label: "Appearance"
+            label: "Settings"
             onActivated: app.settingsOpen ? app.closeSettings() : app.openSettings()
           }
         }

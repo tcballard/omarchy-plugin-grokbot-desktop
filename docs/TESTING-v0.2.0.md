@@ -31,7 +31,7 @@ To roll back, substitute the printed backup directory, read `previous-commit`, t
 
 GrokBot keeps using `grokbot-desktop.json`, its key files and synced roster. No reconnection is required.
 
-Configure Hermes in `~/.config/omarchy/agent-desktop.json`. Use the Python interpreter from your existing Hermes environment, which must contain PyYAML and the gateway's websockets dependencies. Replace these example paths with your actual absolute paths:
+Open **Settings → Providers → Hermes → Connection settings**, enter your existing Hermes paths, and choose **Save and refresh**. This preserves other provider configuration. You can also edit `~/.config/omarchy/agent-desktop.json`. Use the Python interpreter from your existing Hermes environment, which must contain PyYAML and the gateway's websockets dependencies. Replace these example paths with your actual absolute paths:
 
 ```json
 {
@@ -45,7 +45,7 @@ Configure Hermes in `~/.config/omarchy/agent-desktop.json`. Use the Python inter
 }
 ```
 
-The default profile and named profiles are discovered through the adapter. Open Hermes Bot Chat and ensure its gateway works first. In Agent Desktop, open Appearance and choose **Refresh providers**, then open the bot switcher and select a profile labelled `· hermes`.
+The default profile and named profiles are discovered through the adapter. Open Hermes Bot Chat and ensure its gateway works first. In Agent Desktop, open **Settings → Providers → Hermes**, refresh profiles, and select a profile. Selecting a provider switches to its first available agent; individual profiles can be chosen below.
 
 This candidate displays completed replies. Hermes streaming, history, compaction and prompt-answer methods exist in the provider API but do not have dedicated desktop controls yet. An approval/input request stops the desktop request and directs you to Hermes; it is never automatically approved. Hermes attachments are explicitly unsupported. Stop requests interruption of an owned Hermes turn; if the gateway cannot confirm it, remote work may continue.
 
@@ -56,7 +56,7 @@ Set `askTimeoutSeconds` (30–1800, default 180) in the existing `grokbot-deskto
 ## Open Bot Avatar
 
 1. Copy the JSON from `data/avatars/rocket.json` or `data/avatars/ghost.json`, or generate one in [the upstream editor](https://dominikscholz.github.io/open-bot-avatar/).
-2. Select an agent, open Appearance, paste the JSON into **Open Bot Avatar**, and press **Import**.
+2. Select an agent, open **Settings → Appearance → Custom avatar…**, paste the JSON, and press **Import**.
 3. Check the desktop mark, header and bot chips. Move the pointer and send a prompt to exercise gaze and thinking motion.
 4. Switch agents: only the selected agent's character should change. Restart the shell and confirm the assignment survives.
 5. **Export** shows selected JSON ready to copy. **Remove**, or choosing a built-in shape, returns that agent to the built-in renderer. Colour selection still applies to either renderer.
@@ -66,6 +66,8 @@ Imports are geometry-only v1 definitions validated by the upstream engine, cappe
 ## Desktop acceptance checklist
 
 - Stable Omarchy: the plugin loads through IpcHandler without a QVariant warning. Newer shells retain ShellIpc. Private stdin webhook replies and desktop-wide dictation still require the newer private socket; the fallback does not bypass that requirement.
+- Settings opens a compact menu. Appearance starts with shapes and colours; custom avatar import is a secondary page. Back/Esc steps through pages to chat.
+- Switch GrokBot/Hermes in Providers; the chosen agent receives subsequent messages. Save Hermes connection paths and verify they survive restart without changing Grok configuration.
 - Existing Grok agent selection, appearance and webhook configuration survive restart and the upgrade.
 - Local Grok agent asks and webhook callback replies still work. Stop terminates local descendants; remote webhook work may continue.
 - Grok and Hermes agents with the same name retain separate drafts, conversations and replies. Ambiguous names and prefixes do not select a bot through `say`/`reply`; use the exact ID.
