@@ -1576,7 +1576,9 @@ Item {
 
   Timer {
     id: askTimeout
-    interval: 180000
+    // A backstop only: bin/grokbot-ask enforces the real limit (askTimeoutSeconds,
+    // 180 s by default, at most 1800 s) and says why when it is reached.
+    interval: 1830000
     onTriggered: {
       root.cancelAsk()
       if (root.deliver(root.askBotId, "That took too long, so I stopped waiting.")) root.replyLanded()

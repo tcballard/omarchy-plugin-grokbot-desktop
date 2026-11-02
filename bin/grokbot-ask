@@ -54,6 +54,9 @@ WEBHOOK_CONNECT_TIMEOUT = 10
 TARGET = "io.github.tcballard.grokbot-desktop"
 ASK_ID = re.compile(r"^[0-9a-f]{8,32}$")
 AGENT_TIMEOUT = 180
+# The process group of the running agent, so a Stop (SIGTERM from the shell)
+# ends the agent's turn too instead of orphaning it.
+CHILD_PGID = 0
 KEY_NAME = "GROKBOT_WEBHOOK_KEY"
 # A header name as HTTP defines a token. The headers the helper sets itself
 # cannot be replaced by a configured one.
@@ -594,6 +597,15 @@ def agent_command(entry, desktop):
     return [resolved, *argv[1:]], name, False, ""
 
 
+def ask_timeout(entry, desktop, fallback):
+    """askTimeoutSeconds, 30 to 1800; the default otherwise."""
+    try:
+        value = int(setting(entry, desktop, "askTimeoutSeconds"))
+    except (TypeError, ValueError):
+        return fallback
+    return max(30, min(1800, value))
+
+
 def persona(bot_name):
     name = plain(bot_name, 80) or "Bob"
     return (
@@ -655,7 +667,14 @@ def with_attachments(prompt, attachments):
     return f"{prompt}\n\nThe attached {noun} in the current directory: {names}. Look at them before answering."
 
 
-def run_agent(argv, stdin_text, env, label="agent", cwd=None):
+def _stop_child(signum, frame):
+    del frame
+    _kill_group(CHILD_PGID)
+    sys.exit(128 + signum)
+
+
+def run_agent(argv, stdin_text, env, label="agent", cwd=None, timeout=AGENT_TIMEOUT):
+    global CHILD_PGID
     try:
         proc = subprocess.Popen(
             argv,
@@ -669,6 +688,7 @@ def run_agent(argv, stdin_text, env, label="agent", cwd=None):
     except OSError:
         print("could not start the agent", file=sys.stderr)
         return 127
+    CHILD_PGID = proc.pid
     out_fd = proc.stdout.fileno()
     err_fd = proc.stderr.fileno()
     os.set_blocking(out_fd, False)
@@ -682,7 +702,7 @@ def run_agent(argv, stdin_text, env, label="agent", cwd=None):
     ceilings = {out_fd: STDOUT_CEILING, err_fd: STDERR_CEILING}
     open_fds = [out_fd, err_fd]
     overflow = False
-    deadline = time.monotonic() + AGENT_TIMEOUT
+    deadline = time.monotonic() + timeout
     while open_fds:
         if time.monotonic() > deadline:
             _kill_group(proc.pid)
@@ -854,6 +874,7 @@ def main(argv=None):
                 return 3
             extra = (name, value)
         return post_webhook(url, key, payload, extra)
+    signal.signal(signal.SIGTERM, _stop_child)
     argv, agent, custom, problem = agent_command(entry, desktop)
     if not argv:
         print(problem, file=sys.stderr)
@@ -867,7 +888,8 @@ def main(argv=None):
     # With images, the agent works in their directory so its file tools
     # can open them without reaching outside it.
     cwd = attachment_dir() if attachments else None
-    return run_agent(argv, text, child_env(agent, custom), agent or "agent command", cwd)
+    return run_agent(argv, text, child_env(agent, custom), agent or "agent command", cwd,
+                     ask_timeout(entry, desktop, AGENT_TIMEOUT))
 
 
 if __name__ == "__main__":
