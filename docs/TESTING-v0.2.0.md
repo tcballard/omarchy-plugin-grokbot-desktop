@@ -57,7 +57,7 @@ Set `askTimeoutSeconds` (30–1800, default 180) in the existing `grokbot-deskto
 
 ### Built-in generator
 
-Open **Settings → Appearance → Custom avatar…**, describe a character, and choose **Generate avatar**. The builder uses the agent selected in `~/.config/omarchy/defaults/agent`, its configured model and the selected Omarchy account. It does not use the companion’s Grok webhook or Hermes chat provider. This first version supports installed Codex, Claude and Grok CLIs; unsupported or unset defaults show a message without falling back. Existing login is required; no software is installed automatically. Standard provider usage/charges apply when you press Generate.
+Open **Settings → Appearance → Custom avatar…**, describe a character, and choose **Generate avatar**. The builder uses the agent selected in `~/.config/omarchy/defaults/agent`, its configured model and the selected Omarchy account. It does not use the companion’s Grok webhook or Hermes chat provider. This first version supports installed Codex, Claude and Grok CLIs; unsupported or unset defaults show a message without falling back. Codex avatar requests use low reasoning effort for quicker drafts; the configured model and normal Codex settings are unchanged. An elapsed-time label stays visible while waiting. Existing login is required; no software is installed automatically. Standard provider usage/charges apply when you press Generate.
 
 A generated draft is validated and previewed before **Apply to …** changes that bot’s avatar. Edit the description and generate again to refine the current draft. Cancel leaves the installed avatar unchanged. Switching bots while generating cannot apply the draft to the wrong bot. JSON import/export remains behind its own expandable row.
 

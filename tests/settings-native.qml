@@ -41,6 +41,7 @@ Rectangle {
   property var sampleAvatar: null
   property string avatarDraftBotId: ""
   property bool avatarGenerating: false
+  property int avatarGenerationSeconds: 0
   property bool draftApplied: false
   function loadAvatarBuilder() {}
   function generateAvatar() { avatarDraft = sampleAvatar; avatarDraftBotId = chosenBotId }

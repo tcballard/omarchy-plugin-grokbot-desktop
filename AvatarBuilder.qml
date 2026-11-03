@@ -17,7 +17,7 @@ Column {
   }
   Text {
     width: parent.width
-    text: app.avatarBuilderAgent ? "Uses your Omarchy default: " + app.avatarBuilderAgent + " · configured model and login" : "Uses the default agent selected in Omarchy"
+    text: app.avatarBuilderAgent ? "Uses your Omarchy default: " + app.avatarBuilderAgent + " · configured model and login" + (app.avatarBuilderAgent === "codex" ? " · low reasoning" : "") : "Uses the default agent selected in Omarchy"
     color: Theme.textMuted
     font.family: app.fontFamily; font.pixelSize: 11
     textFormat: Text.PlainText; wrapMode: Text.Wrap
@@ -76,7 +76,7 @@ Column {
   }
   Text {
     width: parent.width
-    text: app.avatarBuilderStatus
+    text: app.avatarGenerating ? "Waiting for " + app.avatarBuilderAgent + " · " + app.avatarGenerationSeconds + "s" + (app.avatarGenerationSeconds >= 30 ? ". Still waiting for a complete response; you can cancel." : "") : app.avatarBuilderStatus
     visible: text !== ""
     color: Theme.textMuted
     font.family: app.fontFamily; font.pixelSize: 11

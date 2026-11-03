@@ -692,24 +692,33 @@ def run_agent(argv, stdin_text, env, label="agent", cwd=None, timeout=AGENT_TIME
         err_fd = proc.stderr.fileno()
         os.set_blocking(out_fd, False)
         os.set_blocking(err_fd, False)
-        try:
-            proc.stdin.write(stdin_text.encode("utf-8"))
-            proc.stdin.close()
-        except InterruptedError:
-            raise
-        except OSError:
-            pass
+        in_fd = proc.stdin.fileno()
+        os.set_blocking(in_fd, False)
+        pending = memoryview(stdin_text.encode("utf-8"))
+        writing = True
         buckets = {out_fd: bytearray(), err_fd: bytearray()}
         ceilings = {out_fd: STDOUT_CEILING, err_fd: STDERR_CEILING}
         open_fds = [out_fd, err_fd]
         overflow = False
         deadline = time.monotonic() + timeout
-        while open_fds:
+        while open_fds or writing:
             if time.monotonic() > deadline:
                 _kill_group(proc.pid)
                 print("agent timed out", file=sys.stderr)
                 return 124
-            readable, _, _ = select.select(open_fds, [], [], 0.2)
+            readable, writable, _ = select.select(open_fds, [in_fd] if writing else [], [], 0.2)
+            if writable:
+                try:
+                    sent = os.write(in_fd, pending[:4096]) if pending else 0
+                    pending = pending[sent:]
+                    if not pending:
+                        proc.stdin.close()
+                        writing = False
+                except BlockingIOError:
+                    pass
+                except OSError:
+                    proc.stdin.close()
+                    writing = False
             if not readable and child_exited():
                 readable = list(open_fds)
             for fd in readable:
@@ -730,7 +739,7 @@ def run_agent(argv, stdin_text, env, label="agent", cwd=None, timeout=AGENT_TIME
                     open_fds.clear()
                     break
                 bucket.extend(chunk)
-            if not open_fds:
+            if not open_fds and not writing:
                 break
             if child_exited() and not readable:
                 break

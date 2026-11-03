@@ -18,7 +18,7 @@ FLAGS = {
                '--settings', '{"disableAllHooks":true}'],
     'grok': ['--no-auto-update', '--prompt-file', '/dev/stdin', '--tools', '', '--deny', '*', '--max-turns', '1'],
     'codex': ['exec', '--skip-git-repo-check', '--ephemeral', '--sandbox', 'read-only',
-              '-c', 'approval_policy="never"', '-c', 'features.shell_tool=false',
+              '-c', 'model_reasoning_effort="low"', '-c', 'approval_policy="never"', '-c', 'features.shell_tool=false',
               '-c', 'features.view_image=false', '-c', 'features.apps=false',
               '-c', 'web_search="disabled"', '-c', 'mcp_servers={}',
               '-c', 'hooks={}', '-c', 'notify=[]', '-c', 'project_doc_max_bytes=0',

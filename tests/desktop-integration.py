@@ -1,3 +1,5 @@
+import contextlib
+import io
 import importlib.machinery
 import importlib.util
 import json
@@ -8,6 +10,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from agent_desktop.grokbot import legacy_module
@@ -95,6 +98,7 @@ class DesktopIntegration(unittest.TestCase):
         self.assertIn('PRIVATE blue rocket', invocation['prompt'])
         self.assertNotIn('PRIVATE', str(invocation['argv']))
         self.assertIn('features.shell_tool=false', invocation['argv'])
+        self.assertIn('model_reasoning_effort="low"', invocation['argv'])
         self.assertIn('mcp_servers={}', invocation['argv'])
         self.assertIn('read-only', invocation['argv'])
         self.assertFalse(Path(invocation['cwd']).exists())
@@ -157,6 +161,23 @@ class DesktopIntegration(unittest.TestCase):
             if proc.poll() is None:
                 proc.terminate(); proc.wait(timeout=5)
             proc.stdout.close(); proc.stderr.close()
+    def test_transport_drains_startup_output_while_sending_large_prompt(self):
+        transport = legacy_module()
+        code = "import sys;sys.stderr.write('x'*12000);sys.stderr.flush();data=sys.stdin.read();print(len(data))"
+        output = io.StringIO()
+        spawn = subprocess.Popen
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(io.StringIO()), patch.object(
+                transport.subprocess, 'Popen', side_effect=lambda *a, **kw: spawn(*a, pipesize=4096, **kw)):
+            status = transport.run_agent(['/usr/bin/python3','-c',code], 'p'*50000, self.env, timeout=3)
+        self.assertEqual(status, 0)
+        self.assertEqual(output.getvalue().strip(), '50000')
+    def test_transport_deadline_includes_an_agent_that_never_reads_stdin(self):
+        transport = legacy_module()
+        started = time.monotonic()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            status = transport.run_agent(['/usr/bin/python3','-c','import time;time.sleep(60)'], 'p'*500000, self.env, timeout=.3)
+        self.assertEqual(status, 124)
+        self.assertLess(time.monotonic()-started, 3)
     def test_timeouts_obey_existing_shell_precedence_and_bounds(self):
         transport=legacy_module()
         self.assertEqual(transport.ask_timeout({}, {}, 180),180)

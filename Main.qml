@@ -147,6 +147,7 @@ Item {
   property string avatarBuilderAgent: ""
   property bool avatarBuilderSupported: false
   property string avatarBuilderStatus: ""
+  property int avatarGenerationSeconds: 0
   property var avatarDraft: null
   property string avatarDraftBotId: ""
   property string avatarBuilderInput: ""
@@ -170,6 +171,7 @@ Item {
     root.avatarBuilderInput = JSON.stringify({action: "generate", agent: root.avatarBuilderAgent,
       description: root.avatarBuilderDescription, previous: previous})
     root.avatarDraft = null
+    root.avatarGenerationSeconds = 0
     root.avatarBuilderStatus = "Designing your avatar…"
     avatarBuilderProc.running = true
   }
@@ -222,6 +224,12 @@ Item {
         } catch (e) { root.avatarBuilderStatus = "Could not read the default agent." }
       } else root.acceptAvatarDraft(avatarBuilderOut.text)
     }
+  }
+  Timer {
+    interval: 1000
+    repeat: true
+    running: root.avatarGenerating
+    onTriggered: root.avatarGenerationSeconds += 1
   }
   Timer {
     interval: 200000
