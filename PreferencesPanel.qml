@@ -148,7 +148,7 @@ Item {
         }
         Text {
           width: parent.width
-          text: app.settingsProvider === "hermes" ? "Choose a Hermes profile. Keep Bot Chat open in Hermes to receive replies." : "Choose a bot from your Grok Bot app. Your existing reply connection is kept."
+          text: app.settingsProvider === "hermes" ? "Experimental: live Hermes validation is pending. Choose a profile and keep Bot Chat open in Hermes to receive replies." : "Choose a bot from your Grok Bot app. Your existing reply connection is kept."
           font.family: app.fontFamily; font.pixelSize: 12
           textFormat: Text.PlainText; color: Theme.textMuted
           wrapMode: Text.Wrap

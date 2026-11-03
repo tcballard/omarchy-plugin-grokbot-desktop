@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag (for example v0.1.1)
+        description: Release tag (for example v0.2.0)
         required: true
         type: string
       expected_commit:
@@ -61,7 +61,7 @@ jobs:
             [[ "$(git rev-parse "$RELEASE_TAG^{commit}")" == "$EXPECTED_COMMIT" ]]
           else
             git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
-              tag -a "$RELEASE_TAG" "$EXPECTED_COMMIT" -m "Grok Bot Desktop Companion $RELEASE_TAG"
+              tag -a "$RELEASE_TAG" "$EXPECTED_COMMIT" -m "Agent Desktop $RELEASE_TAG"
           fi
       - run: node scripts/archive.mjs
         env:

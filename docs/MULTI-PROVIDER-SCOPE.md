@@ -1,6 +1,6 @@
 # Agent Desktop v0.2.0: multi-provider feature scope
 
-Status: v0.2.0-rc.1 test candidate; see TESTING-v0.2.0.md for current implementation and limits.
+Status: v0.2.0 release preparation, not tagged or published. This document includes historical implementation milestones; see TESTING-v0.2.0.md and ACCEPTANCE-v0.2.0.json for current implementation and limits.
 Date: 2 November 2026.
 Feature branch: `feature/multi-provider-companion`.
 Base: `928f73a00114a60fec673d204bd20be36199a0a7` (v0.1.2 main).

@@ -16,9 +16,9 @@ omarchy plugin add https://github.com/tcballard/omarchy-plugin-grokbot-desktop -
 
 **Next: [sync your bots and connect replies](docs/SETUP.md).** Roster sync does not connect chat automatically. Real bot replies need a configured webhook routine and return path; local-agent mode answers in the bot's name. Conversations and drafts clear on shell restart.
 
-Accepted by the owner on an XPS running Omarchy `dev (573b518be)`; see [acceptance scope and limitations](docs/ACCEPTANCE.json).
+Earlier v0.1 testing was accepted by the owner on an XPS running Omarchy `dev (573b518be)`; see [historical acceptance](docs/ACCEPTANCE.json). Current v0.2.0 evidence is recorded separately below.
 
-**v0.2.0-rc.1 is ready for desktop testing on `feature/multi-provider-companion`.** It combines stability fixes, GrokBot/Hermes selection and Open Bot Avatar v1 import/export. [Install and test the candidate](docs/TESTING-v0.2.0.md). This is not a released or live-accepted version; the published marketplace version remains v0.1.2.
+**v0.2.0 is prepared for release review on `feature/multi-provider-companion`; it is not tagged or published.** The owner has tested Grok and confirmed the Codex avatar-generation speed fix. Hermes remains experimental and has not been tested with a live setup. [Release notes](docs/RELEASE-NOTES-v0.2.0.md) · [Acceptance scope](docs/ACCEPTANCE-v0.2.0.json) · [Install and test the candidate](docs/TESTING-v0.2.0.md). The published marketplace version remains v0.1.2.
 
 <img src="preview.png" width="800" alt="Earlier live Omarchy capture showing the orange companion, appearance drawer and Ask Bob bubble.">
 
@@ -28,7 +28,7 @@ Accepted by the owner on an XPS running Omarchy `dev (573b518be)`; see [acceptan
 
 ## Agent Desktop v0.2.0 candidate
 
-GrokBot and Hermes use the [versioned provider API](docs/PROVIDER-API.md). Open **Settings → Providers** to choose GrokBot or Hermes and select an agent. Hermes connection paths can be managed there. Existing Grok settings and IDs remain valid. [Configuration and test checklist](docs/TESTING-v0.2.0.md).
+GrokBot and experimental Hermes support use the [versioned provider API](docs/PROVIDER-API.md). Open **Settings → Providers** to choose GrokBot or Hermes and select an agent. Hermes connection paths can be managed there. Existing Grok settings and IDs remain valid. [Configuration and test checklist](docs/TESTING-v0.2.0.md).
 
 Create a character in **Settings → Appearance → Custom avatar…**: describe it, generate a preview with your Omarchy default agent, then **Apply**. Change the description and generate again to refine the draft. Codex, Claude and Grok defaults are supported using their configured model and selected account; other agents currently retain manual JSON import. Generation is separate from chat and does not change your avatar until you apply it.
 
@@ -38,7 +38,7 @@ Product branding is Agent Desktop. The GitHub repository rename to `omarchy-plug
 
 ## Install
 
-Intended for Omarchy 4 (Quattro) on Hyprland. A live session on Try Omarchy (`Virtual-1`, 1280×800) is recorded in [acceptance evidence](docs/ACCEPTANCE.json). The command to try, once you have reviewed the code, is:
+Intended for Omarchy 4 (Quattro) on Hyprland. A live session on Try Omarchy (`Virtual-1`, 1280×800) is recorded in [historical acceptance evidence](docs/ACCEPTANCE-2026-10-27.json). The command to try, once you have reviewed the code, is:
 
 ```bash
 omarchy plugin add https://github.com/tcballard/omarchy-plugin-grokbot-desktop --enable

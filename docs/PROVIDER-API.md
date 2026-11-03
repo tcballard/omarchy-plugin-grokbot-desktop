@@ -245,7 +245,7 @@ is added to command arguments. The plugin ID, saved settings and webhook reply
 command remain unchanged. The `agent_desktop` package must be included with the
 runtime files when installing this branch.
 
-## Hermes setup and compatibility
+## Hermes setup and compatibility (experimental)
 
 Use the Python environment belonging to your existing Hermes install (with its
 PyYAML and websockets dependencies). Configure both the profile root and source

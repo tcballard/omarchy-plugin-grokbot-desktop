@@ -14,7 +14,7 @@ After pulling a change into the installed checkout, run `omarchy restart shell` 
 
 Use the current Omarchy plugin linking workflow or Plugin Workbench after inspecting its current commands. `.omarchy-workbench.json` proposes `./tests/run`. It does not grant trust or execute that command by itself.
 
-Before a public release, document the exact verified install command and the installed host version. The published marketplace build is v0.1.2; the v0.2.0 candidate needs new live acceptance. Disable the plugin in the host's plugin manager before removing the linked copy.
+Before a public release, document the exact verified install command and the installed host version. The published marketplace build is v0.1.2; v0.2.0 has owner-reported Grok and Codex avatar acceptance, with the remaining live checks recorded in `docs/ACCEPTANCE-v0.2.0.json`. Disable the plugin in the host's plugin manager before removing the linked copy.
 
 ## What a live pass should include
 
@@ -52,7 +52,7 @@ Before a public release, document the exact verified install command and the ins
 
 Also leave Hyprland bindings, `~/.local/share/applications/grokbot-desktop.desktop`, and `~/.local/bin/grokbot-desktop-close` unless those copies were part of the removal the owner requested.
 
-Installed runtime files are the manifest, QML, `qml/*.js`, `data/bots.json`, `bin/*`, `agent_desktop/*.py`, `assets/fonts/*` (Inter and its OFL licence), the licence, and the optional desktop, icon, and close helper. Authoring files (blueprint, workflows, tests, and `tools/`) are not part of that runtime set.
+Installed runtime files are the manifest, QML, `qml/*.js`, `data/bots.json`, `data/avatar-design-prompt.md`, `bin/*`, `agent_desktop/*.py`, `assets/fonts/*` (Inter and its OFL licence), the licence, and the optional desktop, icon, and close helper. Authoring files (blueprint, workflows, tests, and `tools/`) are not part of that runtime set.
 
 ## Re-measuring Grok Bot's shapes
 

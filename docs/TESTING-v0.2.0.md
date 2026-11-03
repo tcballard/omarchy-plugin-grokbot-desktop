@@ -1,4 +1,4 @@
-# Test Agent Desktop v0.2.0-rc.1
+# Test Agent Desktop v0.2.0
 
 This candidate is on `feature/multi-provider-companion` in the existing repository. It is not tagged or published. Dots is out of scope. The stable plugin ID, configuration filenames, webhook callback helper and launcher filename remain unchanged for upgrade compatibility. Product branding is Agent Desktop; the GitHub rename is still pending.
 
@@ -27,7 +27,7 @@ If your checkout lives elsewhere, change `agent_plugin`. Do not use the normal m
 
 To roll back, substitute the printed backup directory, read `previous-commit`, then use `git -C "$agent_plugin" switch --detach <that-commit>` and restart the shell. Keep the backup; do not overwrite the entire live shell.json if other plugin settings have changed since. The candidate keeps the existing Grok setting keys, so rollback normally requires no configuration replacement.
 
-## Hermes configuration
+## Hermes configuration (experimental)
 
 GrokBot keeps using `grokbot-desktop.json`, its key files and synced roster. No reconnection is required.
 
@@ -47,7 +47,7 @@ Open **Settings → Providers → Hermes → Connection settings**, enter your e
 
 The default profile and named profiles are discovered through the adapter. Open Hermes Bot Chat and ensure its gateway works first. In Agent Desktop, open **Settings → Providers → Hermes**, refresh profiles, and select a profile. Selecting a provider switches to its first available agent; individual profiles can be chosen below.
 
-This candidate displays completed replies. Hermes streaming, history, compaction and prompt-answer methods exist in the provider API but do not have dedicated desktop controls yet. An approval/input request stops the desktop request and directs you to Hermes; it is never automatically approved. Hermes attachments are explicitly unsupported. Stop requests interruption of an owned Hermes turn; if the gateway cannot confirm it, remote work may continue.
+Hermes has automated adapter coverage but no live validation yet. This candidate displays completed replies. Hermes streaming, history, compaction and prompt-answer methods exist in the provider API but do not have dedicated desktop controls yet. An approval/input request stops the desktop request and directs you to Hermes; it is never automatically approved. Hermes attachments are explicitly unsupported. Stop requests interruption of an owned Hermes turn; if the gateway cannot confirm it, remote work may continue.
 
 For a credential-free end-to-end smoke test, add `"example": {}` under `providers`, refresh, select Example Agent and ask a question. It returns `Example: ...`. Remove it after testing.
 
@@ -90,4 +90,4 @@ Imports are geometry-only v1 definitions validated by the upstream engine, cappe
 
 ## Verification limits
 
-Portable tests and native offscreen Qt avatar rendering are available in this checkout. Live Quickshell, Hyprland, your real Hermes gateway, real Grok webhook and dictation devices require the checklist above. Existing acceptance records describe earlier releases, not this candidate.
+Portable tests and native offscreen Qt avatar rendering are available in this checkout. Live Quickshell, Hyprland, your real Hermes gateway, real Grok webhook and dictation devices require the checklist above. The owner has tested Grok and confirmed the Codex avatar-generation speed fix. The remaining checks are not implied by that feedback; see [v0.2.0 acceptance](ACCEPTANCE-v0.2.0.json).
