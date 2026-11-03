@@ -1,10 +1,11 @@
 # Agent Desktop Provider API v1
 
-This is the in-development v0.2.0 provider boundary: a local, versioned endpoint,
-reference adapter, shared client, and GrokBot and Hermes adapters. Desktop asks now
-go through the shared API client using GrokBot's existing configuration. The
-mixed-provider picker, migration, and product/repository rename remain pending.
-This is not a v0.2.0 release or live Hermes acceptance.
+This is the v0.2.0 provider boundary: a local, versioned endpoint, reference
+adapter, shared client, and GrokBot and experimental Hermes adapters. Desktop asks
+go through the shared API client using GrokBot's existing configuration. Settings
+includes provider selection and Hermes connection paths. Product branding is
+Agent Desktop; the GitHub repository rename remains pending. The candidate is
+prepared for review, not tagged or published. Live Hermes validation is pending.
 
 The public integration boundary is **Agent Desktop Protocol v1**, not Hermes's
 Python or gateway internals. Third-party hooks can invoke the endpoint below;
@@ -290,6 +291,6 @@ still requires mixed-provider, native QML, and live Omarchy acceptance.
 
 ## v0.2.0 desktop binding
 
-The appearance page refreshes Hermes profiles and optional example agents through `bin/agent-desktop-roster`. Grok identities retain their legacy IDs for settings compatibility; Hermes and example identities use `<provider>:<native-id>`. A roster row carries `provider` and `agentId` separately, and the shared one-shot client sends only the native identity to its adapter. Exact ambiguous display names are rejected by reply routing.
+The Providers settings page refreshes Hermes profiles and optional example agents through `bin/agent-desktop-roster`. Grok identities retain their legacy IDs for settings compatibility; Hermes and example identities use `<provider>:<native-id>`. A roster row carries `provider` and `agentId` separately, and the shared one-shot client sends only the native identity to its adapter. Exact ambiguous display names are rejected by reply routing.
 
 Provider runtime paths are configured in `~/.config/omarchy/agent-desktop.json`; see [candidate testing](TESTING-v0.2.0.md). Existing Grok credentials and dispatch configuration are preserved. The desktop currently consumes completed replies; the richer Hermes API methods remain available to protocol clients. Open Bot Avatar definitions belong to the desktop appearance settings and are never included in model prompts. Dots is out of scope.
