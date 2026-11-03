@@ -33,6 +33,19 @@ Rectangle {
   property bool providerConfigBusy: false
   property string providerConfigStatus: ""
   property var hermesSettings: ({root:"/home/tom/.hermes",agentDir:"/home/tom/.hermes/hermes-agent",python:"/home/tom/.hermes/hermes-agent/.venv/bin/python"})
+  property string avatarBuilderDescription: "A rocket"
+  property string avatarBuilderAgent: "codex"
+  property bool avatarBuilderSupported: true
+  property string avatarBuilderStatus: ""
+  property var avatarDraft: null
+  property var sampleAvatar: null
+  property string avatarDraftBotId: ""
+  property bool avatarGenerating: false
+  property bool draftApplied: false
+  function loadAvatarBuilder() {}
+  function generateAvatar() { avatarDraft = sampleAvatar; avatarDraftBotId = chosenBotId }
+  function cancelAvatarGeneration() { avatarGenerating = false }
+  function applyAvatarDraft() { draftApplied = true }
   function currentBot() { return bots.find(function(bot) {return bot.id === chosenBotId}) }
   function botLabel() { return currentBot().name }
   function avatarFor(id) { return null }

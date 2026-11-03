@@ -62,3 +62,19 @@ test('settings navigation and provider choice preserve the active agent until a 
  root.settingsSection='avatar';root.closeSettings();assert.equal(root.settingsSection,'appearance');
  root.closeSettings();assert.equal(root.cardPage,'chat');
 });
+
+test('generated drafts validate before preview and apply only to the original agent',()=>{
+ const context=vm.createContext({});
+ vm.runInContext(fs.readFileSync(new URL('../qml/openbotavatar.js',import.meta.url),'utf8').replace(/^\.pragma library\n/,''),context);
+ const avatar=JSON.parse(fs.readFileSync(new URL('../data/avatars/rocket.json',import.meta.url),'utf8'));
+ let saved=0;
+ const root={chosenBotId:'grok-1',avatarDraftBotId:'grok-1',avatarDraft:null,avatarGenerating:false,importAvatar(){saved++;return true}};
+ const ui=vm.createContext({root,Avatar:context});
+ vm.runInContext(['acceptAvatarDraft','applyAvatarDraft'].map(method).join('\n'),ui);
+ assert.equal(ui.acceptAvatarDraft(JSON.stringify(avatar)),true);
+ assert.equal(saved,0);
+ root.chosenBotId='hermes:default';assert.equal(ui.applyAvatarDraft(),false);assert.equal(saved,0);
+ root.chosenBotId='grok-1';assert.equal(ui.applyAvatarDraft(),true);assert.equal(saved,1);
+ assert.equal(ui.acceptAvatarDraft('{"script":"bad"}'),false);assert.equal(root.avatarDraft,null);
+ assert.equal(ui.applyAvatarDraft(),false);assert.equal(saved,1);
+});

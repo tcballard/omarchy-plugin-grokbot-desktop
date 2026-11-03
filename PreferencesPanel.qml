@@ -5,6 +5,7 @@ import "qml/theme.js" as Theme
 Item {
   id: panel
   property var app: null
+  property bool avatarJsonExpanded: false
   readonly property string section: app && app.settingsSection !== "home" ? app.settingsSection : "appearance"
   readonly property bool compact: width < 580
   readonly property real sidebarWidth: compact ? width : 176
@@ -197,15 +198,16 @@ Item {
         title: "Custom character"
         fontFamily: app.fontFamily
         SettingsAction { width: parent.width; fontFamily: app.fontFamily; title: "Back to appearance"; onActivated: app.settingsSection = "appearance" }
-        Text {
-          width: parent.width
-          text: "An optional character for " + app.botLabel() + ". Your usual shapes and colours are always available in Appearance."
-          font.family: app.fontFamily; font.pixelSize: 12
-          textFormat: Text.PlainText; color: Theme.textMuted
-          wrapMode: Text.Wrap
+        AvatarBuilder { width: parent.width; app: panel.app }
+        SettingsAction {
+          width: parent.width; fontFamily: app.fontFamily
+          title: "Import / export JSON"
+          detail: "Use an existing design or save your character"
+          onActivated: panel.avatarJsonExpanded = !panel.avatarJsonExpanded
         }
         TextArea {
           id: avatarJson
+          visible: panel.avatarJsonExpanded
           width: parent.width; height: 120
           placeholderText: "Paste Open Bot Avatar JSON…"
           placeholderTextColor: Theme.textFaint
@@ -218,6 +220,7 @@ Item {
           onTextChanged: if (text.length > 16384) text = text.slice(0, 16384)
         }
         Row {
+          visible: panel.avatarJsonExpanded
           width: parent.width; spacing: 8
           SettingsAction { width: (parent.width - 16) / 3; fontFamily: app.fontFamily; title: "Import"; chevron: false; onActivated: app.importAvatar(avatarJson.text) }
           SettingsAction { width: (parent.width - 16) / 3; fontFamily: app.fontFamily; title: "Export"; chevron: false; enabled: !!app.avatarFor(app.chosenBotId); onActivated: { avatarJson.text = app.exportAvatar(); avatarJson.selectAll() } }

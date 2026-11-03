@@ -1,5 +1,6 @@
 """Render the real settings components and exercise their pointer navigation."""
 import os
+import json
 from pathlib import Path
 import time
 from PySide6.QtCore import QUrl, QPointF, Qt, qInstallMessageHandler
@@ -54,7 +55,11 @@ capture('behaviour')
 click('Appearance')
 click('Custom avatar…')
 assert root.property('settingsSection') == 'avatar'
+root.setProperty('sampleAvatar', json.loads((ROOT/'data/avatars/rocket.json').read_text()))
+click('Generate avatar')
 capture('custom-avatar')
+click('Apply to Bob the Bot')
+assert root.property('draftApplied') is True
 click('Back to appearance')
 assert root.property('settingsSection') == 'appearance'
 click('Providers')

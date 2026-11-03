@@ -30,6 +30,8 @@ Accepted by the owner on an XPS running Omarchy `dev (573b518be)`; see [acceptan
 
 GrokBot and Hermes use the [versioned provider API](docs/PROVIDER-API.md). Open **Settings → Providers** to choose GrokBot or Hermes and select an agent. Hermes connection paths can be managed there. Existing Grok settings and IDs remain valid. [Configuration and test checklist](docs/TESTING-v0.2.0.md).
 
+Create a character in **Settings → Appearance → Custom avatar…**: describe it, generate a preview with your Omarchy default agent, then **Apply**. Change the description and generate again to refine the draft. Codex, Claude and Grok defaults are supported using their configured model and selected account; other agents currently retain manual JSON import. Generation is separate from chat and does not change your avatar until you apply it.
+
 Paste Open Bot Avatar v1 JSON under **Settings → Appearance → Custom avatar…** to assign a custom character to the selected agent. Export returns portable geometry JSON; colour, gaze and motion remain controlled by the desktop. Existing shapes remain available. The native renderer uses [Dominik Scholz's MIT-licensed engine](https://github.com/DominikScholz/open-bot-avatar). Sample definitions are in `data/avatars/`.
 
 Product branding is Agent Desktop. The GitHub repository rename to `omarchy-plugin-agent-desktop` is pending; use the existing repository URL for this test. The plugin ID and configuration paths intentionally retain their existing names so updates preserve settings. Dots is out of scope.

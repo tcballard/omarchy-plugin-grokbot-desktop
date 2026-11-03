@@ -143,6 +143,92 @@ Item {
     }
   }
 
+  property string avatarBuilderDescription: ""
+  property string avatarBuilderAgent: ""
+  property bool avatarBuilderSupported: false
+  property string avatarBuilderStatus: ""
+  property var avatarDraft: null
+  property string avatarDraftBotId: ""
+  property string avatarBuilderInput: ""
+  property bool avatarBuilderInfo: false
+  property bool avatarBuilderCancelled: false
+  readonly property bool avatarGenerating: avatarBuilderProc.running && !avatarBuilderInfo
+
+  function loadAvatarBuilder() {
+    if (avatarBuilderProc.running) return
+    root.avatarBuilderInfo = true
+    root.avatarBuilderInput = JSON.stringify({action: "info"})
+    avatarBuilderProc.running = true
+  }
+
+  function generateAvatar() {
+    if (avatarBuilderProc.running || !root.avatarBuilderSupported || !root.avatarBuilderDescription.trim()) return
+    root.avatarBuilderInfo = false
+    root.avatarBuilderCancelled = false
+    var previous = root.avatarDraftBotId === root.chosenBotId ? root.avatarDraft : null
+    root.avatarDraftBotId = root.chosenBotId
+    root.avatarBuilderInput = JSON.stringify({action: "generate", agent: root.avatarBuilderAgent,
+      description: root.avatarBuilderDescription, previous: previous})
+    root.avatarDraft = null
+    root.avatarBuilderStatus = "Designing your avatar…"
+    avatarBuilderProc.running = true
+  }
+
+  function cancelAvatarGeneration() {
+    root.avatarBuilderCancelled = true
+    avatarBuilderProc.running = false
+    root.avatarBuilderStatus = "Generation cancelled. Your current avatar is unchanged."
+  }
+
+  function acceptAvatarDraft(raw) {
+    try {
+      if (String(raw).length > 16384) throw new Error("large")
+      var result = Avatar.validateAvatar(JSON.parse(raw))
+      if (!result.ok) throw new Error("invalid")
+      root.avatarDraft = result.value
+      root.avatarBuilderStatus = "Preview ready. Apply it, or describe a change and generate again."
+      return true
+    } catch (e) {
+      root.avatarDraft = null
+      root.avatarBuilderStatus = "The model returned an invalid design. Try a simpler description."
+      return false
+    }
+  }
+
+  function applyAvatarDraft() {
+    if (!root.avatarDraft || root.avatarGenerating || root.avatarDraftBotId !== root.chosenBotId) return false
+    var applied = root.importAvatar(JSON.stringify(root.avatarDraft))
+    root.avatarBuilderStatus = root.avatarStatus
+    return applied
+  }
+
+  Process {
+    id: avatarBuilderProc
+    command: ["/usr/bin/python3", "-I", root.localPath(Qt.resolvedUrl("bin/agent-desktop-avatar"))]
+    stdinEnabled: true
+    stdout: StdioCollector { id: avatarBuilderOut }
+    stderr: StdioCollector { id: avatarBuilderErr }
+    onStarted: { write(root.avatarBuilderInput); stdinEnabled = false }
+    onExited: function(code) {
+      stdinEnabled = true
+      if (!root.avatarBuilderInfo && root.avatarBuilderCancelled) return
+      if (code !== 0) { root.avatarBuilderStatus = root.cleanText(avatarBuilderErr.text, 400) || "Generation failed."; return }
+      if (root.avatarBuilderInfo) {
+        try {
+          var info = JSON.parse(avatarBuilderOut.text)
+          root.avatarBuilderAgent = info.agent
+          root.avatarBuilderSupported = info.supported
+          root.avatarBuilderStatus = info.supported ? "" : "Choose a supported Omarchy default agent: Codex, Claude or Grok."
+        } catch (e) { root.avatarBuilderStatus = "Could not read the default agent." }
+      } else root.acceptAvatarDraft(avatarBuilderOut.text)
+    }
+  }
+  Timer {
+    interval: 200000
+    running: avatarBuilderProc.running
+    onTriggered: root.cancelAvatarGeneration()
+  }
+
   function avatarFor(id) {
     return root.avatarDefinitions[id] || null
   }
@@ -2092,6 +2178,7 @@ Item {
     syncProc.running = false
     providerProc.running = false
     providerConfigProc.running = false
+    avatarBuilderProc.running = false
     if (askProc.running) askProc.running = false
   }
 

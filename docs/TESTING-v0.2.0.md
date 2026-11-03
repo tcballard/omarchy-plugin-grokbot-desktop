@@ -55,8 +55,18 @@ Set `askTimeoutSeconds` (30–1800, default 180) in the existing `grokbot-deskto
 
 ## Open Bot Avatar
 
+### Built-in generator
+
+Open **Settings → Appearance → Custom avatar…**, describe a character, and choose **Generate avatar**. The builder uses the agent selected in `~/.config/omarchy/defaults/agent`, its configured model and the selected Omarchy account. It does not use the companion’s Grok webhook or Hermes chat provider. This first version supports installed Codex, Claude and Grok CLIs; unsupported or unset defaults show a message without falling back. Existing login is required; no software is installed automatically. Standard provider usage/charges apply when you press Generate.
+
+A generated draft is validated and previewed before **Apply to …** changes that bot’s avatar. Edit the description and generate again to refine the current draft. Cancel leaves the installed avatar unchanged. Switching bots while generating cannot apply the draft to the wrong bot. JSON import/export remains behind its own expandable row.
+
+Test real generation with your configured account, model and CLI version. Try an invalid response, cancellation, switching bots mid-generation and restarting after Apply. Automated tests use fake CLI responses; they do not establish live model quality or authentication compatibility. No model is invoked by opening Settings.
+
+### Manual import/export
+
 1. Copy the JSON from `data/avatars/rocket.json` or `data/avatars/ghost.json`, or generate one in [the upstream editor](https://dominikscholz.github.io/open-bot-avatar/).
-2. Select an agent, open **Settings → Appearance → Custom avatar…**, paste the JSON, and press **Import**.
+2. Select an agent, open **Settings → Appearance → Custom avatar…**, expand **Import / export JSON**, paste the JSON, and press **Import**.
 3. Check the desktop mark, header and bot chips. Move the pointer and send a prompt to exercise gaze and thinking motion.
 4. Switch agents: only the selected agent's character should change. Restart the shell and confirm the assignment survives.
 5. **Export** shows selected JSON ready to copy. **Remove**, or choosing a built-in shape, returns that agent to the built-in renderer. Colour selection still applies to either renderer.
