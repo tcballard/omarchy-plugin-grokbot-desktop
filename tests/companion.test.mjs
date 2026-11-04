@@ -1286,7 +1286,7 @@ test('a bot saved in shell.json is restored, not replaced by the bundled roster'
   // The watched roster loads asynchronously, so startup reads the settings first
   // and then settles on the bundled roster, which knows nothing about the bots
   // synced here. The saved bot must survive that and win when the roster lands.
-  const source = ['parseBots', 'applyBots', 'settleChosenBot', 'findBot', 'primaryBot']
+  const source = ['parseBots', 'grokRoster', 'applyBots', 'settleChosenBot', 'findBot', 'primaryBot']
     .map((name) => qmlFunction(main, name)).join('\n')
   const bundledBots = { text: () => read('data/bots.json') }
   const roster = JSON.stringify({ bots: [
@@ -1302,7 +1302,7 @@ test('a bot saved in shell.json is restored, not replaced by the bundled roster'
     const context = vm.createContext({ root, bundledBots })
     vm.runInContext(source, context)
     // The QML calls these through `root.`, so lend them back to the object.
-    for (const name of ['parseBots', 'applyBots', 'settleChosenBot', 'findBot', 'primaryBot']) {
+    for (const name of ['parseBots', 'grokRoster', 'applyBots', 'settleChosenBot', 'findBot', 'primaryBot']) {
       root[name] = context[name]
     }
     return { root, applyBots: context.applyBots, settleChosenBot: context.settleChosenBot }
@@ -2026,4 +2026,49 @@ test('the chat and appearance pages crossfade, pinned to the edge the card grows
 test('both IPC bridges expose the same methods with the same bodies', () => {
   const methods = (src) => src.slice(src.indexOf('target:')).replace(/^\s*\/\/.*$/gm, '').replace(/^[ \t]+/gm, '').replace(/[\s}]+$/, '')
   assert.equal(methods(ipcBridges[0]), methods(ipcBridges[1]))
+})
+
+test('the Grok roster shows only when Grok Bot is in use, and never doubles another provider', () => {
+  const names = ['parseBots', 'grokRoster', 'applyBots', 'settleChosenBot', 'findBot', 'primaryBot']
+  const source = names.map((name) => qmlFunction(main, name)).join('\n')
+  const bundledBots = { text: () => read('data/bots.json') }
+  const hermes = ['donna', 'sentinel'].map((agentId) => ({ id: 'hermes:' + agentId, agentId, name: agentId, provider: 'hermes' }))
+  const make = ({ providers = [], webhook = false } = {}) => {
+    const root = {
+      bots: [], chosenBotId: 'hermes:donna', rosterRead: true, ready: false, providerBots: providers,
+      grokWebhook: webhook, defaultBotId: 'e0195a7d-f804-4688-9191-e2cf3574a6d1',
+      safeImage: () => '', retargetAppearance() {},
+    }
+    const context = vm.createContext({ root, bundledBots })
+    vm.runInContext(source, context)
+    for (const name of names) root[name] = context[name]
+    return root
+  }
+  const ids = (root) => Array.from(root.bots, (bot) => String(bot.id))
+  const bundled = JSON.parse(read('data/bots.json')).bots.length
+
+  // No Grok set-up and Hermes agents present: only the Hermes agents.
+  let root = make({ providers: hermes })
+  root.applyBots('')
+  assert.deepEqual(ids(root), ['hermes:donna', 'hermes:sentinel'])
+
+  // A Hermes roster an older fork wrote to grokbot-bots.json is not a Grok roster.
+  root = make({ providers: hermes })
+  root.applyBots(JSON.stringify({ bots: [{ id: 'donna', name: 'Donna' }, { id: 'sentinel', name: 'Sentinel' }] }))
+  assert.deepEqual(ids(root), ['hermes:donna', 'hermes:sentinel'])
+
+  // A synced Grok roster still shows beside the providers.
+  root = make({ providers: hermes })
+  root.applyBots(JSON.stringify({ bots: [{ id: 'grok-1', name: 'Bob' }] }))
+  assert.deepEqual(ids(root), ['grok-1', 'hermes:donna', 'hermes:sentinel'])
+
+  // Grok's webhook in use: the bundled roster stays, as before.
+  root = make({ providers: hermes, webhook: true })
+  root.applyBots('')
+  assert.equal(root.bots.length, bundled + 2)
+
+  // No provider agents at all: the bundled roster, as before.
+  root = make()
+  root.applyBots('')
+  assert.equal(root.bots.length, bundled)
 })

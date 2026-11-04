@@ -672,10 +672,44 @@ Item {
   // to this machine: the bot saved in shell.json must not be judged against it.
   property bool rosterRead: false
 
+  // Grok Bot's roster is shown only when Grok Bot is in use: a roster synced from the
+  // Grok Bot app, or a Grok webhook connection. Otherwise the bundled sample roster
+  // (Bob, OmaBot, …) stands in only while no other provider has agents, as before.
+  // Roster entries named after another provider's agents (a Hermes profile roster an
+  // older Hermes fork wrote to grokbot-bots.json) are not Grok bots and are skipped.
+  property var grokDesktop: ({})
+  readonly property bool grokWebhook: {
+    var conf = root.grokDesktop || {}
+    return String(conf.dispatch || "").toLowerCase() === "webhook" || String(conf.webhookUrl || "") !== ""
+  }
+
+  FileView {
+    id: grokDesktopFile
+    path: root.homePath + "/.config/omarchy/grokbot-desktop.json"
+    watchChanges: true
+    printErrors: false
+    onLoaded: {
+      var data = null
+      try { data = JSON.parse(text()) } catch (e) { data = null }
+      root.grokDesktop = data && typeof data === "object" ? data : ({})
+      root.applyBots(botsFile.text())
+    }
+    onFileChanged: reload()
+    onLoadFailed: root.grokDesktop = ({})
+  }
+
+  function grokRoster(text) {
+    var native = {}
+    ;(root.providerBots || []).forEach(function(bot) { if (bot.agentId) native[String(bot.agentId)] = true })
+    var synced = root.parseBots(text).filter(function(bot) { return !native[bot.id] })
+    if (synced.length > 0) return synced
+    if (root.grokWebhook || (root.providerBots || []).length === 0) return root.parseBots(bundledBots.text())
+    return []
+  }
+
   function applyBots(text) {
-    var parsed = root.parseBots(text)
-    if (parsed.length === 0) parsed = root.parseBots(bundledBots.text())
-    if (parsed.length === 0) return
+    var parsed = root.grokRoster(text)
+    if (parsed.length === 0 && (root.providerBots || []).length === 0) return
     // Grok IDs retain their legacy namespace; other providers use explicit prefixes.
     var ids = {}
     parsed.forEach(function(bot) { ids[bot.id] = true })
