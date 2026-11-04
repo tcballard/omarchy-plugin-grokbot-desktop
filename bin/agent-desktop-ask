@@ -9,7 +9,18 @@ show the reply as it is written:
   {"ev": "progress", "text": <what the agent is doing>}
   {"ev": "final", "text": <the completed reply>}
 
-Exit codes and stderr are the same either way."""
+A streaming ask also carries the agent's approvals and questions, and keeps stdin
+open for the answers (one JSON object per line):
+
+  out: {"ev": "prompt", "promptId", "kind", "text", "command", "choices",
+        "multiSelect", "answerable"}
+  out: {"ev": "settled", "promptId"}           answered anywhere, or withdrawn
+  in:  {"op": "answer", "promptId", "answer"}
+  out: {"ev": "answered", "promptId", "ok", "text"?}
+
+The request itself is the first line on stdin (or all of it, for a plain ask).
+A plain ask stops when the agent needs approval or input. Exit codes and stderr
+are the same either way."""
 import json
 import argparse
 import asyncio
@@ -22,11 +33,84 @@ from agent_desktop.config import client_for, timeout_seconds
 from agent_desktop.protocol import Fault, decode, identifier, text, MAX_PROMPT, MAX_FRAME
 
 
+def prompt_line(params):
+    choices = params.get('choices') if isinstance(params.get('choices'), list) else []
+    return {'ev': 'prompt', 'promptId': text(params.get('promptId'), 128),
+            'kind': 'clarify' if params.get('kind') == 'clarify' else 'approval',
+            'text': text(params.get('text') or '', 8000), 'command': text(params.get('command') or '', 4000),
+            'choices': [text(c, 200) for c in choices[:16] if isinstance(c, str) and c],
+            'multiSelect': params.get('multiSelect') is True, 'answerable': params.get('answerable') is True}
+
+
+async def streamed(client, params, reader, on_event, out):
+    """client.exchange, plus the agent's prompts out and the user's answers in."""
+    loop = asyncio.get_running_loop()
+    await client.send('send', 'message.send', params)
+    accepted, result, session, asked, answers = False, None, None, 0, {}
+    frame_task = asyncio.ensure_future(client.read())
+    input_task = asyncio.ensure_future(reader.readline())
+    try:
+        for _ in range(65536):
+            done, _ = await asyncio.wait({frame_task, input_task}, return_when=asyncio.FIRST_COMPLETED)
+            if input_task in done:
+                raw = input_task.result()
+                input_task = asyncio.ensure_future(reader.readline()) if raw else loop.create_future()
+                try:
+                    answer = json.loads(raw) if raw else None
+                except ValueError:
+                    answer = None
+                if isinstance(answer, dict) and answer.get('op') == 'answer' and session:
+                    asked += 1
+                    op = 'answer-%d' % asked
+                    prompt_id = text(answer.get('promptId'), 128)
+                    answers[op] = prompt_id
+                    await client.send(op, 'prompt.answer', {'agentId': params['agentId'], 'sessionId': session,
+                                                            'promptId': prompt_id,
+                                                            'answer': text(answer.get('answer'), MAX_PROMPT)})
+            if frame_task not in done:
+                continue
+            frame = frame_task.result()
+            frame_task = asyncio.ensure_future(client.read())
+            if frame.get('id') == 'send':
+                if frame.get('result', {}).get('accepted') is not True:
+                    error = frame.get('error', {})
+                    raise Fault(str(error.get('code', 'adapter_error'))[:64],
+                                str(error.get('message', 'Provider refused the request.'))[:400])
+                accepted = True
+                session = frame['result'].get('sessionId') or session
+            elif frame.get('id') in answers:
+                prompt_id = answers.pop(frame['id'])
+                if 'error' in frame:
+                    out({'ev': 'answered', 'promptId': prompt_id, 'ok': False,
+                         'text': text(frame['error'].get('message', 'The answer was not taken.'), 400)})
+                else:
+                    out({'ev': 'answered', 'promptId': prompt_id, 'ok': True})
+            event = frame.get('event')
+            payload = frame.get('params', {})
+            if payload.get('agentId') == params['agentId'] and event in ('prompt.required', 'prompt.settled'):
+                session = payload.get('sessionId') or session
+                out(prompt_line(payload) if event == 'prompt.required'
+                    else {'ev': 'settled', 'promptId': text(payload.get('promptId'), 128)})
+            elif event and payload.get('requestId') == params['requestId'] and payload.get('agentId') == params['agentId']:
+                on_event(frame)
+                if event in ('message.finished', 'message.deferred'):
+                    result = (event, payload)
+            if accepted and result is not None:
+                return result
+        raise Fault('limit_exceeded', 'Provider event limit reached.')
+    finally:
+        for task in (frame_task, input_task):
+            task.cancel()
+
+
 async def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--provider', choices=['grokbot', 'hermes', 'example'], default='grokbot')
     args = parser.parse_args()
-    payload = decode(sys.stdin.buffer.read(MAX_FRAME + 1))
+    loop = asyncio.get_running_loop()
+    reader = asyncio.StreamReader(limit=MAX_FRAME + 1)
+    await loop.connect_read_pipe(lambda: asyncio.StreamReaderProtocol(reader), sys.stdin)
+    payload = decode(await reader.readline())
     params = dict(agentId=identifier(payload.get('botId')), requestId=identifier(payload.get('askId')),
                   text=text(payload.get('prompt'), MAX_PROMPT), attachments=payload.get('attachments', []))
     seconds = timeout_seconds()
@@ -34,9 +118,12 @@ async def main():
     provider = payload.get('provider', args.provider)
     stream = payload.get('stream') is True
 
-    def line(kind, value):
-        sys.stdout.write(json.dumps({'ev': kind, 'text': value}, ensure_ascii=False) + '\n')
+    def out(event):
+        sys.stdout.write(json.dumps(event, ensure_ascii=False) + '\n')
         sys.stdout.flush()
+
+    def line(kind, value):
+        out({'ev': kind, 'text': value})
     client = client_for(provider)
     task = asyncio.current_task()
     asyncio.get_running_loop().add_signal_handler(signal.SIGTERM, task.cancel)
@@ -44,7 +131,7 @@ async def main():
         async with asyncio.timeout(seconds + 15):
             await client.start()
             def on_event(frame):
-                if frame.get('event') == 'prompt.required':
+                if frame.get('event') == 'prompt.required' and not stream:
                     raise Fault('approval_required', 'Hermes needs input or approval. Open Hermes to review it; this desktop request has stopped.')
                 if not stream:
                     return
@@ -53,7 +140,10 @@ async def main():
                     line('delta', text(value, 65536))
                 elif frame.get('event') == 'message.progress' and isinstance(value, str) and value.strip():
                     line('progress', text(value, 200))
-            event, result = await client.exchange(params, deferred=True, on_event=on_event)
+            if stream:
+                event, result = await streamed(client, params, reader, on_event, out)
+            else:
+                event, result = await client.exchange(params, deferred=True, on_event=on_event)
             if event == 'message.deferred':
                 if result.get('deliveryId') != params['requestId']:
                     raise Fault('invalid_response', 'Reply identity changed; cannot route a deferred reply.')

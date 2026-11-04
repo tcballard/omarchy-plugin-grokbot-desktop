@@ -1701,7 +1701,7 @@ test('each bot keeps its own conversation, and a reply lands with the bot asked'
   assert.match(main, /readonly property bool askingHere: root\.asking && root\.askBotId === root\.threadBotId/)
   assert.match(main, /property real workBlend: root\.busyHere && !root\.reduceMotion/)
   const panel = read('BubblePanel.qml')
-  assert.match(panel, /readonly property bool asking: app \? app\.askingHere : false/)
+  assert.match(panel, /readonly property bool asking: app \? app\.askingHere && !answering : false/)
   assert.match(panel, /"Waiting for " \+ app\.askingLabel\(\) \+ " to answer…"/)
   assert.equal((panel.match(/visible: app\.unreadBots\.indexOf\(modelData\.id\) >= 0/g) || []).length, 2)
   assert.match(panel, /opacity: mode === "send" && app && app\.asking && !app\.askingHere \? 0\.45 : 1/)
@@ -2039,4 +2039,19 @@ test('a provider ask streams into the bubble, with what the agent is doing benea
   assert.match(main, /var out = root\.cleanText\(root\.askStreaming \? root\.askFinal : root\.askLines\.join\("\\n"\), 4000\)/)
   assert.match(qmlFunction(main, 'cancelAsk'), /root\.progressText = ""/)
   assert.match(panel, /status: app && app\.askingHere \? app\.progressText : ""/)
+})
+test('a provider\'s approvals and questions are answered from the bubble, through the running ask', () => {
+  const panel = read('BubblePanel.qml')
+  assert.match(main, /approvalLabels: \(\{ once: "Allow once", session: "Allow this session", always: "Always allow", deny: "Deny" \}\)/)
+  // Answers go to the helper that holds the prompt, on its stdin, and only while it runs.
+  assert.match(qmlFunction(main, 'sendAnswer'), /if \(!askProc\.running \|\| !root\.askStreaming[^)]*\) return false\n\s*askProc\.write\(JSON\.stringify\(\{ op: "answer", promptId: promptId, answer: value \}\) \+ "\\n"\)/)
+  assert.match(main, /if \(!root\.askStreaming\) askProc\.stdinEnabled = false/)
+  // A prompt the adapter cannot answer safely points to Hermes, without buttons.
+  assert.match(qmlFunction(main, 'showPrompt'), /if \(!ev\.answerable\) \{/)
+  // Answered anywhere: the buttons go. The ask ended: they are retired with a note.
+  assert.match(qmlFunction(main, 'askLine'), /ev\.ev === "settled"\) \{\n\s*root\.dropPromptLinks\(String\(ev\.promptId \|\| ""\), ""\)/)
+  assert.match(main, /root\.retirePrompts\(\)\n\s*var out = /)
+  assert.match(qmlFunction(main, 'submitPrompt'), /if \(root\.answerFromComposer\(root\.plainPrompt\(value, 4000\)\)\) return/)
+  assert.match(panel, /onActivated: app\.linkAction\(modelData\)/)
+  assert.match(panel, /readonly property bool asking: app \? app\.askingHere && !answering : false/)
 })

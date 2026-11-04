@@ -909,7 +909,9 @@ Rectangle {
           readonly property bool dictating: app ? app.dictating : false
           property real wave: 0
           property string ink: dictating ? Theme.recording : Theme.text
-          readonly property bool asking: app ? app.askingHere : false
+          // While a bot waits on a question, typed text answers it instead of stopping the ask.
+          readonly property bool answering: app ? app.clarifyHere && promptField.text.trim() !== "" : false
+          readonly property bool asking: app ? app.askingHere && !answering : false
           readonly property string mode: asking ? "stop" : (promptField.text.trim() !== "" || (app && app.pendingFiles.length > 0) ? "send" : "voice")
           width: 42
           height: 42
@@ -999,7 +1001,7 @@ Rectangle {
             tint: voiceButton.mode !== "send"
             onActivated: {
               if (!app) return
-              if (app.askingHere) {
+              if (app.askingHere && !voiceButton.answering) {
                 app.stopAsk()
                 return
               }
@@ -1048,7 +1050,7 @@ Rectangle {
               rightPadding: 6
               wrapMode: TextArea.Wrap
               // One ask runs at a time; another bot's draft waits for it.
-              placeholderText: app.askingHere ? "Asking…" : (app.asking ? ("Waiting for " + app.askingLabel() + " to answer…") : ("Ask " + app.botLabel()))
+              placeholderText: app.clarifyHere ? "Type your answer…" : app.askingHere ? "Asking…" : (app.asking ? ("Waiting for " + app.askingLabel() + " to answer…") : ("Ask " + app.botLabel()))
               placeholderTextColor: Theme.textFaint
               font.family: app.fontFamily
               text: app.promptDraft
@@ -1329,7 +1331,7 @@ Rectangle {
           }
           HoverArea {
             label: modelData.label
-            onActivated: app.openLink(modelData.url)
+            onActivated: app.linkAction(modelData)
           }
         }
       }

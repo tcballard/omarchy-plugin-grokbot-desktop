@@ -1678,6 +1678,7 @@ Item {
   }
 
   function submitPrompt(value) {
+    if (root.answerFromComposer(root.plainPrompt(value, 4000))) return
     var prompt = root.plainPrompt(value, 4000)
     // Attachments can go on their own, as in a chat app.
     if (prompt === "" && root.pendingFiles.length > 0) prompt = "Have a look at this."
@@ -1922,6 +1923,127 @@ Item {
     return "ok"
   }
 
+  // Approvals and questions from a provider's agent, shown as messages with one button
+  // per answer. The answer goes back through the running ask's helper (stdin), which
+  // holds the adapter connection the prompt is waiting on.
+  property var clarifyWaiting: ({})
+  readonly property bool clarifyHere: root.clarifyWaiting[root.threadBotId] !== undefined
+  readonly property var approvalLabels: ({ once: "Allow once", session: "Allow this session", always: "Always allow", deny: "Deny" })
+
+  // The ask ended with prompts still showing: nothing here can answer them now.
+  function retirePrompts() {
+    var ids = {}
+    function collect(links) { (links || []).forEach(function (l) { if (l.promptId) ids[l.promptId] = true }) }
+    collect(root.noticeLinks)
+    root.history.forEach(function (item) { collect(item.links) })
+    Object.keys(root.threads).forEach(function (id) {
+      var thread = root.threads[id] || {}
+      collect(thread.links)
+      ;(thread.history || []).forEach(function (item) { collect(item.links) })
+    })
+    Object.keys(ids).forEach(function (id) { root.dropPromptLinks(id, "(No longer answerable here; open Hermes.)") })
+  }
+
+  function sendAnswer(promptId, value) {
+    if (!askProc.running || !root.askStreaming || promptId === "" || value === "") return false
+    askProc.write(JSON.stringify({ op: "answer", promptId: promptId, answer: value }) + "\n")
+    return true
+  }
+
+  function showPrompt(ev, mine) {
+    var bot = String(ev.bot || "")
+    var promptId = String(ev.promptId || "")
+    if (bot === "" || promptId === "" || !root.findBot(bot)) return
+    var text = root.cleanText(ev.text, 3000)
+    var links = []
+    var choices = Array.isArray(ev.choices) ? ev.choices : []
+    var i
+    if (!ev.answerable) {
+      text = (ev.kind === "approval" ? "Needs your approval: " : "") + (text || "a request") + "\n\nOpen Hermes to review and answer this one."
+    } else if (ev.kind === "approval") {
+      var command = root.cleanText(ev.command, 1200)
+      // The command goes in a code block (a ~~~ fence if it holds backticks), so its
+      // characters are never read as formatting.
+      var fence = command.indexOf("```") >= 0 ? "~~~~" : "```"
+      text = "Needs your approval: " + (text || "run a command") + (command !== "" && command !== text ? "\n\n" + fence + "\n" + command + "\n" + fence : "")
+      for (i = 0; i < choices.length; i++) {
+        var choice = String(choices[i])
+        links.push({ label: root.approvalLabels[choice] || root.plainLine(choice, 24), action: "respond", bot: bot, promptId: promptId, value: choice })
+      }
+    } else {
+      for (i = 0; i < choices.length; i++)
+        links.push({ label: root.plainLine(choices[i], 24), action: "answer", bot: bot, promptId: promptId, value: String(choices[i]) })
+      text = text + (!ev.answerable ? "" : (choices.length > 0 ? "\n\nPick one." : "\n\nType your answer below."))
+      if (choices.length === 0) {
+        var waiting = Object.assign({}, root.clarifyWaiting)
+        waiting[bot] = promptId
+        root.clarifyWaiting = waiting
+      }
+    }
+    if (mine && root.asking && bot === root.askBotId && bot === root.threadBotId) {
+      root.bubbleBody = text
+      root.noticeLinks = links
+    } else {
+      root.appendReply(bot, text, links)
+    }
+    root.flashExpression("alert", 1200)
+    if (!root.bubbleOpen) root.replyUnread = true
+  }
+
+  function dropPromptLinks(promptId, note) {
+    function strip(links) { return (links || []).filter(function (link) { return link.promptId !== promptId }) }
+    function had(links) { return (links || []).some(function (link) { return link.promptId === promptId }) }
+    function mark(body) { return note ? String(body || "") + "\n\n" + note : body }
+    if (had(root.noticeLinks)) {
+      root.bubbleBody = mark(root.bubbleBody)
+      root.noticeLinks = strip(root.noticeLinks)
+    }
+    root.history = root.history.map(function (item) {
+      return had(item.links) ? Object.assign({}, item, { body: mark(item.body), links: strip(item.links) }) : item
+    })
+    var threads = Object.assign({}, root.threads)
+    Object.keys(threads).forEach(function (id) {
+      var thread = threads[id]
+      if (!thread) return
+      var next = Object.assign({}, thread)
+      if (had(thread.links)) {
+        next.body = mark(thread.body)
+        next.links = strip(thread.links)
+      }
+      next.history = (thread.history || []).map(function (item) {
+        return had(item.links) ? Object.assign({}, item, { body: mark(item.body), links: strip(item.links) }) : item
+      })
+      threads[id] = next
+    })
+    root.threads = threads
+    var waiting = Object.assign({}, root.clarifyWaiting)
+    Object.keys(waiting).forEach(function (bot) { if (waiting[bot] === promptId) delete waiting[bot] })
+    root.clarifyWaiting = waiting
+  }
+
+  function linkAction(link) {
+    if (!link) return
+    if (link.action !== "respond" && link.action !== "answer") {
+      root.openLink(link.url)
+      return
+    }
+    if (!root.sendAnswer(link.promptId, link.value)) return
+    root.dropPromptLinks(link.promptId, "→ " + link.label)
+  }
+
+  function answerPrompt(promptId, value) {
+    if (!root.sendAnswer(String(promptId || ""), String(value || ""))) return "not waiting"
+    root.dropPromptLinks(String(promptId || ""), "→ " + root.plainLine(value, 80))
+    return "ok"
+  }
+
+  function answerFromComposer(prompt) {
+    if (prompt === "" || !root.clarifyHere || root.pendingFiles.length > 0) return false
+    if (root.answerPrompt(root.clarifyWaiting[root.threadBotId], prompt) !== "ok") return false
+    root.promptDraft = ""
+    return true
+  }
+
   // A streaming ask: the reply so far, what the agent is doing, and the final reply.
   property bool askStreaming: false
   property var askLines: []
@@ -1943,6 +2065,12 @@ Item {
           root.progressText = root.plainLine(ev.text, 80)
         } else if (ev.ev === "final") {
           root.askFinal = value
+        } else if (ev.ev === "prompt") {
+          root.showPrompt(Object.assign({}, ev, { bot: root.askBotId }), true)
+        } else if (ev.ev === "settled") {
+          root.dropPromptLinks(String(ev.promptId || ""), "")
+        } else if (ev.ev === "answered" && ev.ok !== true && value !== "") {
+          root.appendReply(root.askBotId, value, [])
         }
         return
       }
@@ -2075,8 +2203,9 @@ Item {
     stdout: SplitParser { onRead: function (line) { root.askLine(line) } }
     stderr: StdioCollector { id: askErr }
     onStarted: {
-      if (root.pendingJson !== "") askProc.write(root.pendingJson)
-      askProc.stdinEnabled = false
+      if (root.pendingJson !== "") askProc.write(root.pendingJson + "\n")
+      // A streaming ask keeps stdin open for answers to the agent's prompts.
+      if (!root.askStreaming) askProc.stdinEnabled = false
     }
     onExited: function (code) {
       askTimeout.stop()
@@ -2088,6 +2217,7 @@ Item {
         return
       }
       root.progressText = ""
+      root.retirePrompts()
       var out = root.cleanText(root.askStreaming ? root.askFinal : root.askLines.join("\n"), 4000)
       var err = root.cleanText(askErr.text, 400)
       var ok = code === 0 && out !== ""
