@@ -88,8 +88,42 @@ def remote_script(method, path, extra="", timeout=HTTP_TIMEOUT):
     return script
 
 
+def ssh_host_index(command):
+    """Return the index of the SSH destination host in an ssh argv list."""
+    takes_value = {
+        "-b", "-c", "-D", "-E", "-e", "-F", "-i", "-J", "-L", "-l", "-m", "-O",
+        "-o", "-p", "-R", "-S", "-W", "-w",
+    }
+    index = 1
+    while index < len(command) and command[index].startswith("-"):
+        option = command[index]
+        if option == "--":
+            return index + 1
+        if option in takes_value:
+            index += 2
+            continue
+        if len(option) > 2 and option[1] != "-" and option[1] in "bcDeFiJLlmOopRSw":
+            # bundled short option with attached value, e.g. -p22
+            index += 1
+            continue
+        index += 1
+    return index
+
+
+def transport_command(script):
+    """Build argv for the hop, keeping bash -lc scripts as one remote word."""
+    command = hop_command()
+    if command and command[0] == "ssh":
+        host = ssh_host_index(command)
+        if host >= len(command):
+            raise ValueError("The OpenBot hop command is missing an SSH host.")
+        remote = " ".join(shlex.quote(part) for part in command[host + 1:] + [script])
+        return command[: host + 1] + [remote]
+    return command + [script]
+
+
 def run(method, path, data=None, extra="", timeout=HTTP_TIMEOUT):
-    command = hop_command() + [remote_script(method, path, extra, timeout)]
+    command = transport_command(remote_script(method, path, extra, timeout))
     try:
         process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                    stderr=subprocess.PIPE)
