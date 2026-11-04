@@ -81,6 +81,25 @@ bin/grokbot-connect --off
 
 Files and images work only in local-agent mode. Webhook mode currently refuses attachments.
 
+## Optional: OpenBot Local scripts
+
+OpenBot support is experimental and optional. It uses OpenBot's Local scripts API only, so only agents with Local scripts enabled appear. See [OPENBOT.md](OPENBOT.md) for the API mapping, limits and helper usage.
+
+The transport hop is required; there is no built-in host default. Set it in `~/.config/omarchy/agent-desktop.json` or with `OPENBOT_LOCAL_SCRIPTS_HOP`. Replace the generic host and container command with your own deployment:
+
+```json
+{
+  "providers": {
+    "openbot": {
+      "hop": "ssh -o BatchMode=yes -o ConnectTimeout=8 user@openbot-host docker exec -i openbot bash -lc",
+      "timeoutSeconds": 180
+    }
+  }
+}
+```
+
+Live validation against a real OpenBot deployment is the integrator's responsibility.
+
 ## 4. Optional show/hide shortcut
 
 The shortcut is not installed automatically. Add this to `~/.config/hypr/bindings.lua` if Super+Alt+B is free in your configuration:

@@ -36,7 +36,7 @@ This is an integration candidate. Live Omarchy/Hermes acceptance is still requir
 
 ## Agent Desktop v0.2.0
 
-GrokBot and experimental Hermes support use the [versioned provider API](docs/PROVIDER-API.md). Open **Settings → Providers** to choose GrokBot or Hermes and select an agent. Hermes connection paths can be managed there. Existing Grok settings and IDs remain valid. [Configuration and test checklist](docs/TESTING-v0.2.0.md).
+GrokBot and experimental Hermes support use the [versioned provider API](docs/PROVIDER-API.md). Open **Settings → Providers** to choose GrokBot or Hermes and select an agent. Hermes connection paths can be managed there. Existing Grok settings and IDs remain valid. [Configuration and test checklist](docs/TESTING-v0.2.0.md). An experimental OpenBot Local scripts provider is documented in [docs/OPENBOT.md](docs/OPENBOT.md); it is optional and stays behind explicit configuration.
 
 Create a character in **Settings → Appearance → Custom avatar…**: describe it, generate a preview with your Omarchy default agent, then **Apply**. Change the description and generate again to refine the draft. Codex, Claude and Grok defaults are supported using their configured model and selected account; other agents currently retain manual JSON import. Generation is separate from chat and does not change your avatar until you apply it.
 

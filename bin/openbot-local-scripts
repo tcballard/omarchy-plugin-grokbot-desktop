@@ -20,8 +20,6 @@ import subprocess
 import sys
 import uuid
 
-DEFAULT_HOP = ("ssh -o BatchMode=yes -o ConnectTimeout=8 ovhlab "
-               "pct exec 149 -- docker exec -i openbot bash -lc")
 CONFIG = Path.home()/".config/omarchy/agent-desktop.json"
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 MAX_TEXT = 4000
@@ -72,12 +70,17 @@ def setting():
 
 
 def hop_command():
-    hop = os.environ.get("OPENBOT_LOCAL_SCRIPTS_HOP") or setting().get("hop") or DEFAULT_HOP
+    hop = os.environ.get("OPENBOT_LOCAL_SCRIPTS_HOP") or setting().get("hop")
+    if hop is None or hop == "":
+        raise ValueError(
+            "The OpenBot hop command is required; set OPENBOT_LOCAL_SCRIPTS_HOP "
+            "or providers.openbot.hop in ~/.config/omarchy/agent-desktop.json.")
     if not isinstance(hop, str) or not hop or "\x00" in hop or len(hop) > 4096:
         raise ValueError("The OpenBot hop command is invalid.")
-    if any(not part for part in shlex.split(hop)):
+    parts = shlex.split(hop)
+    if not parts or any(not part for part in parts):
         raise ValueError("The OpenBot hop command is invalid.")
-    return shlex.split(hop)
+    return parts
 
 
 def remote_script(method, path, extra="", timeout=HTTP_TIMEOUT):

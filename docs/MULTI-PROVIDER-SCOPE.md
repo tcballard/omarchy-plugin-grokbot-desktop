@@ -28,7 +28,7 @@ This is a desktop integration project. Agent runtimes continue to own their memo
 | Existing appearance, attachments, dictation, privacy and Open Bot Avatar v1 import/export | Accessory costumes and unrelated visual redesign |
 | Repository/product rename and upgrade compatibility | New permanent plugin ID unless separately decided |
 
-Dots is explicitly out of scope. OpenClaw and Muse are future candidates. Their exact upstream projects, API availability, authentication and terms are not established by this scope. No browser-session scraping or reverse-engineered credential extraction is assumed. An unavailable integration must be reported as unavailable, not emulated with a different agent.
+Dots is explicitly out of scope. OpenClaw and Muse are future candidates. An OpenBot Local scripts adapter is an experimental future candidate: it would use OpenBot's Local scripts API only, not the Team API, and would not claim attachments, cancellation or avatar sync. Team API support and those capabilities remain later work. The exact upstream projects, API availability, authentication and terms for other candidates are not established by this scope. No browser-session scraping or reverse-engineered credential extraction is assumed. An unavailable integration must be reported as unavailable, not emulated with a different agent.
 
 ## Architecture and ownership
 
@@ -171,7 +171,7 @@ Recheck at release; historical approval does not cover a new feature commit.
 | Stage | Deliverable | Exit condition |
 | --- | --- | --- |
 | 0. Scope | This record, roadmap link, isolated branch | Base and non-goals recorded; Agent Desktop name, target slug and v0.2.0 assigned |
-| 1. Shared fixes | Review #24–26 and #24 fork follow-ups | IPC, dictation and cancellation regressions pass; preserve provenance |
+| 1. Shared fixes | Review #24–26 and #24 follow-ups | IPC, dictation and cancellation regressions pass; preserve provenance |
 | 2. Contract | v1 schemas, controller, fake adapter, config/identity model | Two same-name agents cannot cross-route; invalid/stale events rejected |
 | 3. Existing behaviour | Grok and local adapters | Existing requests, callbacks, privacy, attachments and UI regressions pass |
 | 4. Hermes | Profile/gateway adapter and explicit CLI fallback | Mixed Grok/Hermes slice works; reviewed gaps fixed |
@@ -179,7 +179,7 @@ Recheck at release; historical approval does not cover a new feature commit.
 | 6. Rename/migration | Chosen branding, compatibility aliases, upgrade/rollback docs | Fresh/legacy/Hermes migrations pass; existing plugin identity preserved |
 | 7. Release candidate | Exact-commit evidence, docs and feature release notes | CI, native checks and live Omarchy acceptance pass |
 
-Feature development stays on this branch (or small child branches targeting it). Keep main releasable. Reconcile fixes landing on main before merging the feature. Do not blindly merge the entire fork or prematurely archive Yani's repository. Review open #17/#18 separately; they are not automatically included. No implementation, merge, tag or publication is completed by this scoping commit.
+Feature development stays on this branch (or small child branches targeting it). Keep main releasable. Reconcile fixes landing on main before merging the feature. Do not blindly merge the entire external branch or prematurely archive Yani's repository. Review open #17/#18 separately; they are not automatically included. No implementation, merge, tag or publication is completed by this scoping commit.
 
 ## Test plan
 
@@ -200,7 +200,7 @@ Removal preserves provider configuration, credentials and upstream conversations
 
 ## Progress
 
-- [x] Existing source and fork comparison completed at pinned commits.
+- [x] Existing source and downstream comparison completed at pinned commits.
 - [x] Dedicated branch created from current main.
 - [x] Feature scope and rename boundaries recorded.
 - [ ] Shared fixes reviewed and integrated.
