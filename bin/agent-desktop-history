@@ -1,0 +1,78 @@
+#!/usr/bin/python3 -I
+"""One page of an agent's conversation history, for the desktop.
+
+stdin: {"provider", "botId", "cursor"?}. Without a cursor, the latest exchanges; with one,
+the page before it. stdout: {"items": [{"asked", "body", "key"}], "nextCursor", "boundary"}.
+A provider without history answers {"items": [], "nextCursor": null}. Read only: nothing
+is sent to the agent.
+"""
+import asyncio
+import json
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from agent_desktop.config import client_for
+from agent_desktop.protocol import Fault, decode, identifier, text, MAX_FRAME
+
+LIMIT = 64 * 1024
+
+
+def clean(item):
+    if not isinstance(item, dict):
+        return None
+    body = item.get('body')
+    if not isinstance(body, str) or not body.strip():
+        return None
+    asked = item.get('asked') if isinstance(item.get('asked'), str) else ''
+    key = item.get('key') if isinstance(item.get('key'), str) else ''
+    return {'asked': asked[:4000], 'body': body[:4000], 'key': key[:256]}
+
+
+async def main():
+    payload = decode(sys.stdin.buffer.read(MAX_FRAME + 1))
+    provider = str(payload.get('provider') or '')
+    if provider == 'grokbot':
+        print(json.dumps({'items': [], 'nextCursor': None}))
+        return 0
+    params = {'agentId': identifier(payload.get('botId'))}
+    if payload.get('cursor') is not None:
+        params['cursor'] = text(payload.get('cursor'), 256, 'cursor')
+    client = client_for(provider)
+    try:
+        async with asyncio.timeout(20):
+            hello = await client.start()
+            caps = (hello or {}).get('capabilities') or {}
+            if not caps.get('history'):
+                print(json.dumps({'items': [], 'nextCursor': None}))
+                return 0
+            await client.send('history', 'history.list', params)
+            for _ in range(256):
+                frame = await client.read()
+                if frame.get('id') != 'history':
+                    continue
+                if 'error' in frame:
+                    raise Fault(str(frame['error'].get('code', 'unavailable'))[:64],
+                                str(frame['error'].get('message', 'History unavailable.'))[:400])
+                result = frame.get('result') or {}
+                items = [c for c in map(clean, result.get('items') or []) if c][:100]
+                cursor = result.get('nextCursor')
+                out = json.dumps({'items': items, 'nextCursor': cursor if isinstance(cursor, str) and cursor else None,
+                                  'boundary': result.get('historyBoundary')}, ensure_ascii=False)
+                sys.stdout.write(out[:LIMIT] if len(out) <= LIMIT else json.dumps({'items': [], 'nextCursor': None}))
+                sys.stdout.write('\n')
+                return 0
+            raise Fault('limit_exceeded', 'No history reply.')
+    finally:
+        await client.close()
+
+
+if __name__ == '__main__':
+    try:
+        sys.exit(asyncio.run(main()))
+    except Fault as exc:
+        print(exc.message, file=sys.stderr)
+        sys.exit(1)
+    except (OSError, TimeoutError, ValueError):
+        print('Provider connection failed while reading history.', file=sys.stderr)
+        sys.exit(1)

@@ -26,6 +26,14 @@ Earlier v0.1 testing was accepted by the owner on an XPS running Omarchy `dev (5
 
 **Inspired by [Clippy for Omarchy](https://github.com/jankeesvw/omarchy-clippy) and [Clanky](https://github.com/rdoupe/omarchy-clanky).** The layer-shell window, click-through mask, dodge behaviour, cursor helper, and speech-bubble IPC follow those companions. Plugin conventions come from [Build Omarchy Plugins](https://github.com/tcballard/build-omarchy-plugins).
 
+## v0.2.1 integration branch
+
+The `v0.2.1` branch combines provider reply streaming and progress, recent Hermes history with earlier pages, in-bubble approvals and questions, Markdown replies, and a scroll-to-latest control. Hermes-only setups omit unused Grok sample bots, and prompts reach Hermes exactly as typed.
+
+History imports up to 100 exchanges; a conversation retains up to 200 exchanges for the shell session. Failed history requests can retry when the bubble is reopened or the provider roster refreshes. Approval choices remain available after a rejected answer, and Stop clears pending questions. Partial replies update the conversation without repeatedly showing desktop reply cues.
+
+This is an integration candidate. Live Omarchy/Hermes acceptance is still required before release.
+
 ## Agent Desktop v0.2.0
 
 GrokBot and experimental Hermes support use the [versioned provider API](docs/PROVIDER-API.md). Open **Settings → Providers** to choose GrokBot or Hermes and select an agent. Hermes connection paths can be managed there. Existing Grok settings and IDs remain valid. [Configuration and test checklist](docs/TESTING-v0.2.0.md).
@@ -80,7 +88,7 @@ The companion sits in a corner. Clicks outside the mark pass through, and they k
 | Right-click > Hide companion | Hides the companion. A notification says it is hidden, and clicking it brings it back. `show`, `summon`, `toggle`, and `toggleVisible` bring it back too, as does restarting the shell |
 | Escape | Steps back: closes the menu, then leaves the appearance page, then closes the bubble |
 | Tab, then Enter or Space | Moves between the bubble's controls and presses the focused one |
-| Switch Bot | Morphs into that Bot's shape and colour when sync is on, and routes the next ask there. Each bot keeps its own conversation, as a scrolling history of up to 40 exchanges, and its unsent draft for the session (never written to disk); a reply to a bot you have switched away from waits in its conversation with a dot on its chip, which shows on the header pill while the row is folded away and on the mark while the bubble is closed. One ask runs at a time. Before a conversation the bots sit in a row under the header; once one starts the row folds away and the header pill (the bot's name and chevron; its role slides out on hover) is the switch button, which unfolds every bot until you pick one |
+| Switch Bot | Morphs into that Bot's shape and colour when sync is on, and routes the next ask there. Each bot keeps its own conversation, as a scrolling history of up to 200 exchanges, and its unsent draft for the session (never written to disk); a reply to a bot you have switched away from waits in its conversation with a dot on its chip, which shows on the header pill while the row is folded away and on the mark while the bubble is closed. One ask runs at a time. Before a conversation the bots sit in a row under the header; once one starts the row folds away and the header pill (the bot's name and chevron; its role slides out on hover) is the switch button, which unfolds every bot until you pick one |
 | Pointer nearby, dodge on | Fades as the pointer approaches (down to 28%). The mark remains clickable and restores immediately on hover; clicks outside the mark/card still pass through |
 | Pointer idle for 2 minutes | The capsule eyes close into lid lines |
 

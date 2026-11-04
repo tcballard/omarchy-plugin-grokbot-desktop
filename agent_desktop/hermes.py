@@ -212,7 +212,7 @@ class Hermes:
                 link.state.submitting += 1
                 try:
                     receipt = await asyncio.wait_for(link.client.rpc("prompt.submit", session_id=link.state.session_id,
-                        input_id=request, text=NOTE + "\n\n" + prompt), min(seconds, 30))
+                        input_id=request, text=prompt), min(seconds, 30))
                 except Exception:
                     link.state.submit_failed()
                     raise Fault("delivery_unknown", "Submission was not confirmed; inspect Hermes before retrying.") from None

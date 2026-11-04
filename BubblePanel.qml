@@ -1,10 +1,11 @@
 import QtQuick
 import QtQuick.Controls
 import "qml/theme.js" as Theme
+import "qml/markdown.js" as Markdown
 
 // Grok Bot popover. One card with two pages: the chat and, behind the
-// sliders button, the appearance page. Roster text, replies, prompts, and
-// links stay plain text.
+// sliders button, the appearance page. Roster text, prompts and links stay
+// plain text; a bot's reply is Markdown, escaped first (qml/markdown.js).
 Rectangle {
   id: bubble
   property var app: null
@@ -121,6 +122,25 @@ Rectangle {
   }
 
   function ms(value) { return app && app.reduceMotion ? 0 : value }
+
+  // Eases the thread to its latest message (the "Scroll down" chip).
+  function scrollToEnd() {
+    var end = Math.max(0, threadFlick.contentHeight - threadFlick.height)
+    scrollAnim.stop()
+    threadFlick.cancelFlick()
+    if (bubble.ms(1) === 0 || Math.abs(end - threadFlick.contentY) < 1) {
+      threadFlick.contentY = end
+    } else {
+      scrollAnim.from = threadFlick.contentY
+      scrollAnim.to = end
+      scrollAnim.start()
+    }
+  }
+
+  // Colours for Markdown in replies (qml/markdown.js), from the chrome tokens.
+  readonly property var markdownStyle: ({ code: Theme.selected, codeBlock: Theme.field, edge: Theme.edge,
+                                          muted: Theme.textMuted, link: Theme.text, gap: 8, size: 13 })
+
 
   function focusPrompt() {
     promptField.forceActiveFocus()
@@ -615,6 +635,7 @@ Rectangle {
           boundsBehavior: Flickable.StopAtBounds
           ScrollBar.vertical: ScrollBar { policy: threadFlick.contentHeight > threadFlick.height ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff }
           onMovementStarted: scrollAnim.stop()
+          onContentYChanged: if (contentY < 24 && app && app.olderHere) olderRow.reached = true
 
           NumberAnimation {
             id: scrollAnim
@@ -639,6 +660,101 @@ Rectangle {
               easing.type: Easing.OutCubic
             }
 
+            // Earlier Bot Chat exchanges, a page of 20 at a time, above the oldest one shown.
+            // It arrives where the reader is looking: once the thread is scrolled to its top (or
+            // already fits), the row opens, the chip pops in, and its arrow nudges upward. Then it
+            // stays put for this conversation, so scrolling away does not jolt the thread.
+            Item {
+              id: olderRow
+              property bool reached: false
+              readonly property bool shown: app ? app.olderHere && reached : false
+              property real t: shown ? 1 : 0
+              Behavior on t { NumberAnimation { duration: bubble.ms(olderRow.shown ? 420 : 200); easing.type: olderRow.shown ? Easing.OutBack : Easing.InCubic; easing.overshoot: 1.4 } }
+              width: parent.width
+              height: 30 * Math.max(0, Math.min(1, t))
+              visible: t > 0.01
+              clip: t < 0.999
+              Connections {
+                target: app
+                function onThreadBotIdChanged() { olderRow.reached = false; Qt.callLater(olderRow.check) }
+                function onOlderHereChanged() { Qt.callLater(olderRow.check) }
+              }
+              // A thread that fits (or is already at its top) shows it straight away.
+              function check() {
+                if (app && app.olderHere && threadFlick.contentY < 24) olderRow.reached = true
+              }
+              Component.onCompleted: Qt.callLater(check)
+              onShownChanged: if (shown) arrowNudge.restart()
+
+              Rectangle {
+                id: olderChip
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.verticalCenter: parent.verticalCenter
+                width: olderContent.implicitWidth + 24
+                height: 28
+                radius: 14
+                color: Theme.field
+                border.width: 1
+                border.color: Theme.edgeLink
+                opacity: Math.max(0, Math.min(1, olderRow.t)) * (app && app.olderLoading ? 0.6 : 1)
+                scale: 0.82 + 0.18 * olderRow.t
+                Behavior on opacity { NumberAnimation { duration: bubble.ms(140) } }
+
+                Row {
+                  id: olderContent
+                  anchors.centerIn: parent
+                  spacing: 6
+                  Canvas {
+                    id: olderArrow
+                    width: 10
+                    height: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    property real lift: 0
+                    transform: Translate { y: -olderArrow.lift }
+                    onPaint: {
+                      var ctx = getContext("2d")
+                      ctx.reset()
+                      ctx.strokeStyle = Theme.textMuted
+                      ctx.lineWidth = 1.5
+                      ctx.lineCap = "round"
+                      ctx.lineJoin = "round"
+                      ctx.beginPath()
+                      ctx.moveTo(width / 2, height - 1.5)
+                      ctx.lineTo(width / 2, 1.5)
+                      ctx.moveTo(1.5, width / 2)
+                      ctx.lineTo(width / 2, 1.5)
+                      ctx.lineTo(width - 1.5, width / 2)
+                      ctx.stroke()
+                    }
+                  }
+                  Text {
+                    id: olderLabel
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: app && app.olderLoading ? "Loading…" : "Load 20 earlier messages"
+                    color: Theme.textMuted
+                    font.pixelSize: 12
+                    font.family: app ? app.fontFamily : ""
+                    textFormat: Text.PlainText
+                  }
+                }
+                HoverArea {
+                  label: "Load 20 earlier messages"
+                  onActivated: app.loadOlder()
+                }
+              }
+
+              // Two quick upward nudges of the arrow once the chip has landed.
+              SequentialAnimation {
+                id: arrowNudge
+                PauseAnimation { duration: bubble.ms(380) }
+                SequentialAnimation {
+                  loops: 2
+                  NumberAnimation { target: olderArrow; property: "lift"; to: 3; duration: bubble.ms(170); easing.type: Easing.OutQuad }
+                  NumberAnimation { target: olderArrow; property: "lift"; to: 0; duration: bubble.ms(230); easing.type: Easing.OutBounce }
+                }
+              }
+            }
+
             Repeater {
               model: app ? app.history : []
               delegate: Exchange {
@@ -659,6 +775,7 @@ Rectangle {
               body: app ? app.bubbleBody : ""
               links: app ? app.noticeLinks : []
               typing: app ? (app.askingHere || app.waitingHere) && app.bubbleBody === "" : false
+              status: app && app.askingHere ? app.progressText : ""
             }
           }
 
@@ -668,7 +785,22 @@ Rectangle {
           // height the view is easing to, so while the thread still fits it
           // stays at the top and the view's growth reveals the new content;
           // once it is full, the scroll eases on the same curve.
+          // An earlier page goes in above: everything below the old top keeps its place, so the
+          // reader's distance from the end is held while the thread relays out (the delegates
+          // rebuild and the content briefly shrinks, which would otherwise clamp it to the top).
+          property real olderFromBottom: -1
+          Connections {
+            target: app
+            function onPrependingOlderChanged() {
+              threadFlick.olderFromBottom = app.prependingOlder ? threadFlick.contentHeight - threadFlick.contentY : -1
+            }
+          }
           onContentHeightChanged: {
+            if (app && app.prependingOlder && olderFromBottom >= 0) {
+              scrollAnim.stop()
+              contentY = Math.max(0, contentHeight - olderFromBottom)
+              return
+            }
             var end = Math.max(0, contentHeight - Math.min(threadBox.cap, contentHeight))
             var target = Math.min(end, Math.max(0, latest.y))
             scrollAnim.stop()
@@ -702,6 +834,87 @@ Rectangle {
           gradient: Gradient {
             GradientStop { position: 0; color: Theme.surfaceClear }
             GradientStop { position: 1; color: Theme.surface }
+          }
+        }
+
+        // "Scroll down": floats over the bottom of the thread while the latest message is out of
+        // view. It rises in with a small pop, scrolls smoothly to the end when clicked, and sinks
+        // away again once the end is reached, however you got there.
+        Item {
+          id: downChip
+          readonly property bool shown: threadFlick.contentHeight > threadFlick.height + 4
+            && threadFlick.contentY + threadFlick.height < threadFlick.contentHeight - 24
+          property real t: shown ? 1 : 0
+          Behavior on t { NumberAnimation { duration: bubble.ms(downChip.shown ? 360 : 180); easing.type: downChip.shown ? Easing.OutBack : Easing.InCubic; easing.overshoot: 1.6 } }
+          anchors.horizontalCenter: parent.horizontalCenter
+          anchors.bottom: parent.bottom
+          anchors.bottomMargin: 8 + 10 * (1 - t)
+          width: downPill.width
+          height: downPill.height
+          visible: t > 0.01
+          opacity: Math.max(0, Math.min(1, t))
+          scale: 0.85 + 0.15 * t
+          onShownChanged: if (shown) downNudge.restart()
+
+          Rectangle {
+            id: downPill
+            width: downContent.implicitWidth + 24
+            height: 28
+            radius: 14
+            color: Theme.raised
+            border.width: 1
+            border.color: Theme.edgeStrong
+            Row {
+              id: downContent
+              anchors.centerIn: parent
+              spacing: 6
+              Canvas {
+                id: downArrow
+                width: 10
+                height: 12
+                anchors.verticalCenter: parent.verticalCenter
+                property real drop: 0
+                transform: Translate { y: downArrow.drop }
+                onPaint: {
+                  var ctx = getContext("2d")
+                  ctx.reset()
+                  ctx.strokeStyle = Theme.text
+                  ctx.lineWidth = 1.5
+                  ctx.lineCap = "round"
+                  ctx.lineJoin = "round"
+                  ctx.beginPath()
+                  ctx.moveTo(width / 2, 1.5)
+                  ctx.lineTo(width / 2, height - 1.5)
+                  ctx.moveTo(1.5, height - width / 2)
+                  ctx.lineTo(width / 2, height - 1.5)
+                  ctx.lineTo(width - 1.5, height - width / 2)
+                  ctx.stroke()
+                }
+              }
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Scroll down"
+                color: Theme.text
+                font.pixelSize: 12
+                font.family: app ? app.fontFamily : ""
+                textFormat: Text.PlainText
+              }
+            }
+            HoverArea {
+              label: "Scroll down"
+              onActivated: bubble.scrollToEnd()
+            }
+          }
+
+          // The arrow dips twice once the chip has risen in.
+          SequentialAnimation {
+            id: downNudge
+            PauseAnimation { duration: bubble.ms(320) }
+            SequentialAnimation {
+              loops: 2
+              NumberAnimation { target: downArrow; property: "drop"; to: 3; duration: bubble.ms(170); easing.type: Easing.OutQuad }
+              NumberAnimation { target: downArrow; property: "drop"; to: 0; duration: bubble.ms(230); easing.type: Easing.OutBounce }
+            }
           }
         }
       }
@@ -908,7 +1121,9 @@ Rectangle {
           readonly property bool dictating: app ? app.dictating : false
           property real wave: 0
           property string ink: dictating ? Theme.recording : Theme.text
-          readonly property bool asking: app ? app.askingHere : false
+          // While a bot waits on a question, typed text answers it instead of stopping the ask.
+          readonly property bool answering: app ? app.clarifyHere && promptField.text.trim() !== "" : false
+          readonly property bool asking: app ? app.askingHere && !answering : false
           readonly property string mode: asking ? "stop" : (promptField.text.trim() !== "" || (app && app.pendingFiles.length > 0) ? "send" : "voice")
           width: 42
           height: 42
@@ -998,7 +1213,7 @@ Rectangle {
             tint: voiceButton.mode !== "send"
             onActivated: {
               if (!app) return
-              if (app.askingHere) {
+              if (app.askingHere && !voiceButton.answering) {
                 app.stopAsk()
                 return
               }
@@ -1047,7 +1262,7 @@ Rectangle {
               rightPadding: 6
               wrapMode: TextArea.Wrap
               // One ask runs at a time; another bot's draft waits for it.
-              placeholderText: app.askingHere ? "Asking…" : (app.asking ? ("Waiting for " + app.askingLabel() + " to answer…") : ("Ask " + app.botLabel()))
+              placeholderText: app.clarifyHere ? "Type your answer…" : app.askingHere ? "Asking…" : (app.asking ? ("Waiting for " + app.askingLabel() + " to answer…") : ("Ask " + app.botLabel()))
               placeholderTextColor: Theme.textFaint
               font.family: app.fontFamily
               text: app.promptDraft
@@ -1185,6 +1400,8 @@ Rectangle {
     property string body: ""
     property var links: []
     property bool typing: false
+    // What the agent is doing while it works ("Running a command…"), faint, under the reply.
+    property string status: ""
     // The latest reply fades in where the typing dots were.
     property bool fadeReply: false
     width: parent ? parent.width : 0
@@ -1265,10 +1482,12 @@ Rectangle {
       }
     }
 
+    // The bot's reply, as Markdown. qml/markdown.js escapes the reply before it adds any
+    // formatting, so the reply itself can carry no markup; links open through openLink.
     TextEdit {
       width: parent.width
       visible: exchange.body !== ""
-      text: exchange.body
+      text: exchange.body === "" ? "" : Markdown.toHtml(exchange.body, bubble.markdownStyle)
       readOnly: true
       selectByMouse: true
       color: Theme.text
@@ -1277,7 +1496,9 @@ Rectangle {
       font.pixelSize: 13
       wrapMode: TextEdit.Wrap
       font.family: app.fontFamily
-      textFormat: TextEdit.PlainText
+      textFormat: TextEdit.RichText
+      onLinkActivated: function (link) { app.openLink(link) }
+      HoverHandler { cursorShape: parent.hoveredLink !== "" ? Qt.PointingHandCursor : Qt.IBeamCursor }
       onTextChanged: if (exchange.fadeReply && text !== "") replyFade.restart()
       NumberAnimation on opacity {
         id: replyFade
@@ -1289,6 +1510,18 @@ Rectangle {
       }
     }
 
+
+    Text {
+      width: parent.width
+      visible: exchange.status !== ""
+      text: exchange.status
+      color: Theme.textFaint
+      font.pixelSize: 12
+      font.italic: true
+      font.family: app.fontFamily
+      elide: Text.ElideRight
+      textFormat: Text.PlainText
+    }
     Flow {
       width: parent.width
       spacing: 6
@@ -1314,7 +1547,7 @@ Rectangle {
           }
           HoverArea {
             label: modelData.label
-            onActivated: app.openLink(modelData.url)
+            onActivated: app.linkAction(modelData)
           }
         }
       }
