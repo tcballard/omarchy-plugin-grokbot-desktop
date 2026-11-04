@@ -397,7 +397,8 @@ Item {
   // askedFiles, bubbleBody, and noticeLinks. A new ask or notice moves the
   // latest here.
   property var history: []
-  readonly property int historyLimit: 40
+  // Exchanges kept per bot; earlier pages loaded on request count towards it.
+  readonly property int historyLimit: 200
   // Each bot keeps its own conversation. The one on screen lives in
   // history, askedText, bubbleBody, noticeLinks, and promptDraft; switching
   // bots puts it away under its bot and brings the next bot's back. They are
@@ -1072,6 +1073,146 @@ Item {
     id: saveTimer
     interval: 500
     onTriggered: root.saveSettings()
+  }
+
+  // A provider's conversation history (Hermes: the profile's Bot Chat), loaded once
+  // into a conversation that is still empty here, then a page of 20 at a time on
+  // request ("Load 20 earlier messages"), up to olderCap exchanges.
+  readonly property string historyHelper: root.localPath(Qt.resolvedUrl("bin/agent-desktop-history"))
+  readonly property int olderCap: 100
+  property var olderInfo: ({})
+  property var historyTried: ({})
+  property string historyBot: ""
+  property bool historyOlder: false
+  readonly property bool olderHere: !!(root.olderInfo[root.threadBotId] && root.olderInfo[root.threadBotId].more)
+    && root.history.length < root.olderCap
+  readonly property bool olderLoading: !!(root.olderInfo[root.threadBotId] && root.olderInfo[root.threadBotId].loading)
+  // Set while an earlier page is prepended, so the thread keeps the reader's place.
+  property bool prependingOlder: false
+
+  function setOlder(botId, info) {
+    var next = Object.assign({}, root.olderInfo)
+    next[botId] = Object.assign({}, next[botId] || {}, info)
+    root.olderInfo = next
+  }
+
+  function historyEntries(items) {
+    var list = []
+    var i
+    for (i = 0; i < (items || []).length; i++) {
+      var body = root.cleanText(items[i].body, 4000)
+      if (body === "") continue
+      list.push({ asked: root.cleanText(items[i].asked, 4000), files: [], body: body, links: [], wait: "" })
+    }
+    return list
+  }
+
+  function runHistory(botId, cursor) {
+    var bot = root.findBot(botId)
+    if (!bot || !bot.provider || bot.provider === "grokbot" || historyProc.running) return false
+    if (root.historyHelper.indexOf("/bin/agent-desktop-history") < 0 || root.historyHelper.indexOf("..") >= 0) return false
+    root.historyBot = botId
+    root.historyOlder = cursor !== ""
+    var request = { provider: bot.provider, botId: bot.agentId || bot.id }
+    if (cursor !== "") request.cursor = cursor
+    root.historyRequest = JSON.stringify(request)
+    historyProc.command = ["/usr/bin/setpriv", "--pdeathsig", "TERM", "/usr/bin/python3", "-I", root.historyHelper]
+    historyProc.environment = root.askEnvironment()
+    historyProc.running = true
+    return true
+  }
+  property string historyRequest: ""
+
+  // The bot on screen, once, while its conversation here is still empty.
+  function maybeLoadHistory() {
+    var botId = root.threadBotId
+    if (botId === "" || root.historyTried[botId]) return
+    var bot = root.findBot(botId)
+    if (!bot || !bot.provider || bot.provider === "grokbot") return
+    if (root.history.length > 0 || root.askedText !== "" || root.bubbleBody !== "" || root.asking) return
+    if (!root.runHistory(botId, "")) return
+    var tried = Object.assign({}, root.historyTried)
+    tried[botId] = true
+    root.historyTried = tried
+  }
+
+  onThreadBotIdChanged: Qt.callLater(root.maybeLoadHistory)
+  onBotsChanged: Qt.callLater(root.maybeLoadHistory)
+
+  Process {
+    id: historyProc
+    clearEnvironment: true
+    stdinEnabled: true
+    stdout: StdioCollector { id: historyOut }
+    onStarted: {
+      historyProc.write(root.historyRequest + "\n")
+      historyProc.stdinEnabled = false
+    }
+    onExited: function (code) {
+      historyProc.stdinEnabled = true
+      var botId = root.historyBot
+      var data = null
+      if (code === 0) {
+        try { data = JSON.parse(historyOut.text) } catch (e) { data = null }
+      }
+      var items = data && Array.isArray(data.items) ? data.items : []
+      var next = data && typeof data.nextCursor === "string" ? data.nextCursor : ""
+      if (root.historyOlder) root.applyOlder(botId, items, next)
+      else root.applyHistory(botId, items, next)
+    }
+  }
+
+  function applyHistory(botId, items, next) {
+    var list = root.historyEntries(items).slice(-root.historyLimit)
+    root.setOlder(botId, { key: next, more: next !== "", loading: false })
+    if (list.length === 0) return
+    if (botId === root.threadBotId) {
+      if (root.history.length > 0 || root.askedText !== "" || root.bubbleBody !== "" || root.asking) return
+      root.history = list
+      return
+    }
+    var thread = root.threads[botId]
+    if (thread && ((thread.history || []).length > 0 || (thread.asked || "") !== "" || (thread.body || "") !== "")) return
+    var threads = Object.assign({}, root.threads)
+    threads[botId] = Object.assign({}, thread || {}, { history: list })
+    root.threads = threads
+  }
+
+  function loadOlder() {
+    var bot = root.threadBotId
+    var info = root.olderInfo[bot]
+    if (!info || !info.more || info.loading || !info.key) return "nothing"
+    if (root.history.length >= root.olderCap) return "limit"
+    if (!root.runHistory(bot, info.key)) return "busy"
+    root.setOlder(bot, { loading: true })
+    return "ok"
+  }
+
+  Timer {
+    id: olderSettle
+    interval: 500
+    onTriggered: root.prependingOlder = false
+  }
+
+  function applyOlder(botId, items, next) {
+    var shown = botId === root.threadBotId ? root.history.length : ((root.threads[botId] || {}).history || []).length
+    // Never past the cap: keep the newest part of a page that would cross it.
+    var room = Math.max(0, root.olderCap - shown)
+    var list = root.historyEntries(items)
+    list = list.slice(Math.max(0, list.length - room))
+    root.setOlder(botId, { loading: false, more: next !== "", key: next })
+    if (list.length === 0) return
+    if (botId === root.threadBotId) {
+      root.prependingOlder = true
+      root.history = list.concat(root.history).slice(-root.historyLimit)
+      olderSettle.restart()
+      return
+    }
+    var threads = Object.assign({}, root.threads)
+    var thread = Object.assign({}, threads[botId] || {})
+    thread.history = list.concat(thread.history || []).slice(-root.historyLimit)
+    threads[botId] = thread
+    root.threads = threads
   }
 
   function stashThread(id) {

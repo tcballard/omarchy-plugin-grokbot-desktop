@@ -37,6 +37,12 @@ class DesktopIntegration(unittest.TestCase):
         answer=self.run_helper('agent-desktop-ask',dict(provider=row['provider'],botId=row['agentId'],askId='abcdef123456',prompt='Private test'))
         self.assertEqual(answer.returncode,0,answer.stderr)
         self.assertEqual(answer.stdout.strip(),'Example: Private test')
+    def test_history_helper_answers_empty_for_providers_without_history(self):
+        (self.config/'agent-desktop.json').write_text(json.dumps({'providers':{'example':{}}}))
+        for provider in ('example', 'grokbot'):
+            result=self.run_helper('agent-desktop-history',dict(provider=provider,botId='echo'))
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertEqual(json.loads(result.stdout),{'items':[],'nextCursor':None})
     def test_broken_hermes_does_not_remove_working_example(self):
         (self.config/'agent-desktop.json').write_text(json.dumps({'providers':{'example':{},'hermes':{'root':str(self.home/'missing')}}}))
         result=self.run_helper('agent-desktop-roster')
