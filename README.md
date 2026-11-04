@@ -18,7 +18,7 @@ omarchy plugin add https://github.com/tcballard/omarchy-plugin-grokbot-desktop -
 
 Earlier v0.1 testing was accepted by the owner on an XPS running Omarchy `dev (573b518be)`; see [historical acceptance](docs/ACCEPTANCE.json). Current v0.2.0 evidence is recorded separately below.
 
-**v0.2.0 is prepared for release review on `feature/multi-provider-companion`; it is not tagged or published.** The owner has tested Grok and confirmed the Codex avatar-generation speed fix. Hermes remains experimental and has not been tested with a live setup. [Release notes](docs/RELEASE-NOTES-v0.2.0.md) · [Acceptance scope](docs/ACCEPTANCE-v0.2.0.json) · [Install and test the candidate](docs/TESTING-v0.2.0.md). The published marketplace version remains v0.1.2.
+**[Agent Desktop v0.2.0 is released](https://github.com/tcballard/omarchy-plugin-grokbot-desktop/releases/tag/v0.2.0).** The owner has tested Grok and confirmed the Codex avatar-generation speed fix. Hermes remains experimental and has not been tested with a live setup. [Release notes](docs/RELEASE-NOTES-v0.2.0.md) · [Acceptance scope](docs/ACCEPTANCE-v0.2.0.json) · [Setup and testing](docs/TESTING-v0.2.0.md). The published marketplace version remains v0.1.2.
 
 <img src="preview.png" width="800" alt="Earlier live Omarchy capture showing the orange companion, appearance drawer and Ask Bob bubble.">
 
@@ -26,7 +26,7 @@ Earlier v0.1 testing was accepted by the owner on an XPS running Omarchy `dev (5
 
 **Inspired by [Clippy for Omarchy](https://github.com/jankeesvw/omarchy-clippy) and [Clanky](https://github.com/rdoupe/omarchy-clanky).** The layer-shell window, click-through mask, dodge behaviour, cursor helper, and speech-bubble IPC follow those companions. Plugin conventions come from [Build Omarchy Plugins](https://github.com/tcballard/build-omarchy-plugins).
 
-## Agent Desktop v0.2.0 candidate
+## Agent Desktop v0.2.0
 
 GrokBot and experimental Hermes support use the [versioned provider API](docs/PROVIDER-API.md). Open **Settings → Providers** to choose GrokBot or Hermes and select an agent. Hermes connection paths can be managed there. Existing Grok settings and IDs remain valid. [Configuration and test checklist](docs/TESTING-v0.2.0.md).
 
@@ -34,7 +34,7 @@ Create a character in **Settings → Appearance → Custom avatar…**: describe
 
 Paste Open Bot Avatar v1 JSON under **Settings → Appearance → Custom avatar…** to assign a custom character to the selected agent. Export returns portable geometry JSON; colour, gaze and motion remain controlled by the desktop. Existing shapes remain available. The native renderer uses [Dominik Scholz's MIT-licensed engine](https://github.com/DominikScholz/open-bot-avatar). Sample definitions are in `data/avatars/`.
 
-Product branding is Agent Desktop. The GitHub repository rename to `omarchy-plugin-agent-desktop` is pending; use the existing repository URL for this test. The plugin ID and configuration paths intentionally retain their existing names so updates preserve settings. Dots is out of scope.
+Product branding is Agent Desktop. The GitHub repository rename to `omarchy-plugin-agent-desktop` is pending; use the existing repository URL. The plugin ID and configuration paths intentionally retain their existing names so updates preserve settings. Dots is out of scope.
 
 ## Install
 
