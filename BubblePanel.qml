@@ -1,10 +1,11 @@
 import QtQuick
 import QtQuick.Controls
 import "qml/theme.js" as Theme
+import "qml/markdown.js" as Markdown
 
 // Grok Bot popover. One card with two pages: the chat and, behind the
-// sliders button, the appearance page. Roster text, replies, prompts, and
-// links stay plain text.
+// sliders button, the appearance page. Roster text, prompts and links stay
+// plain text; a bot's reply is Markdown, escaped first (qml/markdown.js).
 Rectangle {
   id: bubble
   property var app: null
@@ -121,6 +122,11 @@ Rectangle {
   }
 
   function ms(value) { return app && app.reduceMotion ? 0 : value }
+
+  // Colours for Markdown in replies (qml/markdown.js), from the chrome tokens.
+  readonly property var markdownStyle: ({ code: Theme.selected, codeBlock: Theme.field, edge: Theme.edge,
+                                          muted: Theme.textMuted, link: Theme.text, gap: 8, size: 13 })
+
 
   function focusPrompt() {
     promptField.forceActiveFocus()
@@ -1265,10 +1271,12 @@ Rectangle {
       }
     }
 
+    // The bot's reply, as Markdown. qml/markdown.js escapes the reply before it adds any
+    // formatting, so the reply itself can carry no markup; links open through openLink.
     TextEdit {
       width: parent.width
       visible: exchange.body !== ""
-      text: exchange.body
+      text: exchange.body === "" ? "" : Markdown.toHtml(exchange.body, bubble.markdownStyle)
       readOnly: true
       selectByMouse: true
       color: Theme.text
@@ -1277,7 +1285,9 @@ Rectangle {
       font.pixelSize: 13
       wrapMode: TextEdit.Wrap
       font.family: app.fontFamily
-      textFormat: TextEdit.PlainText
+      textFormat: TextEdit.RichText
+      onLinkActivated: function (link) { app.openLink(link) }
+      HoverHandler { cursorShape: parent.hoveredLink !== "" ? Qt.PointingHandCursor : Qt.IBeamCursor }
       onTextChanged: if (exchange.fadeReply && text !== "") replyFade.restart()
       NumberAnimation on opacity {
         id: replyFade
