@@ -23,6 +23,10 @@ const palette = loadLibrary('qml/palette.js')
 const face = loadLibrary('qml/face.js')
 const bots = readJSON(path.join(root, 'data/bots.json')).bots
 const main = read('Main.qml')
+// IPC lives in two bridges: ShellIpc (Omarchy dev, private socket) and IpcHandler
+// (packaged stable). Main.qml loads whichever compiles; both must stay identical.
+const ipcBridges = ['qml/CompanionShellIpc.qml', 'qml/CompanionIpcHandler.qml'].map(read)
+const ipc = ipcBridges[1]
 const manifest = readJSON(path.join(root, 'manifest.json'))
 
 const EXPECTED = {
@@ -179,9 +183,11 @@ test('bundled roster is the fifteen live bots, with Bob first', () => {
 
 test('QML exposes the speech-bubble IPC and keeps outside text plain', () => {
   for (const name of ['summon', 'show', 'hide', 'toggleVisible', 'toggle', 'settings', 'ask', 'dictate', 'bot', 'appearance', 'animate', 'say', 'sayLink', 'sayLinks', 'dismiss']) {
-    assert.match(main, new RegExp(`function ${name}\\(`))
+    for (const bridge of ipcBridges) assert.match(bridge, new RegExp(`function ${name}\\(`))
   }
-  assert.match(main, /target:\s*"io\.github\.tcballard\.grokbot-desktop"/)
+  for (const bridge of ipcBridges) assert.match(bridge, /target:\s*"io\.github\.tcballard\.grokbot-desktop"/)
+  assert.match(main, /qml\/CompanionShellIpc\.qml/)
+  assert.match(main, /qml\/CompanionIpcHandler\.qml/)
   assert.match(main, /WlrLayershell/)
   assert.match(main, /clearEnvironment:\s*true/)
   assert.match(main, /\/usr\/bin\/setpriv/)
@@ -194,8 +200,8 @@ test('QML exposes the speech-bubble IPC and keeps outside text plain', () => {
 })
 
 test('hiding from the menu says how to bring the companion back, and a shortcut can toggle it', () => {
-  const toggle = qmlFunction(main, 'toggleVisible')
-  assert.match(toggle, /if \(root\.present\) root\.hideCompanion\(\)\n\s*else root\.showCompanion\(\)/)
+  const toggle = qmlFunction(ipc, 'toggleVisible')
+  assert.match(toggle, /if \(host\.present\) host\.hideCompanion\(\)\n\s*else host\.showCompanion\(\)/)
   const announce = qmlFunction(main, 'announceHidden')
   // Omarchy's own helper, never notify-send; the click runs the IPC show.
   assert.match(announce, /omarchy-notification-send 'Grok Bot is hidden' 'Click to bring it back\.' --action Show omarchy-shell io\.github\.tcballard\.grokbot-desktop show/)
@@ -968,7 +974,7 @@ test('Superwhisper and Voxtype wake lines route instead of being typed', () => {
   assert.match(readme, /voxtype record toggle/)
   assert.match(readme, /fallback_on_empty/)
   assert.match(readme, /grokbot-voice-watch/)
-  assert.match(source, /function dictate\(text: string\)/)
+  assert.match(ipc, /function dictate\(text: string\)/)
   assert.match(source, /function dictateText\(/)
   assert.match(source, /function toggleDictation\(/)
   assert.match(source, /Dictation\.route/)
@@ -986,7 +992,7 @@ test('Superwhisper and Voxtype wake lines route instead of being typed', () => {
 
 test('readme credits both companions and shows a real preview', () => {
   const readme = read('README.md')
-  assert.match(readme, /<h1 align="center">Grok Bot Desktop Companion<\/h1>/)
+  assert.match(readme, /<h1 align="center">Agent Desktop<\/h1>/)
   assert.equal((readme.match(/omarchy-plugin\.svg/g) || []).length, 1)
   assert.match(readme, /jankeesvw\/omarchy-clippy/)
   assert.match(readme, /rdoupe\/omarchy-clanky/)
@@ -1162,14 +1168,27 @@ test('the mark answers hover and lifts while dragged', () => {
   assert.match(main, /property real hoverScale: root\.hovering && !root\.dragging \? 1\.04 : 1/)
   assert.match(main, /root\.dragLift \* 14/)
   assert.match(qmlFunction(main, 'endDrag'), /landAnim\.restart\(\)/)
-  assert.match(qmlFunction(main, 'dragMove'), /dragTiltTarget =/)
+  assert.match(qmlFunction(main, 'dragGlobal'), /dragTiltTarget =/)
 })
 
-test('dodge fades with distance and visibly fades back during the dwell', () => {
+test('dodge fades with distance and restores at once over the mark', () => {
   const dodge = qmlFunction(main, 'updateDodge')
   assert.match(dodge, /pointerGap\(\) \/ 36/)
-  assert.match(dodge, /held = \(Date\.now\(\) - root\.dwellSince\) \/ root\.dwellMs/)
+  assert.match(dodge, /pointerInside\(\)/)
+  assert.match(dodge, /root\.dodgeOpacity = 1/)
   assert.match(main, /opacity: root\.dodgeOpacity/)
+  // Clicks stay live: ghost no longer zeroes the input mask.
+  assert.match(main, /root\.menuOpen \? win\.width : \(!root\.present \? 0 : stage\.width\)/)
+  assert.doesNotMatch(main, /root\.ghost \|\| !root\.present/)
+})
+
+test('hover-scroll cycles the active bot and drag moves the stage', () => {
+  const cycle = qmlFunction(main, 'cycleBot')
+  assert.match(cycle, /selectBot\(list\[next\]\.id\)/)
+  assert.match(main, /onWheel: function \(wheel\)/)
+  assert.match(main, /root\.cycleBot\(dy > 0 \? -1 : 1\)/)
+  assert.match(qmlFunction(main, 'dragGlobal'), /root\.posRight =/)
+  assert.match(qmlFunction(main, 'dragGlobal'), /root\.posBottom =/)
 })
 
 test('reduced motion stops loops and zeroes one-shot timing', () => {
@@ -1416,8 +1435,56 @@ test('the window covers the output and never resizes, so the mark never moves', 
   }
   // Stage, cursor, and drag all use output coordinates directly.
   assert.match(main, /x: root\.stageScreenX\n\s*y: root\.stageScreenY/)
-  assert.match(qmlFunction(main, 'updateGazeTarget'), /root\.cursorX - \(win\.screen\.x \+ local\.x\)/)
-  assert.match(qmlFunction(main, 'stageRect'), /x: win\.screen\.x \+ point\.x/)
+  assert.match(qmlFunction(main, 'updateGazeTarget'), /root\.cursorX - \(screen\.x \+ local\.x\)/)
+  assert.match(qmlFunction(main, 'stageRect'), /x: screen\.x \+ point\.x/)
+})
+
+test('a drag past the edge lands on the next monitor and stays there', () => {
+  const screens = loadLibrary('qml/screens.js')
+  const desk = [
+    { name: 'DP-1', x: 0, y: 0, width: 1920, height: 1080 },
+    { name: 'HDMI-A-1', x: 1920, y: 0, width: 1920, height: 1080 }
+  ]
+  const focused = { name: 'HDMI-A-1', x: 1920, y: 0 }
+  // Sitting on DP-1 does not follow the pointer onto HDMI-A-1.
+  assert.equal(screens.choose(desk, 'DP-1', null, focused).name, 'DP-1')
+  // The drag's destination wins over the monitor it started on.
+  assert.equal(screens.choose(desk, 'DP-1', desk[1], focused).name, 'HDMI-A-1')
+  assert.equal(screens.atPoint(desk, 1920, 10).name, 'HDMI-A-1')
+  assert.equal(screens.atPoint(desk, 1919, 10).name, 'DP-1')
+  const shifted = [{ name: 'left', x: -1920, y: 0, width: 1920, height: 1080 }].concat(desk)
+  assert.equal(screens.atPoint(shifted, -10, 20).name, 'left')
+  assert.equal(screens.choose(desk, '', null, focused).name, 'HDMI-A-1')
+  assert.equal(screens.choose(desk, '', null, null).name, 'DP-1')
+  const placed = screens.place(desk[1], true, true, 100, 80, 10, 10, 2000, 500)
+  assert.equal(placed.x, 1750)
+  assert.equal(placed.y, 510)
+  // The saved drop is that output and those margins, and nothing else.
+  const saved = screens.settled('HDMI-A-1', placed.x, placed.y)
+  assert.equal(saved.monitor, 'HDMI-A-1')
+  assert.equal(saved.marginX, 1750)
+  assert.equal(saved.marginY, 510)
+  const clamped = screens.settled('HDMI-A-1', -4.2, 4001.6)
+  assert.equal(clamped.marginX, 0)
+  assert.equal(clamped.marginY, 4000)
+  assert.equal(screens.settled('../etc', 10, 10), null)
+  assert.match(main, /Variants \{\s*id: outputWindows\s*model: Quickshell\.screens/)
+  assert.match(main, /activeHere \|\| holdingDrag/)
+  const end = qmlFunction(main, 'endDrag')
+  assert.match(end, /Screens\.settled\(screen && screen\.name, root\.posRight, root\.posBottom\)/)
+  assert.match(end, /root\.saveDraggedPosition\(settled\)/)
+  assert.doesNotMatch(end, /saveSettings\(\)/)
+  const save = qmlFunction(main, 'saveDraggedPosition')
+  assert.match(save, /userConfig\.waitForJob\(\)/)
+  assert.match(save, /settings\.marginX = settled\.marginX/)
+  assert.match(save, /settings\.marginY = settled\.marginY/)
+  assert.match(save, /settings\.monitor = settled\.monitor/)
+  assert.doesNotMatch(save, /settings\.botId/)
+  const cancel = main.slice(main.indexOf('onCanceled:'), main.indexOf('onCanceled:') + 500)
+  assert.match(cancel, /dragDetached = true/)
+  assert.match(cancel, /if \(!root\.pointerHeld\) root\.endDrag\(\)/)
+  const buttons = runPython('bin/grokbot-cursor', ['--self-test'])
+  assert.equal(buttons.status, 0, buttons.stderr)
 })
 
 test('Hyprland does not animate the window growing to the output and back', () => {
@@ -1541,9 +1608,9 @@ test('a conversation hides the other bots behind the header switch', () => {
 
 test('the appearance page says what Dodge does', () => {
   const page = read('SettingsPanel.qml')
-  assert.match(page, /"Dodge is on: as the pointer comes near, " \+ app\.botLabel\(\) \+ " fades and lets clicks through/)
+  assert.match(page, /"Dodge is on: as the pointer comes near, " \+ app\.botLabel\(\) \+ " fades but still accepts clicks/)
   assert.match(page, /"Dodge is off: " \+ app\.botLabel\(\) \+ " stays solid and takes clicks/)
-  assert.match(page, /label: "Dodge: fade and let clicks through when the pointer comes near"/)
+  assert.match(page, /label: "Dodge: fade nearby and restore immediately on hover"/)
 })
 
 test('the desktop mark turns its face as Grok Bot moves Bob', async () => {
@@ -1629,7 +1696,7 @@ test('each bot keeps its own conversation, and a reply lands with the bot asked'
   assert.match(folded, /readonly property bool unreadHidden: \{\n\s*var unread = app \? app\.unreadBots : \[\]\n\s*if \(unread\.length === 0\) return false\n\s*if \(!bubble\.rosterShown\) return true/)
   assert.match(folded, /\/\/ A reply for a bot whose chip is folded away\.\n\s*Rectangle \{\n\s*visible: bubble\.unreadHidden/)
   assert.match(main, /var here = root\.deliver\(root\.askBotId, ok \? out :/)
-  assert.match(qmlFunction(main, 'stopAsk'), /root\.deliver\(root\.askBotId, "Stopped\."\)/)
+  assert.match(qmlFunction(main, 'stopAsk'), /root\.deliver\(root\.askBotId, "Stopped waiting\. Remote work may continue; check the provider\."\)/)
   // Only the bot asking shows the dots, stop button, and work loop.
   assert.match(main, /readonly property bool askingHere: root\.asking && root\.askBotId === root\.threadBotId/)
   assert.match(main, /property real workBlend: root\.busyHere && !root\.reduceMotion/)
@@ -1672,7 +1739,7 @@ test('clearing a conversation is in the menu, not the composer, and can be undon
   assert.match(panel, /onActivated: app\.undoClear\(\)/)
   // It lives in the right-click menu and on IPC, not in the composer.
   assert.match(main, /root\.canClear \? \[\{ "label": "Clear conversation", "action": "clear" \}\]/)
-  assert.match(main, /function clear\(\): string \{ return root\.clearConversation\(\) \}/)
+  assert.match(ipc, /function clear\(\): string \{ return host\.clearConversation\(\) \}/)
 })
 
 test('grokbot-connect tests the URL and key before saving them, and keeps other settings', async () => {
@@ -1781,7 +1848,7 @@ test('a webhook answer waits under its question and lands there, whichever bot i
   assert.match(qmlFunction(main, 'markUnread'), /if \(!root\.bubbleOpen\) root\.replyUnread = true/)
   assert.match(qmlFunction(main, 'deliver'), /root\.markUnread\(id\)/)
   // reply takes an ask id or a bot; say from a waiting bot counts too.
-  assert.match(main, /function reply\(target: string, text: string\): string \{ return root\.receiveReply\(target, text\) \}/)
+  assert.match(ipc, /function reply\(target: string, text: string\): string \{ return host\.receiveReply\(target, text\) \}/)
   const receive = qmlFunction(main, 'receiveReply')
   assert.match(receive, /if \(root\.awaiting\[key\]\)/)
   assert.match(receive, /root\.oldestWaiting\(bot\.id\)/)
@@ -1888,7 +1955,7 @@ test('the composer attaches pasted images, chosen files, and dropped files', () 
   assert.match(panel, /\{ label: "Paste image", mode: "paste" \},\s*\{ label: "Choose a file…", mode: "choose" \}/)
   assert.doesNotMatch(panel + main, /screenshot/i)
   assert.match(panel, /if \(app\.attach\("paste", "quiet"\) !== "ok"\) promptField\.paste\(\)/)
-  assert.match(main, /if \(root\.attachQuiet && bubblePanel\) bubblePanel\.pasteText\(\)\n\s*else root\.attachNote = "There's no image on the clipboard\."/)
+  assert.match(main, /if \(root\.attachQuiet && root\.hostBubble\) root\.hostBubble\.pasteText\(\)\n\s*else root\.attachNote = "There's no image on the clipboard\."/)
   // Omarchy's own portal chooser picks the files; the card steps aside meanwhile.
   assert.match(main, /exec omarchy-file-select --title 'Attach to your question' --multiple/)
   assert.match(main, /code === 127\) root\.attachNote = "Choosing files needs omarchy-file-select, from a newer Omarchy\."/)
@@ -1906,7 +1973,7 @@ test('the composer attaches pasted images, chosen files, and dropped files', () 
 
 test('the companion steps aside while Omarchy\'s screensaver runs', () => {
   assert.match(main, /readonly property string screensaverName: "org\.omarchy\.screensaver"/)
-  const handle = qmlFunction(main, 'screensaverEvent')
+  const handle = qmlFunction(main, 'hyprWindowEvent')
   // The terminal-window screensaver (class) and the native overlay (namespace).
   assert.match(handle, /name === "openwindow"[\s\S]*parts\[2\] === root\.screensaverName/)
   assert.match(handle, /name === "closewindow"/)
@@ -1914,8 +1981,29 @@ test('the companion steps aside while Omarchy\'s screensaver runs', () => {
   assert.match(handle, /name === "closelayer" && data === root\.screensaverName/)
   assert.match(main, /visible: root\.present && root\.targetScreen !== null && root\.layerRuleTried && !root\.screensaverUp/)
   // A missed close event is caught by a periodic check while hidden.
-  assert.match(main, /running: root\.screensaverUp\n\s*onTriggered: if \(!screensaverCheck\.running\) screensaverCheck\.running = true/)
+  assert.match(main, /running: root\.screensaverUp \|\| root\.grokAppOpen\n\s*onTriggered: if \(!screensaverCheck\.running\) screensaverCheck\.running = true/)
   assert.match(main, /"\/usr\/bin\/hyprctl -j clients; echo; \/usr\/bin\/hyprctl -j layers"/)
+})
+
+test('reply cues toast the active bot and peek for other bots', () => {
+  const can = qmlFunction(main, 'canShowReplyCue')
+  assert.match(can, /!root\.bubbleOpen/)
+  assert.match(can, /bot\.provider === "grokbot"/)
+  assert.match(main, /readonly property string grokAppClass: "grok-bot"/)
+  assert.match(main, /readonly property int cueActiveMs: 5000/)
+  assert.match(main, /readonly property int cuePeekMs: 3000/)
+  assert.match(main, /readonly property int cuePeekBubbleMs: 2000/)
+  const announce = qmlFunction(main, 'announceReply')
+  assert.match(announce, /showActiveCue/)
+  assert.match(announce, /showPeekCue/)
+  assert.match(qmlFunction(main, 'deliver'), /announceReply/)
+  assert.match(qmlFunction(main, 'appendReply'), /announceReply/)
+  assert.match(qmlFunction(main, 'answerWaiting'), /announceReply/)
+  assert.match(qmlFunction(main, 'openBubble'), /clearReplyCue/)
+  assert.match(main, /id: peekMark/)
+  assert.match(main, /id: activeCueCard/)
+  assert.match(main, /id: peekCueCard/)
+  assert.match(main, /textFormat: Text\.PlainText/)
 })
 
 test('the chat and appearance pages crossfade, pinned to the edge the card grows from', () => {
@@ -1933,4 +2021,9 @@ test('the chat and appearance pages crossfade, pinned to the edge the card grows
   assert.match(panel, /y: bubble\.pageY\(implicitHeight\)/)
   assert.match(panel, /y: bubble\.pageY\(height\)/)
   assert.doesNotMatch(panel, /growOffset/)
+})
+
+test('both IPC bridges expose the same methods with the same bodies', () => {
+  const methods = (src) => src.slice(src.indexOf('target:')).replace(/^\s*\/\/.*$/gm, '').replace(/^[ \t]+/gm, '').replace(/[\s}]+$/, '')
+  assert.equal(methods(ipcBridges[0]), methods(ipcBridges[1]))
 })

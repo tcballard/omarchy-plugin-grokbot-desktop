@@ -1,0 +1,58 @@
+{
+  "status": "pending-live",
+  "version": "0.2.0",
+  "input_commit": "2006a72c38d5e1a66fe7cf449122db5a7b40db4e",
+  "date": "2026-11-03",
+  "platform": "Owner Omarchy desktop for reported Grok/Codex testing; exact current host version, hardware, scale and installed commit were not recaptured. Automated checks use GitHub Actions ubuntu-24.04, Node 22, Python 3 and Qt 6.12.0.",
+  "acceptance_basis": "Owner reported testing the Grok side and confirmed that avatar-generation speed with Codex is fixed. This is owner-reported acceptance, not an agent-observed walkthrough. The owner has no Hermes setup. Release preparation and review of notes are authorised; tagging and publication are not.",
+  "portable": {
+    "status": "passed",
+    "command": "./tests/run; python3 tests/avatar-native.py; python3 tests/settings-native.py",
+    "ci_url": "https://github.com/tcballard/omarchy-plugin-grokbot-desktop/actions/runs/41700695687",
+    "ci_head_commit": "2006a72c38d5e1a66fe7cf449122db5a7b40db4e",
+    "results": [
+      "121 Node tests and 50 Python tests passed on GitHub CI.",
+      "Native offscreen Qt 6.12.0 avatar rendering, Settings navigation/provider selection/preview/Apply and QML syntax parsing passed.",
+      "Release preflight with the installed external plugin validator passed; advisory static findings remain review context, not security certification."
+    ],
+    "local_limitations": [
+      "The local full suite had 18 failures caused by the environment refusing Unix-socket listen with EPERM; 103 Node tests passed. GitHub CI ran the full suite successfully.",
+      "All 50 Python tests passed locally (sync tests run separately after the Node suite stopped), as did native Qt checks."
+    ]
+  },
+  "live": {
+    "status": "pending",
+    "method": "Partial owner-reported acceptance",
+    "recording": null,
+    "preview": null,
+    "confirmed": [
+      "Grok side tested by the owner.",
+      "Owner confirmed the avatar-generation speed issue is fixed while using Codex as the default agent."
+    ],
+    "pending": [
+      "A real Hermes gateway, mixed-provider operation and cancellation/approval behaviour.",
+      "Live generation with Claude and Grok defaults.",
+      "A complete fresh-install/update/removal walkthrough on the final source.",
+      "Explicit multi-monitor, dictation backend and shell lifecycle checklist on the final source."
+    ]
+  },
+  "commands": [
+    "./tests/run on GitHub Actions: passed",
+    "QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software python3 tests/avatar-native.py: passed",
+    "QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software python3 tests/settings-native.py: passed",
+    "release_preflight.py --validator <installed-test-skill>/scripts/validate_plugin.py --json <checkout>: passed without a tag"
+  ],
+  "results": [
+    "The owner feedback applies to the preceding runtime candidate; exact installed SHA was not recaptured.",
+    "Release preparation changes version/product metadata and displays an experimental Hermes notice; it does not change Grok or avatar-generation behaviour.",
+    "Version, product metadata and the experimental Hermes notice are validated at input_commit. This acceptance update and subsequent preparation edits are documentation-only."
+  ],
+  "limitations": [
+    "Hermes is experimental. Mocked gateway tests do not establish live compatibility.",
+    "Current README preview media predates v0.2.0 settings. No fresh live capture is available.",
+    "The GitHub repository rename is pending; the stable plugin ID and existing configuration paths are preserved.",
+    "Automated checks are not a security audit, live desktop acceptance or marketplace approval.",
+    "The pending-live packaging override requires explicit release authorisation and does not convert missing live checks into a pass."
+  ],
+  "owner_reported_runtime_candidate": "bde8888369c3522bb7fcd9cd4244726cb62ca7ee"
+}

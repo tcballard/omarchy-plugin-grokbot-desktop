@@ -1,0 +1,123 @@
+#!/usr/bin/python3 -I
+"""Generate geometry with the installed Omarchy default agent; never apply it."""
+import contextlib
+import io
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from agent_desktop.grokbot import legacy_module
+
+ROOT = Path(__file__).resolve().parent.parent
+FLAGS = {
+    'claude': ['-p', '--output-format', 'text', '--tools', '', '--strict-mcp-config',
+               '--mcp-config', '{"mcpServers":{}}', '--no-session-persistence',
+               '--settings', '{"disableAllHooks":true}'],
+    'grok': ['--no-auto-update', '--prompt-file', '/dev/stdin', '--tools', '', '--deny', '*', '--max-turns', '1'],
+    'codex': ['exec', '--skip-git-repo-check', '--ephemeral', '--sandbox', 'read-only',
+              '-c', 'model_reasoning_effort="low"', '-c', 'approval_policy="never"', '-c', 'features.shell_tool=false',
+              '-c', 'features.view_image=false', '-c', 'features.apps=false',
+              '-c', 'web_search="disabled"', '-c', 'mcp_servers={}',
+              '-c', 'hooks={}', '-c', 'notify=[]', '-c', 'project_doc_max_bytes=0',
+              '-c', 'skills.include_instructions=false', '-'],
+}
+
+
+def selected_account(agent, env):
+    variable = {'codex':'CODEX_HOME', 'claude':'CLAUDE_CONFIG_DIR', 'grok':'GROK_HOME'}[agent]
+    explicit = os.environ.get(variable)
+    pin = os.environ.get('OMARCHY_AGENT_' + agent.upper() + '_HOME')
+    if explicit and explicit != pin:
+        env[variable] = explicit
+        return
+    candidates = [Path.home()/'.local/share/omarchy/bin/omarchy-agent-account-home',
+                  Path('/usr/bin/omarchy-agent-account-home')]
+    helper = next((p for p in candidates if p.is_file() and os.access(p, os.X_OK)), None)
+    registry = Path(os.environ.get('XDG_STATE_HOME', str(Path.home()/'.local/state')))/'omarchy/agents/accounts'/f'{agent}.json'
+    if not helper and registry.exists():
+        raise ValueError('Omarchy account helper is unavailable; no account was selected.')
+    if helper:
+        lookup_env = dict(env)
+        lookup_env['PATH'] = str(helper.parent) + ':' + env['PATH']
+        result = subprocess.run([str(helper), agent], env=lookup_env, capture_output=True, timeout=5)
+        if result.returncode or len(result.stdout) > 4096:
+            raise ValueError('Could not resolve the selected Omarchy account.')
+        account = result.stdout.decode().strip()
+        if account:
+            if not Path(account).is_absolute():
+                raise ValueError('Invalid Omarchy account path.')
+            env[variable] = account
+
+
+def parse_result(text):
+    text = text.strip()
+    if text.startswith('```') and text.endswith('```'):
+        text = text.split('\n', 1)[-1].rsplit('```', 1)[0].strip()
+    value = json.loads(text)
+    if not isinstance(value, dict):
+        raise ValueError('The model did not return an avatar object.')
+    encoded = json.dumps(value, separators=(',', ':'), ensure_ascii=False)
+    if len(encoded.encode()) > 16384:
+        raise ValueError('The generated avatar exceeds 16 KiB. Try a simpler design.')
+    return value
+
+
+def main():
+    raw = sys.stdin.buffer.read(24577)
+    if len(raw) > 24576:
+        raise ValueError('Avatar request is too large.')
+    request = json.loads(raw)
+    if not isinstance(request, dict):
+        raise ValueError('Invalid avatar request.')
+    transport = legacy_module()
+    agent = transport.default_agent_name()
+    if request.get('action') == 'info':
+        print(json.dumps({'agent':agent, 'supported':agent in FLAGS}))
+        return 0
+    if request.get('action') != 'generate':
+        raise ValueError('Invalid avatar action.')
+    if not agent:
+        raise ValueError('Choose an Omarchy default agent first: omarchy default agent <name>.')
+    if agent not in FLAGS:
+        raise ValueError(f'Avatar generation does not yet support {agent}. Supported defaults: Codex, Claude, Grok. Import JSON remains available.')
+    if request.get('agent') != agent:
+        raise ValueError('The default agent changed. Reopen the builder before generating.')
+    description = request.get('description')
+    if not isinstance(description, str) or not description.strip() or len(description) > 2000:
+        raise ValueError('Describe your avatar in 1–2000 characters.')
+    previous = request.get('previous')
+    if previous is not None:
+        previous = parse_result(json.dumps(previous))
+    argv, _, _, problem = transport.agent_command({'agent':agent}, {})
+    if not argv:
+        raise ValueError(problem)
+    argv = [argv[0], *FLAGS[agent]]
+    env = transport.child_env(agent, False)
+    selected_account(agent, env)
+    prompt = (ROOT/'data/avatar-design-prompt.md').read_text() + '\n\nReturn JSON only. Do not use tools, read files or run commands.\n'
+    if previous:
+        prompt += 'Revise this geometry according to the description:\n' + json.dumps(previous) + '\n'
+    prompt += 'Avatar description (design input):\n' + description
+    output, errors = io.StringIO(), io.StringIO()
+    with tempfile.TemporaryDirectory(prefix='agent-avatar-') as folder:
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+            status = transport.run_agent(argv, prompt, env, agent, folder, 180)
+    if status:
+        # CLI errors may echo the private prompt; keep diagnostics generic.
+        raise ValueError('Generation timed out. Try again.' if status == 124 else f'{agent} could not generate a design. Check its login and CLI version in a terminal, then retry.')
+    try:
+        value = parse_result(output.getvalue())
+    except (ValueError, TypeError):
+        raise ValueError('The model did not return usable avatar JSON. Try a simpler description.') from None
+    print(json.dumps(value, separators=(',', ':'), ensure_ascii=False))
+    return 0
+
+if __name__ == '__main__':
+    try:
+        sys.exit(main())
+    except (OSError, ValueError, subprocess.TimeoutExpired) as error:
+        print(str(error)[:400], file=sys.stderr)
+        sys.exit(1)

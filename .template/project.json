@@ -5,10 +5,10 @@
   "owner": "tcballard",
   "repo": "omarchy-plugin-grokbot-desktop",
   "slug": "grokbot-desktop",
-  "name": "Grok Bot Desktop Companion",
+  "name": "Agent Desktop",
   "author": "Tom Ballard",
   "id": "io.github.tcballard.grokbot-desktop",
-  "description": "A floating Grok Bot companion for the Omarchy desktop. It morphs into your bots and asks them from a speech bubble.",
+  "description": "Personal agents on your Omarchy desktop: GrokBot, experimental Hermes support and optional Open Bot Avatar characters.",
   "year": "2026",
   "inspiration": "https://github.com/jankeesvw/omarchy-clippy",
   "initialized": true

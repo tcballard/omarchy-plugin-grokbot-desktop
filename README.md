@@ -1,4 +1,4 @@
-<h1 align="center">Grok Bot Desktop Companion</h1>
+<h1 align="center">Agent Desktop</h1>
 
 <p align="center">Your bots, beside your work on Omarchy.</p>
 
@@ -16,9 +16,9 @@ omarchy plugin add https://github.com/tcballard/omarchy-plugin-grokbot-desktop -
 
 **Next: [sync your bots and connect replies](docs/SETUP.md).** Roster sync does not connect chat automatically. Real bot replies need a configured webhook routine and return path; local-agent mode answers in the bot's name. Conversations and drafts clear on shell restart.
 
-Accepted by the owner on an XPS running Omarchy `dev (573b518be)`; see [acceptance scope and limitations](docs/ACCEPTANCE.json).
+Earlier v0.1 testing was accepted by the owner on an XPS running Omarchy `dev (573b518be)`; see [historical acceptance](docs/ACCEPTANCE.json). Current v0.2.0 evidence is recorded separately below.
 
-**v0.1.1 fixes private prompt transport and restores the saved bot reliably.** The earlier XPS acceptance above covers v0.1.0. This patch has portable regression coverage; live Quickshell and dictation-backend checks remain pending. See the [v0.1.1 release notes](docs/RELEASE-NOTES-v0.1.1.md).
+**v0.2.0 is prepared for release review on `feature/multi-provider-companion`; it is not tagged or published.** The owner has tested Grok and confirmed the Codex avatar-generation speed fix. Hermes remains experimental and has not been tested with a live setup. [Release notes](docs/RELEASE-NOTES-v0.2.0.md) · [Acceptance scope](docs/ACCEPTANCE-v0.2.0.json) · [Install and test the candidate](docs/TESTING-v0.2.0.md). The published marketplace version remains v0.1.2.
 
 <img src="preview.png" width="800" alt="Earlier live Omarchy capture showing the orange companion, appearance drawer and Ask Bob bubble.">
 
@@ -26,9 +26,19 @@ Accepted by the owner on an XPS running Omarchy `dev (573b518be)`; see [acceptan
 
 **Inspired by [Clippy for Omarchy](https://github.com/jankeesvw/omarchy-clippy) and [Clanky](https://github.com/rdoupe/omarchy-clanky).** The layer-shell window, click-through mask, dodge behaviour, cursor helper, and speech-bubble IPC follow those companions. Plugin conventions come from [Build Omarchy Plugins](https://github.com/tcballard/build-omarchy-plugins).
 
+## Agent Desktop v0.2.0 candidate
+
+GrokBot and experimental Hermes support use the [versioned provider API](docs/PROVIDER-API.md). Open **Settings → Providers** to choose GrokBot or Hermes and select an agent. Hermes connection paths can be managed there. Existing Grok settings and IDs remain valid. [Configuration and test checklist](docs/TESTING-v0.2.0.md).
+
+Create a character in **Settings → Appearance → Custom avatar…**: describe it, generate a preview with your Omarchy default agent, then **Apply**. Change the description and generate again to refine the draft. Codex, Claude and Grok defaults are supported using their configured model and selected account; other agents currently retain manual JSON import. Generation is separate from chat and does not change your avatar until you apply it.
+
+Paste Open Bot Avatar v1 JSON under **Settings → Appearance → Custom avatar…** to assign a custom character to the selected agent. Export returns portable geometry JSON; colour, gaze and motion remain controlled by the desktop. Existing shapes remain available. The native renderer uses [Dominik Scholz's MIT-licensed engine](https://github.com/DominikScholz/open-bot-avatar). Sample definitions are in `data/avatars/`.
+
+Product branding is Agent Desktop. The GitHub repository rename to `omarchy-plugin-agent-desktop` is pending; use the existing repository URL for this test. The plugin ID and configuration paths intentionally retain their existing names so updates preserve settings. Dots is out of scope.
+
 ## Install
 
-Intended for Omarchy 4 (Quattro) on Hyprland. A live session on Try Omarchy (`Virtual-1`, 1280×800) is recorded in [acceptance evidence](docs/ACCEPTANCE.json). The command to try, once you have reviewed the code, is:
+Intended for Omarchy 4 (Quattro) on Hyprland. A live session on Try Omarchy (`Virtual-1`, 1280×800) is recorded in [historical acceptance evidence](docs/ACCEPTANCE-2026-10-27.json). The command to try, once you have reviewed the code, is:
 
 ```bash
 omarchy plugin add https://github.com/tcballard/omarchy-plugin-grokbot-desktop --enable
@@ -57,7 +67,7 @@ o.bind("SUPER + ALT + B", "Show or hide Grok Bot", "omarchy-shell io.github.tcba
 
 ## Use
 
-The companion sits in a corner. Clicks outside the mark pass through, and they keep passing through while the bubble is open, so you can work beside a reply. Close the bubble with its minimize button, Esc, or a click on the mark. Drag the mark anywhere on the screen; where you drop it is written back to its own `plugins[]` entry, as margins from the corner chosen on the appearance page. That corner also decides which way the bubble and the menu open first. Hold Super to move it without opening the bubble: the drag starts as soon as you press, and letting go never opens the bubble. Without Super, the drag starts once the pointer has moved a few pixels, and a click opens the bubble. The sliders button in the bubble, Right-click > Appearance & bots, or `settings` crossfades the bubble to its appearance page. The back chevron returns to the chat. The appearance page is laid out like Grok Bot's avatar picker: its fourteen shapes in the chosen colour with a ring around the current one, its eleven colours plus the Omarchy theme accent, and Reset to default, which goes back to the bot's own look.
+The companion sits in a corner. Clicks outside the mark pass through, and they keep passing through while the bubble is open, so you can work beside a reply. Close the bubble with its minimize button, Esc, or a click on the mark. Drag the mark anywhere on the screen. When you let go, that spot is written back to its own `plugins[]` entry as `marginX` and `marginY` from the corner chosen on the appearance page, and `monitor` is the output you dropped it on (`HDMI-A-1`, `DP-1`). The other settings in that entry are left as they were. It stays there when the shell starts again, and it does not follow the pointer between monitors. That corner also decides which way the bubble and the menu open first. Hold Super to move it without opening the bubble: the drag starts as soon as you press, and letting go never opens the bubble. Without Super, the drag starts once the pointer has moved a few pixels, and a click opens the bubble. The sliders button in the bubble, Right-click > Settings, or `settings` opens a wider settings view with a persistent category sidebar. Choose Providers to manage GrokBot/Hermes, Appearance for shapes and colours, or Behaviour for motion and placement. The close button returns to chat; the custom-avatar back button returns to Appearance. The appearance page is laid out like Grok Bot's avatar picker: its fourteen shapes in the chosen colour with a ring around the current one, its eleven colours plus the Omarchy theme accent, and Reset to default, which goes back to the bot's own look.
 
 | Action | Result |
 | --- | --- |
@@ -71,7 +81,7 @@ The companion sits in a corner. Clicks outside the mark pass through, and they k
 | Escape | Steps back: closes the menu, then leaves the appearance page, then closes the bubble |
 | Tab, then Enter or Space | Moves between the bubble's controls and presses the focused one |
 | Switch Bot | Morphs into that Bot's shape and colour when sync is on, and routes the next ask there. Each bot keeps its own conversation, as a scrolling history of up to 40 exchanges, and its unsent draft for the session (never written to disk); a reply to a bot you have switched away from waits in its conversation with a dot on its chip, which shows on the header pill while the row is folded away and on the mark while the bubble is closed. One ask runs at a time. Before a conversation the bots sit in a row under the header; once one starts the row folds away and the header pill (the bot's name and chevron; its role slides out on hover) is the switch button, which unfolds every bot until you pick one |
-| Pointer nearby, dodge on | Fades the closer the pointer gets (down to 28%) and lets clicks through. Rest on the mark and it fades back in over about 0.4s, then takes clicks |
+| Pointer nearby, dodge on | Fades as the pointer approaches (down to 28%). The mark remains clickable and restores immediately on hover; clicks outside the mark/card still pass through |
 | Pointer idle for 2 minutes | The capsule eyes close into lid lines |
 
 Bob (`e0195a7d-f804-4688-9191-e2cf3574a6d1`, teardrop, orange) is the default. Asking Bob sends Bob's id, so a Grok Bot routine named for the Omarchy desktop companion can delegate to the other bots. This plugin only delivers the payload.
@@ -111,7 +121,7 @@ TRANSCRIPT
 
 The composer's right-hand button changes with the field. With an empty field it shows the waveform: it focuses the field, lights the waveform, and runs `omarchy dictation toggle`. Once you type it becomes a send arrow, and while an ask runs it becomes Stop.
 
-Omarchy reads `~/.config/omarchy/defaults/dictation` and toggles whichever backend you picked, Superwhisper or Voxtype. Superwhisper's own toggle is Alt+Space (`superwhisper record`). Voxtype's is `voxtype record toggle`, also bound to Super+Ctrl+X. If `omarchy` is not on `PATH`, the button calls that backend command directly. Both backends share one wake-phrase router.
+Omarchy reads `~/.config/omarchy/defaults/dictation` and toggles whichever backend you picked, Superwhisper or Voxtype. On stable Omarchy, which has no `omarchy dictation`, the button tries the backend named there, then Superwhisper, Voxtype (only while its daemon runs) and [Hex](https://github.com/anomalyco/hex), and uses the first that takes the toggle. Hex pastes into the focused app window, which the companion's card is not, so with Hex the button starts a recording (`hex dictation start`, opening Hex first when it is closed) and the next press finishes it with `hex dictation stop --print`; the transcript comes back on the helper's stdout and goes in at the field's cursor. Finishing with Hex's own shortcut instead pastes into the app behind the card. Superwhisper's own toggle is Alt+Space (`superwhisper record`). Voxtype's is `voxtype record toggle`, also bound to Super+Ctrl+X. If `omarchy` is not on `PATH`, the button calls that backend command directly. Both backends share one wake-phrase router.
 
 Say "Hey Bot", "Hey Bob", "Hey Grok", or "Hey Grok Bot" and the companion asks Bob (`e0195a7d-f804-4688-9191-e2cf3574a6d1`). Say "Hey OmaBot", "Hey Writer", "Hey Inbox Admin", or any other roster short name or full name, and it selects that bot. The wake phrase and a following comma or colon are removed, the bubble opens, and the rest is asked immediately. Submitting "Hey OmaBot check the VM" from the field does the same thing.
 
@@ -128,7 +138,7 @@ timeout_ms = 5000
 
 `bin/grokbot-voice-watch --print-voxtype-hook` prints that block with the installed script path. `bin/grokbot-voice-watch --enable --install-voxtype-hook` appends it only when Voxtype does not already have a post-process command. A wake phrase is sent to the companion and is not typed. Every other transcript is returned unchanged for Voxtype to type, including through wtype. `bin/grokbot-dictation-route --wtype` is the same rule as a wtype wrapper: a wake phrase is routed, other text is typed using `wtype -` with text on stdin.
 
-The router passes dictated text to the control helper on stdin, then directly to Omarchy's private IPC socket. It does not put the transcript in command arguments, environment variables, or temporary files. This requires Omarchy 4 with `ShellIpc` and the shell socket introduced in [Omarchy #13435](https://github.com/omacom/omarchy/pull/13435), plus the session's `OMARCHY_PATH` and private `XDG_RUNTIME_DIR`. After updating the plugin, run `omarchy restart shell` to load its socket registration. If the socket or handler is unavailable, delivery fails with an error and never falls back to command-line text. The filter returns the original transcript on failure; the wtype wrapper types it through stdin. Neither retries a call that may already have reached the shell.
+The router passes dictated text to the control helper on stdin, then directly to Omarchy's private IPC socket. It does not put the transcript in command arguments, environment variables, or temporary files. Private-socket delivery requires Omarchy with `ShellIpc` and the shell socket introduced in [Omarchy #13435](https://github.com/omacom/omarchy/pull/13435), plus the session's `OMARCHY_PATH` and private `XDG_RUNTIME_DIR`. The companion still loads on packaged stable Omarchy that only has `IpcHandler` (toggle and other `omarchy-shell` calls work; private-socket dictation does not). After updating the plugin, run `omarchy restart shell` to load its socket registration. If the socket or handler is unavailable, delivery fails with an error and never falls back to command-line text. The filter returns the original transcript on failure; the wtype wrapper types it through stdin. Neither retries a call that may already have reached the shell.
 
 Superwhisper (`superwhisper.service`, transcripts under `~/.local/share/superwhisper`, `~/.config/superwhisper`, and `~/superwhisper/recordings`) and Voxtype (`voxtype.service`) use the same watcher:
 
@@ -205,11 +215,11 @@ This plugin's entry in Omarchy's `shell.json`, which the companion keeps up to d
 }
 ```
 
-`size` may be `small`, `medium`, `large`, or `custom` with `sizePx` from 48 to 320. `motion` is `calm` (the default: the body holds still and does not blink, as Grok Bot's avatars do at rest, while the face turns toward the pointer: the eyes cross the face and shrink as it turns away, and the outline tilts with it, as Grok Bot moves Bob; while an ask runs it looks around as Bob does while "Working…"), `playful` (breathing, a gentle bob, and blinks), or `hyper` (Playful plus an orbit and hops). `idleMotion: true` is the older switch for Playful. When Omarchy's animations are off (`omarchy toggle animations`, which the shell reads as `Style.reduceMotion`), the companion holds still whatever `motion` says: no breathing, bob, orbit, or hops, and morphs and panel changes happen at once. Shells without `Style.reduceMotion` keep the chosen motion. `anchor` is `br`, `bl`, `tr`, or `tl`, and `marginX` / `marginY` are the insets from that corner. `syncAppearance: false` keeps a custom shape and colour while asks still go to the selected Bot. `recentBots` is written by the companion: the bubble pins the primary bot and the three you used most recently, in roster order, and the rest sit behind the `+N` expander. A small name badge beneath the companion always identifies the selected bot. Long names are shortened to fit.
+`size` may be `small`, `medium`, `large`, or `custom` with `sizePx` from 48 to 320. `motion` is `calm` (the default: the body holds still and does not blink, as Grok Bot's avatars do at rest, while the face turns toward the pointer: the eyes cross the face and shrink as it turns away, and the outline tilts with it, as Grok Bot moves Bob; while an ask runs it looks around as Bob does while "Working…"), `playful` (breathing, a gentle bob, and blinks), or `hyper` (Playful plus an orbit and hops). `idleMotion: true` is the older switch for Playful. When Omarchy's animations are off (`omarchy toggle animations`, which the shell reads as `Style.reduceMotion`), the companion holds still whatever `motion` says: no breathing, bob, orbit, or hops, and morphs and panel changes happen at once. Shells without `Style.reduceMotion` keep the chosen motion. `anchor` is `br`, `bl`, `tr`, or `tl`, and `marginX` / `marginY` are the insets from that corner. `monitor` is the output the companion sits on. Dropping a drag on another output updates it. `syncAppearance: false` keeps a custom shape and colour while asks still go to the selected Bot. `recentBots` is written by the companion: the bubble pins the primary bot and the three you used most recently, in roster order, and the rest sit behind the `+N` expander. A small name badge beneath the companion always identifies the selected bot. Long names are shortened to fit.
 
 ## Roster
 
-Open **Appearance & bots → Sync bots from Grok Bot** to refresh the desktop roster. Keep the Grok Bot app signed in and let its bot list load first. The button reads the active account's last saved roster on this computer, including names, shapes, colours, and short descriptions. It skips groups and removed bots, reports the result, and keeps your current roster if the saved data is missing or unsupported. This refresh uses the app's local cache, not a direct cloud request; changes on another device must reach the app first. Photos are not imported.
+Open **Settings → Providers → GrokBot → Sync bots from Grok Bot** to refresh the desktop roster. Keep the Grok Bot app signed in and let its bot list load first. The button reads the active account's last saved roster on this computer, including names, shapes, colours, and short descriptions. It skips groups and removed bots, reports the result, and keeps your current roster if the saved data is missing or unsupported. This refresh uses the app's local cache, not a direct cloud request; changes on another device must reach the app first. Photos are not imported.
 
 The same refresh is available from the command line:
 

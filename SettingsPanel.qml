@@ -10,6 +10,8 @@ import "qml/shapes.js" as Shapes
 Item {
   id: drawer
   property var app: null
+  property bool embedded: false
+  readonly property bool behaviourOnly: embedded && app.settingsSection === "behaviour"
   implicitHeight: header.height + 14 + body.implicitHeight
 
   readonly property var shapeRows: Shapes.ROWS
@@ -44,7 +46,8 @@ Item {
   Item {
     id: header
     width: parent.width
-    height: 36
+    height: drawer.embedded ? 0 : 36
+    visible: !drawer.embedded
 
     Rectangle {
       id: backButton
@@ -71,7 +74,7 @@ Item {
           ctx.stroke()
         }
       }
-      HoverArea { label: "Back to chat"; onActivated: app.closeSettings() }
+      HoverArea { label: "Back to settings"; onActivated: app.settingsSection = "home" }
     }
 
     Text {
@@ -110,8 +113,8 @@ Item {
         text: app.syncOn ? "Synced · " + app.botLabel() : "Custom"
         color: app.syncOn ? Theme.ok : Theme.textMuted
         font.pixelSize: 11
-        font.weight: Font.DemiBold
         font.family: app.fontFamily
+        font.weight: Font.DemiBold
         textFormat: Text.PlainText
       }
       HoverArea { label: app.syncOn ? "Stop syncing appearance with the bot" : "Sync appearance with the bot"; onActivated: app.setSync(!app.syncOn) }
@@ -121,7 +124,7 @@ Item {
   Flickable {
     id: flick
     anchors.top: header.bottom
-    anchors.topMargin: 14
+    anchors.topMargin: drawer.embedded ? 0 : 14
     anchors.left: parent.left
     anchors.right: parent.right
     anchors.bottom: parent.bottom
@@ -135,48 +138,18 @@ Item {
       width: flick.width
       spacing: 12
 
-      Column {
+      SettingsGroup {
         width: parent.width
-        spacing: 7
-        Rectangle {
-          width: parent.width
-          height: 34
-          radius: 10
-          color: Theme.raised
-          border.width: 1
-          border.color: Theme.edge
-          Text {
-            anchors.centerIn: parent
-            text: app.syncingRoster ? "Syncing…" : "Sync bots from Grok Bot"
-            textFormat: Text.PlainText
-            color: app.syncingRoster ? Theme.textMuted : Theme.text
-            font.family: app.fontFamily
-            font.pixelSize: 12
-            font.weight: Font.DemiBold
-          }
-          HoverArea {
-            enabled: !app.syncingRoster
-            label: "Sync bots from Grok Bot"
-            onActivated: app.syncRoster()
-          }
-        }
-        Text {
-          width: parent.width
-          text: app.syncStatus || "Refresh from the bot list saved by your Grok Bot app."
-          textFormat: Text.PlainText
-          wrapMode: Text.Wrap
-          color: Theme.textMuted
-          font.family: app.fontFamily
-          font.pixelSize: 11
-        }
-      }
-
+        visible: !drawer.behaviourOnly
+        title: "Character & colour"
+        fontFamily: app.fontFamily
       // Shapes as Grok Bot's picker lays them out: rows of four, five, and
       // five, every shape in the chosen colour, and a ring that follows the
       // chosen shape's outline.
       Item {
         id: shapeGrid
-        width: parent.width
+        width: Math.min(parent.width, 380)
+        anchors.horizontalCenter: parent.horizontalCenter
         readonly property real pitch: width / 5
         readonly property real rowPitch: pitch * 0.8
         height: rowPitch * drawer.shapeRows.length
@@ -214,9 +187,9 @@ Item {
                 PathSvg { path: ring.outline }
               }
               ShapePath {
-                strokeColor: Theme.surface
+                strokeColor: Theme.field
                 strokeWidth: 2 * (0.224 - 0.055) * cell.unit
-                fillColor: Theme.surface
+                fillColor: Theme.field
                 joinStyle: ShapePath.RoundJoin
                 PathSvg { path: ring.outline }
               }
@@ -232,7 +205,7 @@ Item {
               morph: 1
               colorName: app.shownColor
               accent: app.accent
-              cutoutHex: Theme.surface
+              cutoutHex: Theme.field
               eyeOpen: 1
               // Pressed, the shape dims to 55%, as in the app.
               opacity: shapeArea.pressed ? 0.55 : 1
@@ -253,7 +226,8 @@ Item {
       // gap, as in Grok Bot.
       Item {
         id: swatchGrid
-        width: parent.width
+        width: Math.min(parent.width, 380)
+        anchors.horizontalCenter: parent.horizontalCenter
         readonly property var names: drawer.accentNames.concat(["omarchy"])
         readonly property real pitch: width / 6
         readonly property real rowPitch: 44
@@ -308,13 +282,35 @@ Item {
         }
       }
 
+        SettingsAction {
+          width: parent.width
+          visible: drawer.embedded
+          fontFamily: app.fontFamily
+          title: "Use agent’s appearance"
+          selected: app.syncOn
+          chevron: false
+          onActivated: app.setSync(!app.syncOn)
+        }
+      }
+
+      SettingsAction {
+        width: parent.width
+        fontFamily: app.fontFamily
+        visible: !drawer.behaviourOnly
+        title: "Custom avatar…"
+        detail: app.avatarFor(app.chosenBotId) ? "An imported character is active" : "Optional · import an Open Bot Avatar character"
+        onActivated: app.settingsSection = "avatar"
+      }
+
       Rectangle {
+        visible: !drawer.behaviourOnly
         width: parent.width
         height: 1
         color: Theme.divider
       }
 
       Item {
+        visible: !drawer.behaviourOnly
         width: parent.width
         height: 24
         Text {
@@ -339,6 +335,11 @@ Item {
         }
       }
 
+      SettingsGroup {
+        width: parent.width
+        visible: !drawer.embedded || drawer.behaviourOnly
+        title: "Motion & placement"
+        fontFamily: app.fontFamily
       Text {
         text: "IDLE MOTION & RIG"
         color: Theme.textFaint
@@ -374,8 +375,8 @@ Item {
               text: modelData.label
               color: active ? Theme.text : Theme.textMuted
               font.pixelSize: 12
+        font.family: app.fontFamily
               font.weight: active ? Font.DemiBold : Font.Normal
-              font.family: app.fontFamily
               textFormat: Text.PlainText
             }
             Text {
@@ -468,8 +469,8 @@ Item {
                 text: drawer.title(modelData)
                 color: active ? Theme.text : Theme.textMuted
                 font.pixelSize: 11
+        font.family: app.fontFamily
                 font.weight: active ? Font.DemiBold : Font.Normal
-                font.family: app.fontFamily
                 textFormat: Text.PlainText
               }
               HoverArea { label: drawer.title(modelData); onActivated: app.setSize(modelData) }
@@ -501,11 +502,11 @@ Item {
             text: "Dodge"
             color: app.dodgeOn ? Theme.text : Theme.textMuted
             font.pixelSize: 11
+        font.family: app.fontFamily
             font.weight: app.dodgeOn ? Font.DemiBold : Font.Normal
-            font.family: app.fontFamily
             textFormat: Text.PlainText
           }
-          HoverArea { label: "Dodge: fade and let clicks through when the pointer comes near"; onActivated: app.setDodge(!app.dodgeOn) }
+          HoverArea { label: "Dodge: fade nearby and restore immediately on hover"; onActivated: app.setDodge(!app.dodgeOn) }
         }
       }
 
@@ -513,13 +514,14 @@ Item {
       Text {
         width: parent.width
         text: app.dodgeOn
-          ? "Dodge is on: as the pointer comes near, " + app.botLabel() + " fades and lets clicks through to the window behind. Rest the pointer on " + app.botLabel() + " to bring it back."
+          ? "Dodge is on: as the pointer comes near, " + app.botLabel() + " fades but still accepts clicks. Move the pointer onto " + app.botLabel() + " to restore it immediately."
           : "Dodge is off: " + app.botLabel() + " stays solid and takes clicks wherever the pointer is."
         color: Theme.textFaint
         font.pixelSize: 11
-        wrapMode: Text.WordWrap
         font.family: app.fontFamily
+        wrapMode: Text.WordWrap
         textFormat: Text.PlainText
+      }
       }
     }
   }

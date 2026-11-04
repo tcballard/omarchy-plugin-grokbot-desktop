@@ -594,6 +594,14 @@ def agent_command(entry, desktop):
     return [resolved, *argv[1:]], name, False, ""
 
 
+def ask_timeout(entry, desktop, fallback):
+    try:
+        value = int(setting(entry, desktop, "askTimeoutSeconds"))
+    except (TypeError, ValueError):
+        return fallback
+    return max(30, min(1800, value))
+
+
 def persona(bot_name):
     name = plain(bot_name, 80) or "Bob"
     return (
@@ -655,7 +663,8 @@ def with_attachments(prompt, attachments):
     return f"{prompt}\n\nThe attached {noun} in the current directory: {names}. Look at them before answering."
 
 
-def run_agent(argv, stdin_text, env, label="agent", cwd=None):
+def run_agent(argv, stdin_text, env, label="agent", cwd=None, timeout=AGENT_TIMEOUT):
+    blocked = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTERM})
     try:
         proc = subprocess.Popen(
             argv,
@@ -665,77 +674,107 @@ def run_agent(argv, stdin_text, env, label="agent", cwd=None):
             env=env,
             cwd=cwd,
             start_new_session=True,
+            preexec_fn=lambda: signal.pthread_sigmask(signal.SIG_SETMASK, blocked),
         )
     except OSError:
+        signal.pthread_sigmask(signal.SIG_SETMASK, blocked)
         print("could not start the agent", file=sys.stderr)
         return 127
-    out_fd = proc.stdout.fileno()
-    err_fd = proc.stderr.fileno()
-    os.set_blocking(out_fd, False)
-    os.set_blocking(err_fd, False)
+    previous = signal.getsignal(signal.SIGTERM)
+    def interrupted(signum, frame):
+        raise InterruptedError("agent transport stopped")
+    signal.signal(signal.SIGTERM, interrupted)
+    def child_exited():
+        return os.waitid(os.P_PID, proc.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is not None
     try:
-        proc.stdin.write(stdin_text.encode("utf-8"))
-        proc.stdin.close()
-    except OSError:
-        pass
-    buckets = {out_fd: bytearray(), err_fd: bytearray()}
-    ceilings = {out_fd: STDOUT_CEILING, err_fd: STDERR_CEILING}
-    open_fds = [out_fd, err_fd]
-    overflow = False
-    deadline = time.monotonic() + AGENT_TIMEOUT
-    while open_fds:
-        if time.monotonic() > deadline:
-            _kill_group(proc.pid)
-            print("agent timed out", file=sys.stderr)
-            return 124
-        readable, _, _ = select.select(open_fds, [], [], 0.2)
-        if not readable and proc.poll() is not None:
-            readable = list(open_fds)
-        for fd in readable:
-            try:
-                chunk = os.read(fd, 4096)
-            except BlockingIOError:
-                continue
-            if chunk == b"":
-                open_fds.remove(fd)
-                continue
-            bucket = buckets[fd]
-            room = ceilings[fd] - len(bucket)
-            if len(chunk) > room:
-                if room > 0:
-                    bucket.extend(chunk[:room])
-                overflow = True
+        signal.pthread_sigmask(signal.SIG_SETMASK, blocked)
+        out_fd = proc.stdout.fileno()
+        err_fd = proc.stderr.fileno()
+        os.set_blocking(out_fd, False)
+        os.set_blocking(err_fd, False)
+        in_fd = proc.stdin.fileno()
+        os.set_blocking(in_fd, False)
+        pending = memoryview(stdin_text.encode("utf-8"))
+        writing = True
+        buckets = {out_fd: bytearray(), err_fd: bytearray()}
+        ceilings = {out_fd: STDOUT_CEILING, err_fd: STDERR_CEILING}
+        open_fds = [out_fd, err_fd]
+        overflow = False
+        deadline = time.monotonic() + timeout
+        while open_fds or writing:
+            if time.monotonic() > deadline:
                 _kill_group(proc.pid)
-                open_fds.clear()
+                print("agent timed out", file=sys.stderr)
+                return 124
+            readable, writable, _ = select.select(open_fds, [in_fd] if writing else [], [], 0.2)
+            if writable:
+                try:
+                    sent = os.write(in_fd, pending[:4096]) if pending else 0
+                    pending = pending[sent:]
+                    if not pending:
+                        proc.stdin.close()
+                        writing = False
+                except BlockingIOError:
+                    pass
+                except OSError:
+                    proc.stdin.close()
+                    writing = False
+            if not readable and child_exited():
+                readable = list(open_fds)
+            for fd in readable:
+                try:
+                    chunk = os.read(fd, 4096)
+                except BlockingIOError:
+                    continue
+                if chunk == b"":
+                    open_fds.remove(fd)
+                    continue
+                bucket = buckets[fd]
+                room = ceilings[fd] - len(bucket)
+                if len(chunk) > room:
+                    if room > 0:
+                        bucket.extend(chunk[:room])
+                    overflow = True
+                    _kill_group(proc.pid)
+                    open_fds.clear()
+                    break
+                bucket.extend(chunk)
+            if not open_fds and not writing:
                 break
-            bucket.extend(chunk)
-        if not open_fds:
-            break
-        if proc.poll() is not None and not readable:
-            break
-    try:
-        code = proc.wait(timeout=2)
-    except subprocess.TimeoutExpired:
+            if child_exited() and not readable:
+                break
+        end = time.monotonic() + 2
+        while not child_exited() and time.monotonic() < end:
+            time.sleep(0.02)
+        # Keep the leader unreaped until group cleanup, retaining its process identity.
         _kill_group(proc.pid)
         code = proc.wait()
-    if overflow:
-        print("agent reply exceeded the output ceiling", file=sys.stderr)
-        return EXIT_OVERFLOW
-    text = bytes(buckets[out_fd]).decode("utf-8", errors="replace").replace("\x00", "").strip()
-    if code == 0 and text:
-        sys.stdout.write(text[:STDOUT_CEILING])
-        if not text.endswith("\n"):
-            sys.stdout.write("\n")
-        return 0
-    # Many agents print a failure such as a sign-in prompt on stdout, so fall
-    # back to that before giving up with only the exit status.
-    detail = plain(bytes(buckets[err_fd]).decode("utf-8", errors="replace"), 300)
-    if not detail:
-        detail = plain(text[-600:], 300)
-    if not detail:
-        detail = f"exited {code} with no output" if code else "returned an empty reply"
-    print(f"{label}: {detail}", file=sys.stderr)
-    return code if code else 1
+        if overflow:
+            print("agent reply exceeded the output ceiling", file=sys.stderr)
+            return EXIT_OVERFLOW
+        text = bytes(buckets[out_fd]).decode("utf-8", errors="replace").replace("\x00", "").strip()
+        if code == 0 and text:
+            sys.stdout.write(text[:STDOUT_CEILING])
+            if not text.endswith("\n"):
+                sys.stdout.write("\n")
+            return 0
+        # Many agents print a failure such as a sign-in prompt on stdout, so fall
+        # back to that before giving up with only the exit status.
+        detail = plain(bytes(buckets[err_fd]).decode("utf-8", errors="replace"), 300)
+        if not detail:
+            detail = plain(text[-600:], 300)
+        if not detail:
+            detail = f"exited {code} with no output" if code else "returned an empty reply"
+        print(f"{label}: {detail}", file=sys.stderr)
+        return code if code else 1
+    except InterruptedError:
+        return 130
+    finally:
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        if proc.returncode is None:
+            _kill_group(proc.pid)
+            proc.wait()
+        signal.signal(signal.SIGTERM, previous)
 
 
 def attachment_dir():
@@ -867,7 +906,7 @@ def main(argv=None):
     # With images, the agent works in their directory so its file tools
     # can open them without reaching outside it.
     cwd = attachment_dir() if attachments else None
-    return run_agent(argv, text, child_env(agent, custom), agent or "agent command", cwd)
+    return run_agent(argv, text, child_env(agent, custom), agent or "agent command", cwd, ask_timeout(entry, desktop, AGENT_TIMEOUT))
 
 
 if __name__ == "__main__":

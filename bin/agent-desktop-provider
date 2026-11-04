@@ -1,0 +1,39 @@
+#!/usr/bin/python3 -I
+import argparse
+import asyncio
+from pathlib import Path
+import sys
+import signal
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from agent_desktop.protocol import Fault, Output, Server, stdio
+
+
+async def main():
+    parser = argparse.ArgumentParser(description="Agent Desktop Adapter Protocol v1 over stdin/stdout")
+    parser.add_argument("--provider", choices=["hermes", "grokbot", "example"], required=True)
+    parser.add_argument("--root", default=str(Path.home() / ".hermes"))
+    parser.add_argument("--agent-dir", default=str(Path.home() / ".hermes/hermes-agent"))
+    args = parser.parse_args()
+    if args.provider == "hermes":
+        from agent_desktop.hermes import Hermes
+        backend = Hermes(args.root, args.agent_dir)
+    elif args.provider == "grokbot":
+        from agent_desktop.grokbot import GrokBot
+        backend = GrokBot()
+    else:
+        from agent_desktop.example import Example
+        backend = Example()
+    asyncio.get_running_loop().add_signal_handler(signal.SIGTERM, asyncio.current_task().cancel)
+    reader, writer = await stdio()
+    await Server(backend, Output(writer)).serve(reader)
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except (Fault, OSError, TimeoutError):
+        print("Adapter connection closed; inspect the upstream session before retrying.", file=sys.stderr)
+        sys.exit(1)
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        pass

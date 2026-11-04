@@ -1,0 +1,74 @@
+#!/usr/bin/python3 -I
+"""Read or update the three Hermes connection paths without touching credentials."""
+import json
+import os
+from pathlib import Path
+import stat
+import sys
+import tempfile
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from agent_desktop.config import configuration
+from agent_desktop.protocol import Fault, decode
+
+
+def main():
+    raw = sys.stdin.buffer.read(16385)
+    if len(raw) > 16384:
+        raise Fault("invalid_request", "Connection settings exceed 16 KiB.")
+    request = decode(raw)
+    config = configuration()
+    providers = config.get('providers', {})
+    if not isinstance(providers, dict) or not isinstance(providers.get('hermes', {}), dict):
+        raise Fault('invalid_config', 'Invalid provider configuration; existing file kept.')
+    current = providers.get('hermes', {})
+    defaults = {'root': str(Path.home()/'.hermes'), 'agentDir': str(Path.home()/'.hermes/hermes-agent'), 'python': '/usr/bin/python3'}
+    if request.get('action') == 'read':
+        print(json.dumps({key: current.get(key, value) for key, value in defaults.items()}))
+        return
+    if request.get('action') != 'save' or set(request) != {'action', 'root', 'agentDir', 'python'}:
+        raise Fault('invalid_request', 'Invalid connection settings.')
+    updated = dict(current)
+    for key in defaults:
+        value = request[key]
+        if not isinstance(value, str) or len(value) > 4096 or '\x00' in value:
+            raise Fault('invalid_request', 'Enter valid absolute paths.')
+        path = Path(value).expanduser()
+        if not path.is_absolute():
+            raise Fault('invalid_request', 'Enter absolute paths or paths beginning with ~/.')
+        if key == 'python' and (not path.is_file() or not os.access(path, os.X_OK)):
+            raise Fault('invalid_request', 'The Python executable is missing or not executable.')
+        if key != 'python' and not path.is_dir():
+            raise Fault('invalid_request', 'The Hermes folder does not exist.')
+        updated[key] = str(path)
+    target = Path.home()/'.config/omarchy/agent-desktop.json'
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists() or target.is_symlink():
+        info = target.lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid():
+            raise Fault('invalid_config', 'Configuration must be a regular file owned by you.')
+    # Detect another writer before replacing; unrelated provider settings survive.
+    original = target.read_bytes() if target.exists() else None
+    if configuration() != config:
+        raise Fault('conflict', 'Configuration changed; reopen connection settings.')
+    config['providers'] = {**providers, 'hermes': updated}
+    encoded = json.dumps(config, indent=2).encode() + b'\n'
+    if len(encoded) > 65536:
+        raise Fault('invalid_config', 'Configuration exceeds 64 KiB; existing file kept.')
+    fd, temporary = tempfile.mkstemp(prefix='.agent-desktop-', dir=target.parent)
+    try:
+        with os.fdopen(fd, 'wb') as handle:
+            handle.write(encoded)
+        if (target.read_bytes() if target.exists() else None) != original:
+            raise Fault('conflict', 'Configuration changed; reopen connection settings.')
+        os.replace(temporary, target)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+    print(json.dumps({key: updated[key] for key in defaults}))
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (Fault, OSError, ValueError) as exc:
+        print(str(exc)[:400], file=sys.stderr)
+        sys.exit(1)
