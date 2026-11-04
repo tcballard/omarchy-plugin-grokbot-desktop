@@ -37,7 +37,8 @@ def prompt_line(params):
     choices = params.get('choices') if isinstance(params.get('choices'), list) else []
     return {'ev': 'prompt', 'promptId': text(params.get('promptId'), 128),
             'kind': 'clarify' if params.get('kind') == 'clarify' else 'approval',
-            'text': text(params.get('text') or '', 8000), 'command': text(params.get('command') or '', 4000),
+            'text': text(params.get('text') or '', 8000, empty=True),
+            'command': text(params.get('command') or '', 4000, empty=True),
             'choices': [text(c, 200) for c in choices[:16] if isinstance(c, str) and c],
             'multiSelect': params.get('multiSelect') is True, 'answerable': params.get('answerable') is True}
 
@@ -152,7 +153,7 @@ async def main():
                 error = result.get('error', {})
                 raise Fault(str(error.get('code', 'failed')), str(error.get('message', 'The request stopped.'))[:400])
             if stream:
-                line('final', text(result.get('text'), 65536))
+                line('final', text(result.get('text') or '', 65536, empty=True))
             else:
                 sys.stdout.write(text(result.get('text'), 65536) + '\n')
             return 0

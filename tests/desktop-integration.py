@@ -58,6 +58,15 @@ class DesktopIntegration(unittest.TestCase):
         out,err=proc.communicate(timeout=20)
         self.assertEqual(proc.returncode,0,err)
         self.assertEqual(json.loads(out.splitlines()[-1]),{'ev':'final','text':'Example: Open stdin'})
+    def test_a_question_without_a_command_is_forwarded(self):
+        # A clarifying question has no command; an empty field must not abort the ask.
+        loader=importlib.machinery.SourceFileLoader('agent_desktop_ask',str(ROOT/'bin'/'agent-desktop-ask'))
+        spec=importlib.util.spec_from_loader('agent_desktop_ask',loader)
+        ask=importlib.util.module_from_spec(spec); loader.exec_module(ask)
+        line=ask.prompt_line({'promptId':'q1','kind':'clarify','text':'Red or blue?','command':'','choices':['red','blue'],'answerable':True})
+        self.assertEqual(line,{'ev':'prompt','promptId':'q1','kind':'clarify','text':'Red or blue?','command':'',
+                               'choices':['red','blue'],'multiSelect':False,'answerable':True})
+        self.assertEqual(ask.prompt_line({'promptId':'a1','text':'','command':''})['text'],'')
     def test_broken_hermes_does_not_remove_working_example(self):
         (self.config/'agent-desktop.json').write_text(json.dumps({'providers':{'example':{},'hermes':{'root':str(self.home/'missing')}}}))
         result=self.run_helper('agent-desktop-roster')
