@@ -1,0 +1,165 @@
+#!/usr/bin/python3 -I
+"""Call OpenBot's Local scripts API through a configured shell hop.
+
+Subcommands:
+  agents                           print the OpenBot agent roster JSON
+  send <agentId>                   read message text from stdin, print the receipt
+  delivery <agentId> <deliveryId>  print the delivery JSON
+
+OpenBot writes the automation URL, bearer token and Authorization header on the
+host that runs it. This helper reads the token only on the far side, through
+curl's ``-H @headers`` form, and never receives it, prints it or puts it in argv.
+"""
+import argparse
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import subprocess
+import sys
+import uuid
+
+DEFAULT_HOP = ("ssh -o BatchMode=yes -o ConnectTimeout=8 ovhlab "
+               "pct exec 149 -- docker exec -i openbot bash -lc")
+CONFIG = Path.home()/".config/omarchy/agent-desktop.json"
+SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+MAX_TEXT = 4000
+MAX_OUTPUT = 64 * 1024
+MAX_ERROR = 4096
+HTTP_TIMEOUT = 30
+CLIENT_ID = "agent-desktop-"
+
+REMOTE = r'''set -eu
+directory=${OPENBOT_AUTOMATION_DIR:-/data/.config/OpenBot/automation}
+[ -r "$directory/url" ] || { printf '%s\n' 'OpenBot automation URL is unavailable.' >&2; exit 1; }
+[ -r "$directory/headers" ] || { printf '%s\n' 'OpenBot automation headers are unavailable.' >&2; exit 1; }
+url=
+IFS= read -r url < "$directory/url" || true
+url=${url%$'\r'}
+url=${url%/}
+case "$url" in
+  http://*|https://*) ;;
+  *) printf '%s\n' 'OpenBot automation URL is invalid.' >&2; exit 1 ;;
+esac
+body=$(mktemp)
+trap 'rm -f "$body"' EXIT HUP INT TERM
+status=$(curl --silent --connect-timeout 8 --max-time __MAX__ \
+  --request __METHOD__ \
+  -H @"$directory/headers" \
+__EXTRA__  --output "$body" --write-out '%{http_code}' "$url__PATH__" 2>/dev/null) || {
+  printf '%s\n' 'OpenBot host is unreachable.' >&2
+  exit 1
+}
+case "$status" in
+  2*) cat "$body" ;;
+  *) printf 'OpenBot request failed (HTTP %s).\n' "$status" >&2; exit 1 ;;
+esac
+'''
+
+
+def setting():
+    try:
+        raw = CONFIG.read_bytes()
+        if len(raw) > 65536:
+            return {}
+        value = json.loads(raw)
+        providers = value.get("providers", {}) if isinstance(value, dict) else {}
+        entry = providers.get("openbot", {}) if isinstance(providers, dict) else {}
+        return entry if isinstance(entry, dict) else {}
+    except (OSError, ValueError, UnicodeError):
+        return {}
+
+
+def hop_command():
+    hop = os.environ.get("OPENBOT_LOCAL_SCRIPTS_HOP") or setting().get("hop") or DEFAULT_HOP
+    if not isinstance(hop, str) or not hop or "\x00" in hop or len(hop) > 4096:
+        raise ValueError("The OpenBot hop command is invalid.")
+    if any(not part for part in shlex.split(hop)):
+        raise ValueError("The OpenBot hop command is invalid.")
+    return shlex.split(hop)
+
+
+def remote_script(method, path, extra="", timeout=HTTP_TIMEOUT):
+    script = REMOTE
+    for key, value in (("__METHOD__", method), ("__PATH__", path), ("__EXTRA__", extra),
+                       ("__MAX__", str(timeout))):
+        script = script.replace(key, value)
+    return script
+
+
+def run(method, path, data=None, extra="", timeout=HTTP_TIMEOUT):
+    command = hop_command() + [remote_script(method, path, extra, timeout)]
+    try:
+        process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE)
+    except OSError:
+        print("Could not start the OpenBot hop command.", file=sys.stderr)
+        return 1
+    try:
+        out, err = process.communicate(data, timeout=timeout + 15)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.communicate()
+        print("OpenBot did not answer in time.", file=sys.stderr)
+        return 1
+    if len(out) > MAX_OUTPUT or len(err) > MAX_ERROR:
+        print("OpenBot transport output exceeded its limit.", file=sys.stderr)
+        return 1
+    if process.returncode != 0:
+        detail = err.decode("utf-8", "replace").strip().splitlines()
+        print((detail[0] if detail else "OpenBot transport failed.")[:240], file=sys.stderr)
+        return 1
+    sys.stdout.buffer.write(out)
+    if out and not out.endswith(b"\n"):
+        sys.stdout.buffer.write(b"\n")
+    return 0
+
+
+def agent_id(value):
+    if not isinstance(value, str) or not SAFE_ID.fullmatch(value):
+        raise ValueError("Invalid OpenBot agent ID.")
+    return value
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("command", choices=["agents", "send", "delivery"])
+    parser.add_argument("agent", nargs="?")
+    parser.add_argument("delivery", nargs="?")
+    args = parser.parse_args()
+    try:
+        if args.command == "agents":
+            if args.agent is not None or args.delivery is not None:
+                parser.error("agents takes no arguments")
+            return run("GET", "/v1/agents")
+        agent = agent_id(args.agent)
+        if args.command == "delivery":
+            delivery = agent_id(args.delivery)
+            return run("GET", f"/v1/agents/{agent}/deliveries/{delivery}")
+        if args.delivery is not None:
+            parser.error("send takes only an agent ID")
+        raw = sys.stdin.buffer.read(MAX_TEXT * 4 + 1)
+        if len(raw) > MAX_TEXT * 4:
+            print("The OpenBot message is too large.", file=sys.stderr)
+            return 1
+        try:
+            prompt = raw.decode("utf-8")
+        except UnicodeError:
+            print("The OpenBot message is not valid UTF-8.", file=sys.stderr)
+            return 1
+        if not prompt.strip() or "\x00" in prompt or len(prompt) > MAX_TEXT:
+            print("The OpenBot message must be 1-4000 characters.", file=sys.stderr)
+            return 1
+        body = json.dumps({"text": prompt, "clientMessageId": CLIENT_ID + uuid.uuid4().hex},
+                          ensure_ascii=False).encode()
+        return run("POST", f"/v1/agents/{agent}/messages", body,
+                   "-H 'Content-Type: application/json' \\\n  --data-binary @- \\\n")
+    except ValueError as exc:
+        print(str(exc)[:240], file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

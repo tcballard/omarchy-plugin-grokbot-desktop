@@ -16,6 +16,7 @@ from agent_desktop.protocol import Fault, MAX_FRAME, Server, Output, decode, enc
 from agent_desktop.example import Example
 from agent_desktop.hermes import Hermes
 from agent_desktop.hermes_gateway import BotState, history_items, history_page
+from agent_desktop.openbot import OpenBot
 
 
 class Capture:
@@ -248,6 +249,76 @@ class HermesTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(history_page(items, 'missing'), ([], False))
         self.link.state.handle(dict(session_id='someone-else', type='approval.request', payload={'prompt_id': 'p'}))
         self.assertFalse(self.events)
+
+
+class OpenBotTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.adapter = OpenBot(poll_interval=0)
+        self.adapter.configured = True
+        self.events = []
+        self.adapter.emit = lambda name, params: self.events.append((name, params))
+
+    async def asyncTearDown(self):
+        await self.adapter.close()
+
+    async def test_roster_uses_local_scripts_and_stable_blob_appearance(self):
+        self.adapter._run = AsyncMock(return_value=json.dumps([
+            {'id': 'agent-1', 'name': 'Grok Bridge', 'routines': []},
+            {'id': 'agent-2', 'name': 'Boss', 'routines': []},
+        ]).encode())
+        reply = await self.adapter.call('agents.list', {})
+        self.assertTrue(reply['complete'])
+        self.assertEqual([row['id'] for row in reply['agents']], ['agent-1', 'agent-2'])
+        for row in reply['agents']:
+            self.assertEqual(row['availability'], 'ready')
+            self.assertEqual(row['avatarShape'], 'blob')
+            self.assertIn(row['avatarColor'], ('black', 'brown', 'red', 'orange', 'yellow',
+                                               'green', 'cyan', 'blue', 'violet', 'magenta', 'gray'))
+        again = await self.adapter.call('agents.list', {})
+        self.assertEqual([row['avatarColor'] for row in reply['agents']],
+                         [row['avatarColor'] for row in again['agents']])
+
+    async def test_send_polls_progress_and_final_answer(self):
+        self.adapter._run = AsyncMock(side_effect=[
+            json.dumps({'messageId': 'm-1', 'deliveries': [{'id': 'delivery-1'}]}).encode(),
+            json.dumps({'id': 'delivery-1', 'status': 'queued', 'answer': None}).encode(),
+            json.dumps({'id': 'delivery-1', 'status': 'completed', 'answer': 'It passes.'}).encode(),
+        ])
+        reply = await self.adapter.call('message.send', {'agentId': 'agent-1', 'requestId': 'turn-1',
+                                                         'text': 'Run the tests'})
+        self.assertTrue(reply['accepted'])
+        self.assertEqual(reply['deliveryId'], 'delivery-1')
+        for _ in range(50):
+            await asyncio.sleep(0)
+            if any(name == 'message.finished' for name, _ in self.events):
+                break
+        progress = [params for name, params in self.events if name == 'message.progress']
+        finished = [params for name, params in self.events if name == 'message.finished']
+        self.assertEqual(progress[0]['text'], 'Queued in OpenBot')
+        self.assertEqual(len(finished), 1)
+        self.assertEqual(finished[0]['status'], 'completed')
+        self.assertEqual(finished[0]['text'], 'It passes.')
+        self.assertFalse(self.adapter.active)
+
+    async def test_cancel_is_honest_and_does_not_claim_stop(self):
+        self.adapter._run = AsyncMock(return_value=json.dumps(
+            {'messageId': 'm-1', 'deliveries': [{'id': 'delivery-1'}]}).encode())
+        await self.adapter.call('message.send', {'agentId': 'agent-1', 'requestId': 'turn-1',
+                                                 'text': 'Run the tests'})
+        reply = await self.adapter.call('request.cancel', {'requestId': 'turn-1'})
+        self.assertEqual(reply['status'], 'unsupported')
+        self.assertTrue(reply['remoteMayContinue'])
+
+    async def test_send_failure_is_delivery_unknown_and_not_replayed(self):
+        self.adapter._run = AsyncMock(side_effect=Fault('delivery_unknown', 'OpenBot host is unreachable.'))
+        params = {'agentId': 'agent-1', 'requestId': 'turn-1', 'text': 'Run the tests'}
+        with self.assertRaises(Fault) as caught:
+            await self.adapter.call('message.send', params)
+        self.assertEqual(caught.exception.code, 'delivery_unknown')
+        self.assertFalse(self.adapter.active)
+        with self.assertRaises(Fault) as caught:
+            await self.adapter.call('message.send', params)
+        self.assertEqual(caught.exception.code, 'duplicate_id')
 
 
 if __name__ == '__main__':

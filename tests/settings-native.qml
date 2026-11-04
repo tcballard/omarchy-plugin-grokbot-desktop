@@ -12,7 +12,7 @@ Rectangle {
   property string cardPage: "appearance"
   property string settingsProvider: "grokbot"
   property string fontFamily: "Sans Serif"
-  property var bots: [{id:"bob",name:"Bob the Bot",provider:"grokbot"}, {id:"hermes:default",name:"Personal assistant",provider:"hermes"}]
+  property var bots: [{id:"bob",name:"Bob the Bot",provider:"grokbot"}, {id:"hermes:default",name:"Personal assistant",provider:"hermes"}, {id:"openbot:grok",name:"Grok Bridge",provider:"openbot"}]
   property string chosenBotId: "bob"
   property string shownColor: "orange"
   property string canonicalShape: "teardrop"

@@ -655,7 +655,7 @@ Item {
       out.push({
         id: String(item.id),
         agentId: String(item.agentId || item.id),
-        provider: item.provider === "hermes" || item.provider === "example" ? item.provider : "grokbot",
+        provider: item.provider === "hermes" || item.provider === "example" || item.provider === "openbot" ? item.provider : "grokbot",
         name: String(item.name),
         shortName: String(item.shortName || ""),
         description: String(item.description || ""),
@@ -723,7 +723,7 @@ Item {
   // bot, then the first, as Grok Bot itself falls back.
   function settleChosenBot() {
     if (root.findBot(root.chosenBotId)) return
-    if (/^(hermes|example):/.test(root.chosenBotId)) return
+    if (/^(hermes|example|openbot):/.test(root.chosenBotId)) return
     var primary = root.primaryBot()
     root.chosenBotId = primary ? primary.id : root.defaultBotId
   }
@@ -744,7 +744,7 @@ Item {
 
   function currentBot() {
     var found = root.findBot(root.chosenBotId)
-    if (!found && /^(hermes|example):/.test(root.chosenBotId)) {
+    if (!found && /^(hermes|example|openbot):/.test(root.chosenBotId)) {
       return { id: root.chosenBotId, provider: root.chosenBotId.split(":")[0],
         name: "Unavailable agent", shortName: "Unavailable agent", description: "Refresh providers to reconnect" }
     }

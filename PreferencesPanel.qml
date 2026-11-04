@@ -134,10 +134,10 @@ Item {
         Row {
           width: parent.width; spacing: 8
           Repeater {
-            model: [{id:"grokbot", name:"GrokBot"}, {id:"hermes", name:"Hermes"}]
+            model: [{id:"grokbot", name:"GrokBot"}, {id:"hermes", name:"Hermes"}, {id:"openbot", name:"OpenBot"}]
             delegate: SettingsAction {
               required property var modelData
-              width: (parent.width - 8) / 2
+              width: (parent.width - 16) / 3
               fontFamily: app.fontFamily
               title: modelData.name
               selected: app.settingsProvider === modelData.id
@@ -148,7 +148,7 @@ Item {
         }
         Text {
           width: parent.width
-          text: app.settingsProvider === "hermes" ? "Experimental: live Hermes validation is pending. Choose a profile and keep Bot Chat open in Hermes to receive replies." : "Choose a bot from your Grok Bot app. Your existing reply connection is kept."
+          text: app.settingsProvider === "hermes" ? "Experimental: live Hermes validation is pending. Choose a profile and keep Bot Chat open in Hermes to receive replies." : app.settingsProvider === "openbot" ? "Experimental: OpenBot Local scripts adapter. Only agents with Local scripts enabled appear. Configure the hop in agent-desktop.json, keep OpenBot running, then refresh." : "Choose a bot from your Grok Bot app. Your existing reply connection is kept."
           font.family: app.fontFamily; font.pixelSize: 12
           textFormat: Text.PlainText; color: Theme.textMuted
           wrapMode: Text.Wrap
@@ -167,14 +167,14 @@ Item {
         Text {
           width: parent.width
           visible: !app.bots.some(function(bot) { return bot.provider === app.settingsProvider })
-          text: app.discoveringProviders ? "Looking for profiles…" : (app.settingsProvider === "hermes" ? "No profiles found. Check your Hermes connection below, then refresh." : "No bots found. Open Grok Bot, let its bot list load, then sync.")
+          text: app.discoveringProviders ? "Looking for agents…" : (app.settingsProvider === "hermes" ? "No profiles found. Check your Hermes connection below, then refresh." : app.settingsProvider === "openbot" ? "No agents found. Turn on Local scripts for an agent in OpenBot, then refresh." : "No bots found. Open Grok Bot, let its bot list load, then sync.")
           font.family: app.fontFamily; font.pixelSize: 12
           textFormat: Text.PlainText; color: Theme.textMuted
           wrapMode: Text.Wrap
         }
         SettingsAction {
           width: parent.width; fontFamily: app.fontFamily; chevron: false
-          title: app.settingsProvider === "grokbot" ? (app.syncingRoster ? "Syncing…" : "Sync bots from Grok Bot") : (app.discoveringProviders ? "Refreshing…" : "Refresh Hermes profiles")
+          title: app.settingsProvider === "grokbot" ? (app.syncingRoster ? "Syncing…" : "Sync bots from Grok Bot") : (app.discoveringProviders ? "Refreshing…" : app.settingsProvider === "openbot" ? "Refresh OpenBot agents" : "Refresh Hermes profiles")
           enabled: !app.syncingRoster && !app.discoveringProviders
           onActivated: app.settingsProvider === "grokbot" ? app.syncRoster() : app.refreshProviders()
         }

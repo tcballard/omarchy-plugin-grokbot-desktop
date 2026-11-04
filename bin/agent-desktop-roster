@@ -2,6 +2,7 @@
 """Discover configured providers without sending prompts or changing credentials."""
 import asyncio
 import json
+import os
 from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -14,8 +15,10 @@ async def main():
     if not isinstance(configured, dict):
         raise Fault('invalid_config', 'providers must be an object.')
     bots, errors = [], []
-    for provider in ('hermes', 'example'):
-        if provider not in configured and not (provider == 'hermes' and (Path.home()/'.hermes/config.yaml').is_file()):
+    for provider in ('hermes', 'example', 'openbot'):
+        if (provider not in configured
+                and not (provider == 'hermes' and (Path.home()/'.hermes/config.yaml').is_file())
+                and not (provider == 'openbot' and os.environ.get('OPENBOT_LOCAL_SCRIPTS_HOP'))):
             continue
         client = client_for(provider)
         try:
@@ -30,8 +33,9 @@ async def main():
                     raise Fault('invalid_response', 'Invalid provider roster.')
                 for row in rows:
                     native = identifier(row.get('id'))
+                    label = 'OpenBot' if provider == 'openbot' else provider.title()
                     bots.append({**row, 'id': provider+':'+native, 'agentId': native, 'provider': provider,
-                                 'description': provider.title()})
+                                 'description': label})
         except (Fault, OSError, ValueError, TimeoutError) as exc:
             errors.append(provider+': '+str(exc)[:240])
         finally:

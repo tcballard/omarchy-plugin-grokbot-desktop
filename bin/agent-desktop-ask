@@ -106,7 +106,7 @@ async def streamed(client, params, reader, on_event, out):
 
 async def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--provider', choices=['grokbot', 'hermes', 'example'], default='grokbot')
+    parser.add_argument('--provider', choices=['grokbot', 'hermes', 'example', 'openbot'], default='grokbot')
     args = parser.parse_args()
     loop = asyncio.get_running_loop()
     reader = asyncio.StreamReader(limit=MAX_FRAME + 1)
