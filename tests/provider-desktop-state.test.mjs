@@ -116,6 +116,13 @@ test('approval commands containing both fence styles remain one literal code blo
   assert.doesNotMatch(html, /<b>literal/)
 })
 
+test('approval commands retain their full text even when the description is identical', () => {
+  const { root } = promptHarness()
+  const command = 'echo ' + 'x'.repeat(1500) + '; echo tail'
+  root.showPrompt({ ...approval, command, text: command }, true)
+  assert.ok(root.bubbleBody.includes('```\n' + command + '\n```'))
+})
+
 test('failed history requests can retry without losing an older-page cursor', () => {
   let runs = 0
   const root = harness(['finishHistory', 'maybeLoadHistory', 'setOlder'], {

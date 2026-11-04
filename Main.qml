@@ -2182,10 +2182,10 @@ Item {
     if (!ev.answerable) {
       text = (ev.kind === "approval" ? "Needs your approval: " : "") + (text || "a request") + "\n\nOpen Hermes to review and answer this one."
     } else if (ev.kind === "approval") {
-      var command = root.cleanText(ev.command, 1200)
+      var command = root.cleanText(ev.command, 4000)
       var fence = "```"
       while (command.indexOf(fence) >= 0) fence += "`"
-      text = "Needs your approval: " + (text || "run a command") + (command !== "" && command !== text ? "\n\n" + fence + "\n" + command + "\n" + fence : "")
+      text = "Needs your approval: " + (text && text !== command ? text : "run a command") + (command !== "" ? "\n\n" + fence + "\n" + command + "\n" + fence : "")
       for (i = 0; i < choices.length; i++) {
         var choice = String(choices[i])
         links.push({ label: root.approvalLabels[choice] || root.plainLine(choice, 24), action: "respond", bot: bot, promptId: promptId, value: choice })
