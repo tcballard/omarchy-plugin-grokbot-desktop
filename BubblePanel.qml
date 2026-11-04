@@ -122,6 +122,19 @@ Rectangle {
 
   function ms(value) { return app && app.reduceMotion ? 0 : value }
 
+  // Eases the thread to its latest message (the "Scroll down" chip).
+  function scrollToEnd() {
+    var end = Math.max(0, threadFlick.contentHeight - threadFlick.height)
+    scrollAnim.stop()
+    threadFlick.cancelFlick()
+    if (bubble.ms(1) === 0 || Math.abs(end - threadFlick.contentY) < 1) {
+      threadFlick.contentY = end
+    } else {
+      scrollAnim.from = threadFlick.contentY
+      scrollAnim.to = end
+      scrollAnim.start()
+    }
+  }
   function focusPrompt() {
     promptField.forceActiveFocus()
     promptField.selectAll()
@@ -702,6 +715,87 @@ Rectangle {
           gradient: Gradient {
             GradientStop { position: 0; color: Theme.surfaceClear }
             GradientStop { position: 1; color: Theme.surface }
+          }
+        }
+
+        // "Scroll down": floats over the bottom of the thread while the latest message is out of
+        // view. It rises in with a small pop, scrolls smoothly to the end when clicked, and sinks
+        // away again once the end is reached, however you got there.
+        Item {
+          id: downChip
+          readonly property bool shown: threadFlick.contentHeight > threadFlick.height + 4
+            && threadFlick.contentY + threadFlick.height < threadFlick.contentHeight - 24
+          property real t: shown ? 1 : 0
+          Behavior on t { NumberAnimation { duration: bubble.ms(downChip.shown ? 360 : 180); easing.type: downChip.shown ? Easing.OutBack : Easing.InCubic; easing.overshoot: 1.6 } }
+          anchors.horizontalCenter: parent.horizontalCenter
+          anchors.bottom: parent.bottom
+          anchors.bottomMargin: 8 + 10 * (1 - t)
+          width: downPill.width
+          height: downPill.height
+          visible: t > 0.01
+          opacity: Math.max(0, Math.min(1, t))
+          scale: 0.85 + 0.15 * t
+          onShownChanged: if (shown) downNudge.restart()
+
+          Rectangle {
+            id: downPill
+            width: downContent.implicitWidth + 24
+            height: 28
+            radius: 14
+            color: Theme.raised
+            border.width: 1
+            border.color: Theme.edgeStrong
+            Row {
+              id: downContent
+              anchors.centerIn: parent
+              spacing: 6
+              Canvas {
+                id: downArrow
+                width: 10
+                height: 12
+                anchors.verticalCenter: parent.verticalCenter
+                property real drop: 0
+                transform: Translate { y: downArrow.drop }
+                onPaint: {
+                  var ctx = getContext("2d")
+                  ctx.reset()
+                  ctx.strokeStyle = Theme.text
+                  ctx.lineWidth = 1.5
+                  ctx.lineCap = "round"
+                  ctx.lineJoin = "round"
+                  ctx.beginPath()
+                  ctx.moveTo(width / 2, 1.5)
+                  ctx.lineTo(width / 2, height - 1.5)
+                  ctx.moveTo(1.5, height - width / 2)
+                  ctx.lineTo(width / 2, height - 1.5)
+                  ctx.lineTo(width - 1.5, height - width / 2)
+                  ctx.stroke()
+                }
+              }
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Scroll down"
+                color: Theme.text
+                font.pixelSize: 12
+                font.family: app ? app.fontFamily : ""
+                textFormat: Text.PlainText
+              }
+            }
+            HoverArea {
+              label: "Scroll down"
+              onActivated: bubble.scrollToEnd()
+            }
+          }
+
+          // The arrow dips twice once the chip has risen in.
+          SequentialAnimation {
+            id: downNudge
+            PauseAnimation { duration: bubble.ms(320) }
+            SequentialAnimation {
+              loops: 2
+              NumberAnimation { target: downArrow; property: "drop"; to: 3; duration: bubble.ms(170); easing.type: Easing.OutQuad }
+              NumberAnimation { target: downArrow; property: "drop"; to: 0; duration: bubble.ms(230); easing.type: Easing.OutBounce }
+            }
           }
         }
       }
