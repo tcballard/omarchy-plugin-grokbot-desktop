@@ -9,10 +9,10 @@ Grok Bot Desktop Companion is becoming **Agent Desktop**. One companion, a share
 
 **Hermes is experimental.** The adapter has automated coverage, but has not been tested with a live Hermes setup. The desktop shows completed replies; streaming, history and approval controls are not yet exposed in Settings or chat. Approval requests send you back to Hermes and are never automatically approved. Hermes attachments are unsupported.
 
-The owner has tested the Grok side and confirmed the avatar-generation speed issue is fixed with Codex. Automated coverage includes 121 Node tests, 50 Python tests, native Qt avatar rendering and Settings interactions. Claude/Grok avatar generation, a live Hermes gateway and the full fresh-install/update/removal walkthrough still need live validation. See the [v0.2.0 acceptance record](https://github.com/tcballard/omarchy-plugin-grokbot-desktop/blob/feature/multi-provider-companion/docs/ACCEPTANCE-v0.2.0.json) for the exact scope.
+The owner has tested the Grok side and confirmed the avatar-generation speed issue is fixed with Codex. Automated coverage includes 121 Node tests, 50 Python tests, native Qt avatar rendering and Settings interactions. Claude/Grok avatar generation, a live Hermes gateway and the full fresh-install/update/removal walkthrough still need live validation. See the [v0.2.0 acceptance record](https://github.com/tcballard/omarchy-plugin-grokbot-desktop/blob/v0.2.0/docs/ACCEPTANCE-v0.2.0.json) for the exact scope.
 
 The product name changes; the existing plugin ID and configuration paths stay in place so upgrades preserve your setup. The GitHub repository rename to `omarchy-plugin-agent-desktop` is still pending. Dots and accessory costumes are not included in v0.2.0. Restarting the shell clears in-memory conversations and drafts.
 
 Thanks to **Yani3rt** for the Hermes integration and desktop fixes, and **Dominik Scholz** for [Open Bot Avatar](https://github.com/DominikScholz/open-bot-avatar). The companion continues to build on ideas from [Clippy for Omarchy](https://github.com/jankeesvw/omarchy-clippy) and [Clanky](https://github.com/rdoupe/omarchy-clanky).
 
-**Draft for review — not tagged or published.** [Candidate setup and testing](https://github.com/tcballard/omarchy-plugin-grokbot-desktop/blob/feature/multi-provider-companion/docs/TESTING-v0.2.0.md).
+[Candidate setup and testing](https://github.com/tcballard/omarchy-plugin-grokbot-desktop/blob/v0.2.0/docs/TESTING-v0.2.0.md).
