@@ -2027,3 +2027,16 @@ test('both IPC bridges expose the same methods with the same bodies', () => {
   const methods = (src) => src.slice(src.indexOf('target:')).replace(/^\s*\/\/.*$/gm, '').replace(/^[ \t]+/gm, '').replace(/[\s}]+$/, '')
   assert.equal(methods(ipcBridges[0]), methods(ipcBridges[1]))
 })
+
+test('a provider ask streams into the bubble, with what the agent is doing beneath it', () => {
+  const panel = read('BubblePanel.qml')
+  // Providers stream; Grok keeps its plain reply.
+  assert.match(main, /stream: !!\(bot && bot\.provider && bot\.provider !== "grokbot"\)/)
+  assert.match(main, /stdout: SplitParser \{ onRead: function \(line\) \{ root\.askLine\(line\) \} \}/)
+  const line = qmlFunction(main, 'askLine')
+  assert.match(line, /if \(ev\.ev === "delta" && value !== ""\) \{\n\s*root\.progressText = ""\n\s*root\.deliver\(root\.askBotId, value\)/)
+  assert.match(line, /root\.progressText = root\.plainLine\(ev\.text, 80\)/)
+  assert.match(main, /var out = root\.cleanText\(root\.askStreaming \? root\.askFinal : root\.askLines\.join\("\\n"\), 4000\)/)
+  assert.match(qmlFunction(main, 'cancelAsk'), /root\.progressText = ""/)
+  assert.match(panel, /status: app && app\.askingHere \? app\.progressText : ""/)
+})

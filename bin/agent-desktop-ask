@@ -1,5 +1,16 @@
 #!/usr/bin/python3 -I
-"""Compatibility boundary between the desktop's one-shot ask and Provider API v1."""
+"""Compatibility boundary between the desktop's one-shot ask and Provider API v1.
+
+By default stdout carries only the completed reply. When the request asks for
+"stream": true, stdout is JSON Lines instead, one object per line, for the shell to
+show the reply as it is written:
+
+  {"ev": "delta", "text": <the reply so far>}
+  {"ev": "progress", "text": <what the agent is doing>}
+  {"ev": "final", "text": <the completed reply>}
+
+Exit codes and stderr are the same either way."""
+import json
 import argparse
 import asyncio
 from pathlib import Path
@@ -21,6 +32,11 @@ async def main():
     seconds = timeout_seconds()
     params['timeoutSeconds'] = seconds
     provider = payload.get('provider', args.provider)
+    stream = payload.get('stream') is True
+
+    def line(kind, value):
+        sys.stdout.write(json.dumps({'ev': kind, 'text': value}, ensure_ascii=False) + '\n')
+        sys.stdout.flush()
     client = client_for(provider)
     task = asyncio.current_task()
     asyncio.get_running_loop().add_signal_handler(signal.SIGTERM, task.cancel)
@@ -30,6 +46,13 @@ async def main():
             def on_event(frame):
                 if frame.get('event') == 'prompt.required':
                     raise Fault('approval_required', 'Hermes needs input or approval. Open Hermes to review it; this desktop request has stopped.')
+                if not stream:
+                    return
+                value = (frame.get('params') or {}).get('text')
+                if frame.get('event') == 'message.delta' and isinstance(value, str) and value:
+                    line('delta', text(value, 65536))
+                elif frame.get('event') == 'message.progress' and isinstance(value, str) and value.strip():
+                    line('progress', text(value, 200))
             event, result = await client.exchange(params, deferred=True, on_event=on_event)
             if event == 'message.deferred':
                 if result.get('deliveryId') != params['requestId']:
@@ -38,7 +61,10 @@ async def main():
             if result.get('status') != 'completed':
                 error = result.get('error', {})
                 raise Fault(str(error.get('code', 'failed')), str(error.get('message', 'The request stopped.'))[:400])
-            sys.stdout.write(text(result.get('text'), 65536) + '\n')
+            if stream:
+                line('final', text(result.get('text'), 65536))
+            else:
+                sys.stdout.write(text(result.get('text'), 65536) + '\n')
             return 0
     finally:
         await client.close()

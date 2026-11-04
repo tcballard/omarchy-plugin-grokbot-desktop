@@ -659,6 +659,7 @@ Rectangle {
               body: app ? app.bubbleBody : ""
               links: app ? app.noticeLinks : []
               typing: app ? (app.askingHere || app.waitingHere) && app.bubbleBody === "" : false
+              status: app && app.askingHere ? app.progressText : ""
             }
           }
 
@@ -1185,6 +1186,8 @@ Rectangle {
     property string body: ""
     property var links: []
     property bool typing: false
+    // What the agent is doing while it works ("Running a command…"), faint, under the reply.
+    property string status: ""
     // The latest reply fades in where the typing dots were.
     property bool fadeReply: false
     width: parent ? parent.width : 0
@@ -1289,6 +1292,18 @@ Rectangle {
       }
     }
 
+
+    Text {
+      width: parent.width
+      visible: exchange.status !== ""
+      text: exchange.status
+      color: Theme.textFaint
+      font.pixelSize: 12
+      font.italic: true
+      font.family: app.fontFamily
+      elide: Text.ElideRight
+      textFormat: Text.PlainText
+    }
     Flow {
       width: parent.width
       spacing: 6

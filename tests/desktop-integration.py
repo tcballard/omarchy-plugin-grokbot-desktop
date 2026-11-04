@@ -37,6 +37,17 @@ class DesktopIntegration(unittest.TestCase):
         answer=self.run_helper('agent-desktop-ask',dict(provider=row['provider'],botId=row['agentId'],askId='abcdef123456',prompt='Private test'))
         self.assertEqual(answer.returncode,0,answer.stderr)
         self.assertEqual(answer.stdout.strip(),'Example: Private test')
+    def test_streaming_ask_sends_json_lines_and_a_final_reply(self):
+        (self.config/'agent-desktop.json').write_text(json.dumps({'providers':{'example':{}}}))
+        answer=self.run_helper('agent-desktop-ask',dict(provider='example',botId='echo',askId='abcdef123457',prompt='Streamed test',stream=True))
+        self.assertEqual(answer.returncode,0,answer.stderr)
+        lines=[json.loads(line) for line in answer.stdout.splitlines()]
+        self.assertTrue(lines and all(set(line)=={'ev','text'} for line in lines))
+        self.assertEqual(lines[-1],{'ev':'final','text':'Example: Streamed test'})
+        self.assertIn('delta',[line['ev'] for line in lines[:-1]])
+        # Without stream, the reply stays the plain one-shot text the Grok path relies on.
+        plain=self.run_helper('agent-desktop-ask',dict(provider='example',botId='echo',askId='abcdef123458',prompt='Plain test'))
+        self.assertEqual(plain.stdout,'Example: Plain test\n')
     def test_broken_hermes_does_not_remove_working_example(self):
         (self.config/'agent-desktop.json').write_text(json.dumps({'providers':{'example':{},'hermes':{'root':str(self.home/'missing')}}}))
         result=self.run_helper('agent-desktop-roster')

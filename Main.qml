@@ -1900,6 +1900,8 @@ Item {
       askId: root.pendingAskId,
       botId: bot ? bot.agentId || bot.id : root.defaultBotId,
       provider: bot ? bot.provider || "grokbot" : "grokbot",
+      // Providers stream the reply as JSON Lines; Grok keeps its plain one-shot reply.
+      stream: !!(bot && bot.provider && bot.provider !== "grokbot"),
       botName: root.botLabel(),
       prompt: prompt,
       host: "",
@@ -1908,6 +1910,10 @@ Item {
     root.askBotId = root.threadBotId
     root.asking = true
     root.expression = "work"
+    root.askStreaming = !!(bot && bot.provider && bot.provider !== "grokbot")
+    root.askLines = []
+    root.askFinal = ""
+    root.progressText = ""
     askProc.command = ["/usr/bin/setpriv", "--pdeathsig", "TERM", "/usr/bin/python3", "-I", root.askHelper]
     askProc.environment = root.askEnvironment()
     askProc.stdinEnabled = true
@@ -1916,8 +1922,37 @@ Item {
     return "ok"
   }
 
+  // A streaming ask: the reply so far, what the agent is doing, and the final reply.
+  property bool askStreaming: false
+  property var askLines: []
+  property string askFinal: ""
+  property string progressText: ""
+
+  function askLine(line) {
+    var raw = String(line)
+    if (root.askStreaming) {
+      var ev = null
+      try { ev = JSON.parse(raw) } catch (e) { ev = null }
+      if (ev && typeof ev === "object" && typeof ev.ev === "string") {
+        if (!root.asking) return
+        var value = root.cleanText(ev.text, 4000)
+        if (ev.ev === "delta" && value !== "") {
+          root.progressText = ""
+          root.deliver(root.askBotId, value)
+        } else if (ev.ev === "progress") {
+          root.progressText = root.plainLine(ev.text, 80)
+        } else if (ev.ev === "final") {
+          root.askFinal = value
+        }
+        return
+      }
+    }
+    if (root.askLines.length < 4000) root.askLines = root.askLines.concat([raw])
+  }
+
   function cancelAsk() {
     askTimeout.stop()
+    root.progressText = ""
     if (askProc.running) askProc.running = false
     root.asking = false
   }
@@ -2036,7 +2071,8 @@ Item {
     id: askProc
     clearEnvironment: true
     stdinEnabled: false
-    stdout: StdioCollector { id: askOut }
+    // Line by line, so a streaming provider's reply shows as it is written.
+    stdout: SplitParser { onRead: function (line) { root.askLine(line) } }
     stderr: StdioCollector { id: askErr }
     onStarted: {
       if (root.pendingJson !== "") askProc.write(root.pendingJson)
@@ -2051,7 +2087,8 @@ Item {
         root.startWaiting(root.pendingAskId, root.askBotId)
         return
       }
-      var out = root.cleanText(askOut.text, 4000)
+      root.progressText = ""
+      var out = root.cleanText(root.askStreaming ? root.askFinal : root.askLines.join("\n"), 4000)
       var err = root.cleanText(askErr.text, 400)
       var ok = code === 0 && out !== ""
       var here = root.deliver(root.askBotId, ok ? out : (err !== "" ? err : "The ask didn't return a reply."))
