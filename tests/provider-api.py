@@ -16,7 +16,8 @@ from agent_desktop.protocol import Fault, MAX_FRAME, Server, Output, decode, enc
 from agent_desktop.example import Example
 from agent_desktop.hermes import Hermes
 from agent_desktop.hermes_gateway import BotState, history_items, history_page
-from agent_desktop.openbot import OpenBot, ask_timeout, delivery_budget
+from agent_desktop.openbot import (OpenBot, BLOUB_SHAPES, ask_timeout, avatar_color,
+                                   delivery_budget, reported_appearance, _fnv_index)
 
 
 class Capture:
@@ -301,6 +302,46 @@ class OpenBotTests(unittest.IsolatedAsyncioTestCase):
         again = await self.adapter.call('agents.list', {})
         self.assertEqual([row['avatarColor'] for row in reply['agents']],
                          [row['avatarColor'] for row in again['agents']])
+        self.assertEqual([row['avatarColor'] for row in reply['agents']],
+                         [avatar_color('agent-1', 'Grok Bridge'), avatar_color('agent-2', 'Boss')])
+
+    async def test_roster_reads_shape_and_colour_when_openbot_reports_them(self):
+        # avatarSeed "agent-1" is Bloub pentagone (gem) and automatic colour orange.
+        # Checked against the same FNV-1a index as OpenBot's Math.imul stableIndex.
+        self.assertEqual(BLOUB_SHAPES[_fnv_index('agent-1:shape', len(BLOUB_SHAPES))], 'pentagone')
+        self.assertEqual(reported_appearance(
+            {'avatarSeed': 'agent-1'}, 'agent-1', 'Ada'), ('gem', 'orange'))
+        self.assertEqual(BLOUB_SHAPES[_fnv_index('goutte-probe-13:shape', len(BLOUB_SHAPES))], 'goutte')
+        self.assertEqual(reported_appearance(
+            {'avatarSeed': 'goutte-probe-13'}, 'agent-1', 'Ada'), ('blob', 'red'))
+        self.assertEqual(reported_appearance(
+            {'avatarShape': 'hexagone', 'avatarColor': 'grey'}, 'agent-1', 'Ada'), ('hex', 'gray'))
+        self.assertEqual(reported_appearance(
+            {'shape': 'nuage'}, 'agent-1', 'Grok Bridge'), ('cloud', 'cyan'))
+        self.assertEqual(reported_appearance(
+            {'avatarHue': 30}, 'agent-1', 'Ada'), ('blob', 'orange'))
+        self.assertEqual(reported_appearance(
+            {'avatarHue': 0, 'avatarColor': None}, 'agent-1', 'Ada'), ('blob', 'red'))
+        self.assertEqual(reported_appearance(
+            {'avatarColor': '#8b5e3c', 'avatarHue': 215}, 'agent-1', 'Ada'), ('blob', 'brown'))
+        self.assertEqual(reported_appearance(
+            {'avatarColor': '#ff00aa'}, 'agent-1', 'Ada'), ('blob', 'magenta'))
+        self.assertEqual(reported_appearance(
+            {'avatarShape': 'blob', 'avatarSeed': 'agent-1'}, 'agent-1', 'Ada'), ('blob', 'orange'))
+        absent = {'avatarSeed': 'Not A Seed', 'avatarHue': True, 'avatarColor': '#E8483F',
+                  'avatarUrl': 'openbot-avatar://agent', 'avatarImage': '/tmp/face.png'}
+        self.assertEqual(reported_appearance(absent, 'agent-1', 'Grok Bridge'),
+                         ('blob', avatar_color('agent-1', 'Grok Bridge')))
+        self.adapter._run = AsyncMock(return_value=json.dumps([
+            {'id': 'agent-1', 'name': 'Ada', 'routines': [], 'avatarSeed': 'agent-1',
+             'avatarHue': 280, 'avatarColor': '#8b5cf6'},
+            {'id': 'agent-2', 'name': 'Boss', 'routines': []},
+        ]).encode())
+        reply = await self.adapter.call('agents.list', {})
+        self.assertEqual(reply['agents'][0]['avatarShape'], 'gem')
+        self.assertEqual(reply['agents'][0]['avatarColor'], 'violet')
+        self.assertEqual(reply['agents'][1]['avatarShape'], 'blob')
+        self.assertEqual(reply['agents'][1]['avatarColor'], avatar_color('agent-2', 'Boss'))
 
     async def test_send_polls_progress_and_final_answer(self):
         self.adapter._run = AsyncMock(side_effect=[

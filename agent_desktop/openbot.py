@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import signal
 
 from .protocol import Fault, identifier, text, MAX_PROMPT, IDENTIFIER
@@ -30,6 +31,203 @@ RETRYABLE = {"unavailable", "delivery_unknown"}
 def avatar_color(agent, name):
     digest = hashlib.sha256((agent + "\x00" + name).encode()).digest()
     return PALETTE[digest[0] % len(PALETTE)]
+
+
+# Companion silhouettes (qml/shapes.js) plus the aliases that file already accepts.
+DESKTOP_SHAPES = ("blob", "cloud", "squircle", "sparkle", "clover", "heart", "flower",
+                  "teardrop", "tablet", "wedge", "gem", "burst", "hex", "pebble")
+DESKTOP_SHAPE_ALIASES = {
+    "circle": "blob", "dome": "blob", "crescent": "blob",
+    "pumpkin": "pebble",
+    "drop": "teardrop", "egg": "teardrop",
+    "bean": "heart", "leaf": "heart", "sprout": "clover",
+    "pill": "tablet", "capsule": "tablet", "cylinder": "tablet", "peanut": "tablet",
+    "triangle": "wedge", "bolt": "wedge",
+    "pentagon": "gem", "shield": "gem", "crystal": "gem",
+    "hexagon": "hex", "heptagon": "hex", "octagon": "hex",
+    "square": "squircle", "diamond": "squircle", "arch": "squircle", "ghost": "squircle",
+    "spark": "sparkle", "star": "burst",
+    "group": "cloud",
+}
+# Bloub 0.6.4 SHAPES order, which OpenBot hashes a seed against. `goutte` is not drawn.
+BLOUB_SHAPES = ("cercle", "galet", "squircle", "capsule", "triangle", "hexagone",
+                "nuage", "goutte", "carre", "losange", "pentagone")
+BLOUB_SHAPE_NAMES = {
+    "cercle": "blob", "galet": "pebble", "squircle": "squircle", "capsule": "tablet",
+    "triangle": "wedge", "hexagone": "hex", "nuage": "cloud", "goutte": "teardrop",
+    "carre": "squircle", "losange": "squircle", "pentagone": "gem",
+}
+AUTOMATIC_COLORS = ("rouge", "orange", "ambre", "vert", "turquoise", "bleu", "violet", "rose")
+# Companion fills (qml/palette.js). An unknown hex snaps in OKLab; the earlier name wins a tie.
+PALETTE_HEX = (
+    ("black", "#000000"), ("brown", "#936439"), ("red", "#ff263c"), ("orange", "#ff6700"),
+    ("yellow", "#ff9800"), ("green", "#00c972"), ("cyan", "#00bca6"), ("blue", "#1084fe"),
+    ("violet", "#9159fe"), ("magenta", "#ff309b"), ("gray", "#777777"),
+)
+PALETTE_ALIASES = {"purple": "violet", "grey": "gray", "teal": "cyan", "pink": "magenta", "amber": "yellow"}
+# OpenBot's names for the ten released hues (bloub-avatar.ts AVATAR_HUE_CHOICES).
+# Lime has no companion name, so it uses green. Indigo is nearer blue than violet.
+HUE_NAMES = {
+    0: "red", 30: "orange", 55: "yellow", 100: "green", 150: "green",
+    185: "cyan", 215: "blue", 245: "blue", 280: "violet", 320: "magenta",
+}
+AUTOMATIC_NAMES = {
+    "rouge": "red", "orange": "orange", "ambre": "yellow", "vert": "green",
+    "turquoise": "cyan", "bleu": "blue", "violet": "violet", "rose": "magenta",
+}
+# Exact swatches OpenBot draws: Bloub colours, the two extra hue fills, and the presets.
+KNOWN_HEX = {
+    "#0a0a0c": "black", "#8b5e3c": "brown", "#e8483f": "red", "#f08a24": "orange",
+    "#f0b429": "yellow", "#8ece34": "green", "#3ecf8e": "green", "#2fbfa0": "cyan",
+    "#3b93f0": "blue", "#5d67ee": "blue", "#8b5cf6": "violet", "#e152b0": "magenta",
+    "#a3a3a3": "gray", "#f1efe9": "gray", "#f27ba5": "magenta", "#38bdf8": "cyan",
+    "#34479c": "blue", "#a8324e": "red", "#d6b98c": "yellow",
+}
+# Same cutoff OpenBot uses before it will name a hue (nearestAvatarHue).
+NEUTRAL_SATURATION = 0.15
+SEED = re.compile(r"^[a-z0-9:-]{1,128}$")
+HEX_COLOR = re.compile(r"^#[0-9a-f]{6}$")
+
+
+def _fnv_index(value, length):
+    """OpenBot's `stableIndex`: FNV-1a, then modulo, matching JS `Math.imul` low 32 bits."""
+    digest = 0x811C9DC5
+    for ch in value:
+        digest ^= ord(ch)
+        digest = (digest * 0x01000193) & 0xFFFFFFFF
+    return digest % length
+
+
+def _rgb(hex_color):
+    number = int(hex_color[1:], 16)
+    return (number >> 16) & 255, (number >> 8) & 255, number & 255
+
+
+def _linear(channel):
+    channel /= 255
+    if channel <= 0.04045:
+        return channel / 12.92
+    return ((channel + 0.055) / 1.055) ** 2.4
+
+
+def _cube_root(value):
+    if value < 0:
+        return -((-value) ** (1 / 3))
+    return value ** (1 / 3)
+
+
+def _oklab(hex_color):
+    red, green, blue = (_linear(channel) for channel in _rgb(hex_color))
+    long = 0.4122214708 * red + 0.5363325363 * green + 0.0514459929 * blue
+    medium = 0.2119034982 * red + 0.6806995451 * green + 0.1073969566 * blue
+    short = 0.0883024619 * red + 0.2817188376 * green + 0.6299787005 * blue
+    long, medium, short = _cube_root(long), _cube_root(medium), _cube_root(short)
+    lightness = 0.2104542553 * long + 0.7936177850 * medium - 0.0040720468 * short
+    green_red = 1.9779984951 * long - 2.4285922050 * medium + 0.4505937099 * short
+    blue_yellow = 0.0259040371 * long + 0.7827717662 * medium - 0.8086757660 * short
+    return lightness, green_red, blue_yellow
+
+
+def _saturation(hex_color):
+    red, green, blue = (channel / 255 for channel in _rgb(hex_color))
+    high, low = max(red, green, blue), min(red, green, blue)
+    span = high - low
+    if span == 0:
+        return 0.0
+    lightness = (high + low) / 2
+    return span / (1 - abs(2 * lightness - 1))
+
+
+def nearest_palette(hex_color):
+    """Nearest companion colour. Neutrals stay black or gray; other hex uses OKLab."""
+    known = KNOWN_HEX.get(hex_color)
+    if known is not None:
+        return known
+    lightness = _oklab(hex_color)[0]
+    if _saturation(hex_color) < NEUTRAL_SATURATION:
+        black_distance = abs(lightness - _oklab("#000000")[0])
+        gray_distance = abs(lightness - _oklab("#777777")[0])
+        return "black" if black_distance < gray_distance else "gray"
+    target = _oklab(hex_color)
+    best_name = PALETTE_HEX[0][0]
+    best_distance = None
+    for name, swatch in PALETTE_HEX:
+        other = _oklab(swatch)
+        distance = sum((left - right) ** 2 for left, right in zip(target, other))
+        if best_distance is None or distance < best_distance:
+            best_name = name
+            best_distance = distance
+    return best_name
+
+
+def canonical_shape(value):
+    if not isinstance(value, str):
+        return None
+    token = value.strip()
+    if not token or len(token) > 40 or any(ord(ch) < 32 for ch in token):
+        return None
+    if token in DESKTOP_SHAPES:
+        return token
+    if token in DESKTOP_SHAPE_ALIASES:
+        return DESKTOP_SHAPE_ALIASES[token]
+    return BLOUB_SHAPE_NAMES.get(token)
+
+
+def shape_from_seed(seed):
+    """The silhouette `bloubAvatarProfile` draws for `seed`. `goutte` is replaced."""
+    chosen = BLOUB_SHAPES[_fnv_index(f"{seed}:shape", len(BLOUB_SHAPES))]
+    if chosen == "goutte":
+        supported = tuple(item for item in BLOUB_SHAPES if item != "goutte")
+        chosen = supported[_fnv_index(f"{seed}:shape:replacement", len(supported))]
+    return BLOUB_SHAPE_NAMES[chosen]
+
+
+def _palette_name(value):
+    if not isinstance(value, str):
+        return None
+    token = value.strip()
+    if token in PALETTE:
+        return token
+    return PALETTE_ALIASES.get(token)
+
+
+def _reported_color(row, seed):
+    """OpenBot precedence: exact `avatarColor`, then `avatarHue`, then the seed's automatic colour."""
+    named = _palette_name(row.get("avatarColor"))
+    if named is not None:
+        return named
+    color = row.get("avatarColor")
+    if isinstance(color, str) and HEX_COLOR.fullmatch(color.strip()):
+        return nearest_palette(color.strip())
+    hue = row.get("avatarHue")
+    if type(hue) is int and hue in HUE_NAMES:
+        return HUE_NAMES[hue]
+    if seed is not None:
+        color_id = AUTOMATIC_COLORS[_fnv_index(f"{seed}:color", len(AUTOMATIC_COLORS))]
+        return AUTOMATIC_NAMES[color_id]
+    return None
+
+
+def reported_appearance(row, agent, name):
+    """Shape and colour hints from a Local scripts agent row.
+
+    Stock `GET /v1/agents` returns only id, name and routines, so those rows
+    keep blob and `avatar_color`. `avatarSeed`, `avatarHue` and `avatarColor`
+    are used when the row actually carries them. Photos are ignored.
+    """
+    shape = None
+    seed = None
+    if isinstance(row, dict):
+        shape = canonical_shape(row.get("avatarShape"))
+        if shape is None:
+            shape = canonical_shape(row.get("shape"))
+        raw_seed = row.get("avatarSeed")
+        if isinstance(raw_seed, str) and SEED.fullmatch(raw_seed):
+            seed = raw_seed
+    if shape is None and seed is not None:
+        shape = shape_from_seed(seed)
+    color = _reported_color(row, seed) if isinstance(row, dict) else None
+    return shape or "blob", color or avatar_color(agent, name)
 
 
 def validate_timeout(seconds, code, message):
@@ -338,9 +536,10 @@ class OpenBot:
             if agent in result:
                 raise Fault("invalid_response", "OpenBot returned a duplicate agent identity.")
             name = text(row.get("name"), 160, "name")
+            shape, color = reported_appearance(row, agent, name)
             result[agent] = {"id": agent, "name": name, "availability": "ready",
-                             "capabilities": self.capabilities, "avatarShape": "blob",
-                             "avatarColor": avatar_color(agent, name)}
+                             "capabilities": self.capabilities, "avatarShape": shape,
+                             "avatarColor": color}
         return {"complete": True, "agents": list(result.values())}
 
     def _receipt_delivery(self, receipt, agent):

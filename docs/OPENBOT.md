@@ -75,8 +75,30 @@ Advertised on purpose:
 
 There is no cancel endpoint. Closing the ask, or killing the local SSH process,
 does not confirm that OpenBot stopped the turn. Native avatar photos are not
-read. Agents use `avatarShape: "blob"` and a stable `avatarColor` from the
-existing palette. The Local scripts avatar route is not used.
+read. The Local scripts avatar route is not used.
+
+## Appearance
+
+`GET /v1/agents` returns `id`, `name`, and `routines` only. That is the body
+`src/main/automation-server.ts` builds in `#listAgents`, and the example in
+[automation.md](https://github.com/nightly-labs/openbot/blob/main/docs/automation.md).
+There is no agent detail route on Local scripts, and this adapter does not call
+the Team API. A row with only those fields keeps `avatarShape: "blob"` and the
+stable `avatarColor` hash of the agent id and name.
+
+When a row does include OpenBot's own appearance fields, the roster uses them.
+An unusable value falls through to the next field, then to that same fallback.
+
+| Field | What is read |
+| --- | --- |
+| `avatarShape`, or else `shape` | A companion shape (`blob`, `hex`, …), an alias the mark already accepts (`circle`, `capsule`, `hexagon`, …), or a Bloub id (`cercle`, `galet`, `nuage`, `hexagone`, …). |
+| `avatarSeed` | The silhouette Bloub 0.6.4 draws for that seed: FNV-1a of `seed:shape` over `cercle`, `galet`, `squircle`, `capsule`, `triangle`, `hexagone`, `nuage`, `goutte`, `carre`, `losange`, `pentagone`. `goutte` is replaced with `seed:shape:replacement`, as OpenBot does. |
+| `avatarColor` | A palette name (`orange`, or `grey` for gray), or a lower-case `#rrggbb`. A published OpenBot swatch keeps that swatch's name (orange stays orange, lime `#8ece34` is green, indigo `#5d67ee` is blue, navy is blue, wine is red, cream and grey are gray). Any other hex uses OKLab against the companion palette. Saturation under 0.15, the cutoff OpenBot uses before it will name a hue, becomes black or gray. |
+| `avatarHue` | `0` red, `30` orange, `55` yellow, `100` green, `150` green, `185` cyan, `215` blue, `245` blue, `280` violet, `320` magenta. Used when `avatarColor` is missing or not a colour. |
+
+`avatarColor` wins over `avatarHue`. With neither, a valid `avatarSeed` supplies
+Bloub's automatic colour for that seed (`rouge`, `orange`, `ambre`, `vert`,
+`turquoise`, `bleu`, `violet`, `rose`). Photos and `avatarUrl` are ignored.
 
 ## Required hop
 
@@ -194,6 +216,8 @@ and exits non-zero.
 - Text messages from 1 to 4,000 characters. No attachments.
 - No remote cancel. Stop means stop waiting.
 - No streaming deltas, history, compaction, deferred replies or native photos.
+  Shape and colour hints apply only when the roster row carries them. The
+  published agent list does not.
 - Questions, approvals, secret questions and browser takeovers are answered in
   OpenBot. This desktop detects them and does not answer them.
 - No live acceptance in this repository. Portable tests do not discover a real
