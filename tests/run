@@ -3,6 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 node scripts/check.mjs
 python3 tests/provider-api.py
+python3 tests/openbot-helper.py
 python3 tests/grokbot-api.py
 python3 tests/desktop-integration.py
 node --test tests/*.test.mjs

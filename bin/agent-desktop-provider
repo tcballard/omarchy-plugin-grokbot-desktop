@@ -11,7 +11,7 @@ from agent_desktop.protocol import Fault, Output, Server, stdio
 
 async def main():
     parser = argparse.ArgumentParser(description="Agent Desktop Adapter Protocol v1 over stdin/stdout")
-    parser.add_argument("--provider", choices=["hermes", "grokbot", "example"], required=True)
+    parser.add_argument("--provider", choices=["hermes", "grokbot", "example", "openbot"], required=True)
     parser.add_argument("--root", default=str(Path.home() / ".hermes"))
     parser.add_argument("--agent-dir", default=str(Path.home() / ".hermes/hermes-agent"))
     args = parser.parse_args()
@@ -21,6 +21,9 @@ async def main():
     elif args.provider == "grokbot":
         from agent_desktop.grokbot import GrokBot
         backend = GrokBot()
+    elif args.provider == "openbot":
+        from agent_desktop.openbot import OpenBot
+        backend = OpenBot()
     else:
         from agent_desktop.example import Example
         backend = Example()

@@ -1,0 +1,410 @@
+#!/usr/bin/python3 -I
+"""Call OpenBot's Local scripts API through a configured shell hop.
+
+Subcommands:
+  agents                           print the OpenBot agent roster JSON
+  send <agentId>                   read message text from stdin, print the receipt
+  delivery <agentId> <deliveryId>  print the delivery JSON
+  pending <agentId>                print questions, approvals and browser takeovers
+
+OpenBot writes the automation URL and curl headers on the host that runs it.
+This helper reads the token only on that host, through curl's ``-H @headers``
+form. It never receives the token, prints it, or puts it in argv. Prompts are
+written to the hop's stdin, never argv.
+
+Stderr is a single fixed category token. Hop, SSH and curl stderr are discarded.
+"""
+import argparse
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import signal
+import subprocess
+import sys
+import threading
+import time
+import uuid
+
+CONFIG = Path.home()/".config/omarchy/agent-desktop.json"
+SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+SAFE_PATH = re.compile(r"^/v1/[A-Za-z0-9_./:-]+$")
+MAX_TEXT = 4000
+MAX_OUTPUT = 64 * 1024
+MAX_ERROR = 4096
+HTTP_TIMEOUT = 30
+HOP_GRACE = 5
+DEFAULT_AUTOMATION = "/data/.config/OpenBot/automation"
+CLIENT_ID = "agent-desktop-"
+CATEGORIES = {
+    "hop_invalid", "hop_start", "hop_timeout", "hop_failed", "output_limit",
+    "unreachable", "missing_automation", "invalid_url", "invalid_message", "invalid_id",
+}
+HTTP_CATEGORY = re.compile(r"^http_[0-9]{3}$")
+POST_EXTRA = "-H 'Content-Type: application/json' \\\n  --data-binary @- \\\n"
+
+
+class HelperError(Exception):
+    def __init__(self, category):
+        super().__init__(category)
+        self.category = category if category in CATEGORIES else "hop_failed"
+
+
+class Hop:
+    def __init__(self):
+        self.proc = None
+
+    def kill(self):
+        proc = self.proc
+        if proc is None or proc.pid is None:
+            return
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            return
+        try:
+            proc.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            pass
+
+
+HOP = Hop()
+
+
+def fail(category):
+    print(category if category in CATEGORIES or HTTP_CATEGORY.fullmatch(category or "") else "hop_failed",
+          file=sys.stderr)
+    return 1
+
+
+def setting():
+    try:
+        raw = CONFIG.read_bytes()
+        if len(raw) > 65536:
+            return {}
+        value = json.loads(raw)
+        providers = value.get("providers", {}) if isinstance(value, dict) else {}
+        entry = providers.get("openbot", {}) if isinstance(providers, dict) else {}
+        return entry if isinstance(entry, dict) else {}
+    except (OSError, ValueError, UnicodeError):
+        return {}
+
+
+def hop_command():
+    hop = os.environ.get("OPENBOT_LOCAL_SCRIPTS_HOP") or setting().get("hop")
+    if hop is None or hop == "":
+        raise HelperError("hop_invalid")
+    if not isinstance(hop, str) or "\x00" in hop or len(hop) > 4096:
+        raise HelperError("hop_invalid")
+    try:
+        parts = shlex.split(hop)
+    except ValueError:
+        raise HelperError("hop_invalid") from None
+    if not parts or any(not part or "\x00" in part for part in parts):
+        raise HelperError("hop_invalid")
+    return parts
+
+
+def automation_dir():
+    """Directory on the OpenBot host, embedded into the remote script.
+
+    ``OPENBOT_AUTOMATION_DIR`` is intentionally ignored. SSH does not forward
+    it, and a local value must not be mistaken for the host path. Set
+    ``OPENBOT_REMOTE_AUTOMATION_DIR`` or ``providers.openbot.automationDir``.
+    """
+    raw = os.environ.get("OPENBOT_REMOTE_AUTOMATION_DIR")
+    if raw is None or raw == "":
+        raw = setting().get("automationDir")
+    if raw is None or raw == "":
+        return DEFAULT_AUTOMATION
+    if (not isinstance(raw, str) or len(raw) > 4096 or not raw.startswith("/")
+            or any(ord(char) < 32 or ord(char) == 127 for char in raw)):
+        raise HelperError("hop_invalid")
+    return raw
+
+
+def remote_script(method, path, extra="", timeout=HTTP_TIMEOUT, directory=None, limit=MAX_OUTPUT):
+    if method not in {"GET", "POST"} or not isinstance(path, str) or not SAFE_PATH.fullmatch(path):
+        raise HelperError("hop_invalid")
+    if not isinstance(timeout, int) or not 1 <= timeout <= 1800:
+        raise HelperError("hop_invalid")
+    if not isinstance(limit, int) or not 1 <= limit <= MAX_OUTPUT:
+        raise HelperError("hop_invalid")
+    directory = directory or automation_dir()
+    quoted = shlex.quote(directory)
+    cap = limit + 1
+    lines = [
+        "set -eu",
+        f"directory={quoted}",
+        "[ -r \"$directory/url\" ] || { printf '%s\\n' 'missing_automation'; exit 2; }",
+        "[ -r \"$directory/headers\" ] || { printf '%s\\n' 'missing_automation'; exit 2; }",
+        "url=",
+        "IFS= read -r -n 160 url < \"$directory/url\" || true",
+        "url=${url%$'\\r'}",
+        "url=${url%/}",
+        "case \"$url\" in",
+        "  http://127.0.0.1:[1-9]*) ;;",
+        "  *) printf '%s\\n' 'invalid_url'; exit 3 ;;",
+        "esac",
+        "port=${url#http://127.0.0.1:}",
+        "case \"$port\" in",
+        "  *[!0-9]*) printf '%s\\n' 'invalid_url'; exit 3 ;;",
+        "esac",
+        "if [ \"$port\" -lt 1 ] || [ \"$port\" -gt 65535 ]; then",
+        "  printf '%s\\n' 'invalid_url'",
+        "  exit 3",
+        "fi",
+        "body=$(mktemp)",
+        "trap 'rm -f \"$body\"' EXIT HUP INT TERM",
+        "set +e",
+        "status=$(curl --silent --connect-timeout 8 --max-time %d \\" % timeout,
+        "  --request %s \\" % method,
+        "  -H @\"$directory/headers\" \\",
+        "  %s--output >(head -c %d > \"$body\") --write-out '%%{http_code}' \\" % (extra, cap),
+        "  \"$url%s\" 2>/dev/null)" % path,
+        "set -e",
+        "size=$(wc -c < \"$body\" | tr -d '[:space:]')",
+        "if [ -z \"$size\" ]; then size=0; fi",
+        "if [ \"$size\" -gt %d ]; then" % limit,
+        "  printf '%s\\n' 'output_limit'",
+        "  exit 6",
+        "fi",
+        "case \"$status\" in",
+        "  [0-9][0-9][0-9]) ;;",
+        "  *) printf '%s\\n' 'unreachable'; exit 4 ;;",
+        "esac",
+        "if [ \"$status\" = \"000\" ]; then",
+        "  printf '%s\\n' 'unreachable'",
+        "  exit 4",
+        "fi",
+        "case \"$status\" in",
+        "  2*) cat \"$body\" ;;",
+        "  *) printf '%s\\n' \"http_$status\"; exit 5 ;;",
+        "esac",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def ssh_argv_index(command):
+    """Index of the ssh executable, including a leading sudo or command."""
+    index = 0
+    if command and os.path.basename(command[0]) in {"sudo", "command"}:
+        index = 1
+        while index < len(command) and command[index].startswith("-"):
+            option = command[index]
+            if option in {"-g", "-u", "-p"} or (len(option) == 2 and option[1] in "gup"):
+                index += 2
+                continue
+            index += 1
+    if index < len(command) and os.path.basename(command[index]) == "ssh":
+        return index
+    return None
+
+
+def ssh_host_index(command, start):
+    """Return the index of the SSH destination host in an ssh argv list."""
+    takes_value = {
+        "-b", "-c", "-D", "-E", "-e", "-F", "-i", "-J", "-L", "-l", "-m", "-O",
+        "-o", "-p", "-R", "-S", "-W", "-w",
+    }
+    index = start + 1
+    while index < len(command) and command[index].startswith("-"):
+        option = command[index]
+        if option == "--":
+            return index + 1
+        if option in takes_value:
+            index += 2
+            continue
+        if len(option) > 2 and option[1] != "-" and option[1] in "bcDeFiJLlmOopRSw":
+            index += 1
+            continue
+        index += 1
+    return index
+
+
+def transport_command(script):
+    """Build argv for the hop, keeping the remote script one quoted word for ssh."""
+    command = hop_command()
+    ssh = ssh_argv_index(command)
+    if ssh is not None:
+        host = ssh_host_index(command, ssh)
+        if host >= len(command):
+            raise HelperError("hop_invalid")
+        remote = " ".join(shlex.quote(part) for part in command[host + 1:] + [script])
+        return command[: host + 1] + [remote]
+    return command + [script]
+
+
+def classify_remote(code, out):
+    try:
+        text = out.decode("utf-8")
+    except UnicodeError:
+        return "hop_failed"
+    if text.count("\n") > 1 or (text.endswith("\n") and "\n" in text[:-1]):
+        return "hop_failed"
+    text = text.strip()
+    expected = {2: "missing_automation", 3: "invalid_url", 4: "unreachable", 6: "output_limit"}.get(code)
+    if expected and text == expected:
+        return expected
+    if code == 5 and HTTP_CATEGORY.fullmatch(text) and text != "http_000":
+        return text
+    return "hop_failed"
+
+
+def _read_capped(stream, limit, hop):
+    chunks = []
+    total = 0
+    try:
+        while True:
+            chunk = stream.read(4096)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > limit:
+                hop.kill()
+                return b"".join(chunks), True
+            chunks.append(chunk)
+    except (OSError, ValueError):
+        return b"".join(chunks), False
+    finally:
+        try:
+            stream.close()
+        except OSError:
+            pass
+    return b"".join(chunks), False
+
+
+def execute(command, data=None, timeout=HTTP_TIMEOUT, max_output=MAX_OUTPUT, max_error=MAX_ERROR):
+    previous_term = signal.getsignal(signal.SIGTERM)
+    previous_int = signal.getsignal(signal.SIGINT)
+
+    def stop(signum, frame):
+        HOP.kill()
+        raise SystemExit(1)
+
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+    proc = None
+    try:
+        try:
+            proc = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE, start_new_session=True)
+        except OSError:
+            return fail("hop_start")
+        HOP.proc = proc
+        state = {"out": b"", "err": b"", "overflow": False}
+
+        def read_out():
+            state["out"], overflow = _read_capped(proc.stdout, max_output, HOP)
+            state["overflow"] = state["overflow"] or overflow
+
+        def read_err():
+            state["err"], overflow = _read_capped(proc.stderr, max_error, HOP)
+            state["overflow"] = state["overflow"] or overflow
+
+        threads = [threading.Thread(target=read_out), threading.Thread(target=read_err)]
+        for thread in threads:
+            thread.start()
+        try:
+            if data:
+                proc.stdin.write(data)
+            proc.stdin.close()
+        except (BrokenPipeError, OSError):
+            pass
+        deadline = time.monotonic() + timeout
+        for thread in threads:
+            thread.join(max(0, deadline - time.monotonic()))
+        if state["overflow"]:
+            HOP.kill()
+            for thread in threads:
+                thread.join(2)
+            return fail("output_limit")
+        if any(thread.is_alive() for thread in threads) or proc.poll() is None and time.monotonic() >= deadline:
+            HOP.kill()
+            for thread in threads:
+                thread.join(2)
+            return fail("hop_timeout")
+        try:
+            proc.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            HOP.kill()
+            return fail("hop_timeout")
+        # Hop stderr is never forwarded. Categories come only from our script.
+        del state["err"]
+        if proc.returncode != 0:
+            return fail(classify_remote(proc.returncode, state["out"]))
+        out = state["out"]
+        sys.stdout.buffer.write(out)
+        if out and not out.endswith(b"\n"):
+            sys.stdout.buffer.write(b"\n")
+        return 0
+    finally:
+        for stream in (getattr(proc, "stdin", None), getattr(proc, "stdout", None), getattr(proc, "stderr", None)):
+            if stream is not None:
+                try:
+                    stream.close()
+                except OSError:
+                    pass
+        if proc is not None and proc.poll() is None:
+            HOP.kill()
+        HOP.proc = None
+        signal.signal(signal.SIGTERM, previous_term)
+        signal.signal(signal.SIGINT, previous_int)
+
+
+def run(method, path, data=None, extra="", timeout=HTTP_TIMEOUT):
+    try:
+        command = transport_command(remote_script(method, path, extra, timeout))
+    except HelperError as exc:
+        return fail(exc.category)
+    return execute(command, data, timeout + HOP_GRACE)
+
+
+def agent_id(value):
+    if not isinstance(value, str) or not SAFE_ID.fullmatch(value):
+        raise HelperError("invalid_id")
+    return value
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("command", choices=["agents", "send", "delivery", "pending"])
+    parser.add_argument("agent", nargs="?")
+    parser.add_argument("delivery", nargs="?")
+    args = parser.parse_args(argv)
+    try:
+        if args.command == "agents":
+            if args.agent is not None or args.delivery is not None:
+                parser.error("agents takes no arguments")
+            return run("GET", "/v1/agents")
+        agent = agent_id(args.agent)
+        if args.command == "pending":
+            if args.delivery is not None:
+                parser.error("pending takes only an agent ID")
+            return run("GET", f"/v1/agents/{agent}/pending")
+        if args.command == "delivery":
+            delivery = agent_id(args.delivery)
+            return run("GET", f"/v1/agents/{agent}/deliveries/{delivery}")
+        if args.delivery is not None:
+            parser.error("send takes only an agent ID")
+        raw = sys.stdin.buffer.read(MAX_TEXT * 4 + 1)
+        if len(raw) > MAX_TEXT * 4:
+            return fail("invalid_message")
+        try:
+            prompt = raw.decode("utf-8")
+        except UnicodeError:
+            return fail("invalid_message")
+        if not prompt.strip() or "\x00" in prompt or len(prompt) > MAX_TEXT:
+            return fail("invalid_message")
+        body = json.dumps({"text": prompt, "clientMessageId": CLIENT_ID + uuid.uuid4().hex},
+                          ensure_ascii=False).encode()
+        return run("POST", f"/v1/agents/{agent}/messages", body, POST_EXTRA)
+    except HelperError as exc:
+        return fail(exc.category)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
