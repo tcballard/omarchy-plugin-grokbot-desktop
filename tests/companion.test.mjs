@@ -1499,6 +1499,61 @@ test('Hyprland does not animate the window growing to the output and back', () =
   assert.match(main, /name === "configreloaded" && !layerRuleProc\.running\) layerRuleProc\.running = true/)
 })
 
+test('a selected workspace unmaps the layer on every other workspace of that monitor', () => {
+  const ws = loadLibrary('qml/workspace.js')
+  assert.equal(ws.normalizeMode('selected'), 'selected')
+  assert.equal(ws.normalizeMode('all'), 'all')
+  assert.equal(ws.normalizeMode('nope'), 'all')
+  assert.equal(ws.normalizeWorkspace(2), 2)
+  assert.equal(ws.normalizeWorkspace('2'), 2)
+  assert.equal(ws.normalizeWorkspace(0), 1)
+  assert.equal(ws.normalizeWorkspace(99), 10)
+  assert.equal(ws.MIN_WORKSPACE, 1)
+  assert.equal(ws.MAX_WORKSPACE, 10)
+  // All workspaces keeps the layer mapped, which is how Hyprland shows it.
+  assert.equal(ws.layerMapped('all', 2, 5, false), true)
+  assert.equal(ws.layerMapped('selected', 2, 2, false), true)
+  assert.equal(ws.layerMapped('selected', 2, 1, false), false)
+  assert.equal(ws.layerMapped('selected', 2, 3, false), false)
+  // A special workspace uses a negative id and is not the chosen one.
+  assert.equal(ws.layerMapped('selected', 2, -98, false), false)
+  // Unknown stays mapped so a missing Hyprland report cannot hide the companion.
+  assert.equal(ws.layerMapped('selected', 2, 0, false), true)
+  assert.equal(ws.layerMapped('selected', 2, null, false), true)
+  assert.equal(ws.layerMapped('selected', 2, undefined, false), true)
+  // A drag stays mapped so the drop can finish on another monitor.
+  assert.equal(ws.layerMapped('selected', 2, 1, true), true)
+  const monitors = [
+    { name: 'DP-1', activeWorkspace: { id: 2 } },
+    { name: 'HDMI-A-1', activeWorkspace: { id: 5 } },
+  ]
+  assert.equal(ws.workspaceIdOn(monitors, 'DP-1', null), 2)
+  assert.equal(ws.workspaceIdOn(monitors, 'HDMI-A-1', { name: 'DP-1', id: 2 }), 5)
+  assert.equal(ws.workspaceIdOn([{ name: 'DP-1', activeWorkspace: null }], 'DP-1', { name: 'DP-1', id: 2 }), 2)
+  assert.equal(ws.workspaceIdOn([], 'DP-1', { name: 'HDMI-A-1', id: 4 }), 0)
+  assert.equal(ws.workspaceIdOn([{ name: 'DP-1', activeWorkspace: { id: -98 } }], 'DP-1', null), -98)
+  const load = qmlFunction(main, 'loadSettings')
+  assert.match(load, /Workspace\.normalizeMode\(root\.setting\("workspaceMode", "all"\)\)/)
+  assert.match(load, /root\.settingInt\("workspace", 1, Workspace\.MIN_WORKSPACE, Workspace\.MAX_WORKSPACE\)/)
+  const save = qmlFunction(main, 'saveSettings')
+  assert.match(save, /settings\.workspaceMode = root\.workspaceMode/)
+  assert.match(save, /settings\.workspace = root\.workspaceNumber/)
+  assert.match(qmlFunction(main, 'setWorkspaceMode'), /root\.scheduleSave\(\)/)
+  assert.match(qmlFunction(main, 'setWorkspace'), /Workspace\.normalizeWorkspace\(number\)/)
+  assert.match(main, /Workspace\.layerMapped\(root\.workspaceMode, root\.workspaceNumber, monitorWorkspaceId/)
+  assert.match(main, /visible: root\.present && root\.targetScreen !== null && root\.layerRuleTried && !root\.screensaverUp && \(activeHere \|\| holdingDrag\) && workspaceMapped/)
+  assert.match(qmlFunction(main, 'noteWorkspace'), /Hyprland\.refreshMonitors/)
+  assert.match(qmlFunction(main, 'noteWorkspace'), /moveworkspacev2/)
+  const page = read('SettingsPanel.qml')
+  assert.match(page, /title: "Workspaces"/)
+  assert.match(page, /title: "All workspaces"/)
+  assert.match(page, /title: "Selected workspace"/)
+  assert.match(page, /label: "Workspace " \+ parent\.number/)
+  assert.match(page, /visible: !drawer\.behaviourOnly/)
+  assert.match(read('README.md'), /"workspaceMode": "all"/)
+  assert.match(read('README.md'), /"workspace": 1/)
+})
+
 test('the mark is a GPU path with rectangle eyes', () => {
   const mark = read('CompanionMark.qml')
   assert.match(mark, /import QtQuick\.Shapes/)
