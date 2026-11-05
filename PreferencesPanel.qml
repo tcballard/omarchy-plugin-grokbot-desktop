@@ -148,7 +148,7 @@ Item {
         }
         Text {
           width: parent.width
-          text: app.settingsProvider === "hermes" ? "Experimental: live Hermes validation is pending. Choose a profile and keep Bot Chat open in Hermes to receive replies." : app.settingsProvider === "openbot" ? "Experimental: OpenBot Local scripts adapter. Only agents with Local scripts enabled appear. Configure the hop in agent-desktop.json, keep OpenBot running, then refresh." : "Choose a bot from your Grok Bot app. Your existing reply connection is kept."
+          text: app.settingsProvider === "hermes" ? "Experimental: live Hermes validation is pending. Choose a profile and keep Bot Chat open in Hermes to receive replies." : app.settingsProvider === "openbot" ? "Experimental: OpenBot Local scripts. Only enabled agents appear. Questions and approvals are answered in OpenBot; stopping here stops the wait only." : "Choose a bot from your Grok Bot app. Your existing reply connection is kept."
           font.family: app.fontFamily; font.pixelSize: 12
           textFormat: Text.PlainText; color: Theme.textMuted
           wrapMode: Text.Wrap

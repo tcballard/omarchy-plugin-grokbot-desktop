@@ -2123,6 +2123,12 @@ Item {
   readonly property bool clarifyHere: root.clarifyWaiting[root.threadBotId] !== undefined
   readonly property var approvalLabels: ({ once: "Allow once", session: "Allow this session", always: "Always allow", deny: "Deny" })
 
+  function reviewIn(botId) {
+    var bot = root.findBot(botId)
+    var provider = bot && bot.provider ? bot.provider : String(botId || "").split(":")[0]
+    return provider === "openbot" ? "OpenBot" : "Hermes"
+  }
+
   // The ask ended with prompts still showing: nothing here can answer them now.
   function retirePrompts() {
     var ids = {}
@@ -2136,7 +2142,9 @@ Item {
     })
     Object.keys(root.clarifyWaiting).forEach(function (bot) { ids[root.clarifyWaiting[bot]] = true })
     Object.keys(root.activePrompts).forEach(function (id) { ids[id] = true })
-    Object.keys(ids).forEach(function (id) { root.dropPromptLinks(id, "(No longer answerable here; open Hermes.)") })
+    Object.keys(ids).forEach(function (id) {
+      root.dropPromptLinks(id, "(No longer answerable here; open " + root.reviewIn(root.activePrompts[id] || "") + ".)")
+    })
     root.pendingAnswers = ({})
   }
 
@@ -2180,7 +2188,7 @@ Item {
       root.activePrompts = active
     }
     if (!ev.answerable) {
-      text = (ev.kind === "approval" ? "Needs your approval: " : "") + (text || "a request") + "\n\nOpen Hermes to review and answer this one."
+      text = (ev.kind === "approval" ? "Needs your approval: " : "") + (text || "a request") + "\n\nOpen " + root.reviewIn(bot) + " to review and answer this one."
     } else if (ev.kind === "approval") {
       var command = root.cleanText(ev.command, 4000)
       var fence = "```"

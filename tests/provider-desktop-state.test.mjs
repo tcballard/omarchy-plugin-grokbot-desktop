@@ -41,7 +41,7 @@ test('streaming updates either bot silently and announces only the completed rep
 function promptHarness() {
   const writes = []
   const askProc = { running: true, write: (line) => writes.push(JSON.parse(line)) }
-  const root = harness(['showPrompt', 'sendAnswer', 'answerResult', 'dropPromptLinks',
+  const root = harness(['reviewIn', 'showPrompt', 'sendAnswer', 'answerResult', 'dropPromptLinks',
     'linkAction', 'answerPrompt', 'answerFromComposer', 'retirePrompts', 'cancelAsk', 'askLine'], {
     threadBotId: 'hermes:a', askBotId: 'hermes:a', asking: true, askStreaming: true,
     history: [], threads: {}, noticeLinks: [], clarifyWaiting: {}, activePrompts: {}, pendingAnswers: {},
@@ -102,6 +102,20 @@ test('cancellation retires both free-text questions and approval buttons across 
   assert.equal(Object.keys(root.activePrompts).length, 0)
   assert.equal(root.threads['hermes:a'].links.length, 0)
   assert.equal(root.sendAnswer('p2', 'once'), false)
+})
+
+test('an unanswerable OpenBot prompt points at OpenBot', () => {
+  const { root } = promptHarness()
+  root.askBotId = 'openbot:ada'
+  root.threadBotId = 'openbot:ada'
+  root.showPrompt({ bot: 'openbot:ada', promptId: 'q', kind: 'clarify', text: 'OpenBot is waiting for an answer. This desktop cannot answer it.',
+    command: '', choices: [], answerable: false }, true)
+  assert.match(root.bubbleBody, /Open OpenBot to review and answer this one/)
+  assert.doesNotMatch(root.bubbleBody, /Hermes/)
+  root.askBotId = 'hermes:a'
+  root.threadBotId = 'hermes:a'
+  root.showPrompt({ bot: 'hermes:a', promptId: 'h', kind: 'approval', text: 'a request', command: '', choices: [], answerable: false }, true)
+  assert.match(root.bubbleBody, /Open Hermes to review and answer this one/)
 })
 
 test('approval commands containing both fence styles remain one literal code block', () => {

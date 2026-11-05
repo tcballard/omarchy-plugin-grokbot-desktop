@@ -11,7 +11,7 @@ Scoped on 2 November 2026 in [MULTI-PROVIDER-SCOPE.md](MULTI-PROVIDER-SCOPE.md).
 - Work branch: `feature/multi-provider-companion`, based on v0.1.2 main (`928f73a`).
 - One companion and mixed roster for Grok, Hermes and existing local agents, behind a versioned provider contract.
 - OpenClaw, Dots and Muse are future integration candidates; their usable interfaces must be verified before support is promised.
-- An OpenBot Local scripts adapter is proposed as an experimental, opt-in provider; OpenBot Team API support and attachments remain later work.
+- An experimental, opt-in OpenBot Local scripts adapter is available for review. It uses the host Local scripts API only. Team API support remains a separate unresolved investigation.
 - Product: **Agent Desktop**. Rename this repository in place to `omarchy-plugin-agent-desktop`. Retain the permanent plugin ID and existing configuration/IPC compatibility.
 - Keep main releasable during feature development. Multi-provider support takes priority; costumes remain deferred and must not be bundled into v0.2.0.
 - **v0.2.0 ships multi-provider support and the rename.** Costumes move to a later feature release with no version assigned.

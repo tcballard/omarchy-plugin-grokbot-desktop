@@ -8,7 +8,7 @@ import sys
 import tempfile
 import unittest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -16,7 +16,7 @@ from agent_desktop.protocol import Fault, MAX_FRAME, Server, Output, decode, enc
 from agent_desktop.example import Example
 from agent_desktop.hermes import Hermes
 from agent_desktop.hermes_gateway import BotState, history_items, history_page
-from agent_desktop.openbot import OpenBot
+from agent_desktop.openbot import OpenBot, ask_timeout, delivery_budget
 
 
 class Capture:
@@ -251,6 +251,18 @@ class HermesTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.events)
 
 
+def _receipt(agent='agent-1', delivery='delivery-1'):
+    return json.dumps({'messageId': 'm-1', 'deliveries': [
+        {'id': delivery, 'recipientAgentId': agent, 'status': 'queued'}]}).encode()
+
+
+def _delivery(status, answer=None, delivery='delivery-1', error=None):
+    return json.dumps({'id': delivery, 'status': status, 'answer': answer, 'error': error}).encode()
+
+
+_PENDING = json.dumps({'prompts': [], 'approvals': [], 'browserTakeovers': []}).encode()
+
+
 class OpenBotTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.adapter = OpenBot(poll_interval=0)
@@ -260,6 +272,13 @@ class OpenBotTests(unittest.IsolatedAsyncioTestCase):
 
     async def asyncTearDown(self):
         await self.adapter.close()
+
+    async def _finished(self):
+        for _ in range(50):
+            await asyncio.sleep(0)
+            if any(name == 'message.finished' for name, _ in self.events):
+                return [params for name, params in self.events if name == 'message.finished']
+        self.fail('expected one message.finished')
 
     async def test_roster_uses_local_scripts_and_stable_blob_appearance(self):
         self.adapter._run = AsyncMock(return_value=json.dumps([
@@ -272,6 +291,11 @@ class OpenBotTests(unittest.IsolatedAsyncioTestCase):
         for row in reply['agents']:
             self.assertEqual(row['availability'], 'ready')
             self.assertEqual(row['avatarShape'], 'blob')
+            self.assertEqual(row['capabilities']['streaming'], False)
+            self.assertEqual(row['capabilities']['cancellation'], 'none')
+            self.assertEqual(row['capabilities']['attachments'], False)
+            self.assertEqual(row['capabilities']['history'], False)
+            self.assertEqual(row['capabilities']['prompts'], False)
             self.assertIn(row['avatarColor'], ('black', 'brown', 'red', 'orange', 'yellow',
                                                'green', 'cyan', 'blue', 'violet', 'magenta', 'gray'))
         again = await self.adapter.call('agents.list', {})
@@ -280,20 +304,17 @@ class OpenBotTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_send_polls_progress_and_final_answer(self):
         self.adapter._run = AsyncMock(side_effect=[
-            json.dumps({'messageId': 'm-1', 'deliveries': [{'id': 'delivery-1'}]}).encode(),
-            json.dumps({'id': 'delivery-1', 'status': 'queued', 'answer': None}).encode(),
-            json.dumps({'id': 'delivery-1', 'status': 'completed', 'answer': 'It passes.'}).encode(),
+            _receipt(),
+            _delivery('queued'),
+            _PENDING,
+            _delivery('completed', 'It passes.'),
         ])
         reply = await self.adapter.call('message.send', {'agentId': 'agent-1', 'requestId': 'turn-1',
                                                          'text': 'Run the tests'})
         self.assertTrue(reply['accepted'])
         self.assertEqual(reply['deliveryId'], 'delivery-1')
-        for _ in range(50):
-            await asyncio.sleep(0)
-            if any(name == 'message.finished' for name, _ in self.events):
-                break
+        finished = await self._finished()
         progress = [params for name, params in self.events if name == 'message.progress']
-        finished = [params for name, params in self.events if name == 'message.finished']
         self.assertEqual(progress[0]['text'], 'Queued in OpenBot')
         self.assertEqual(len(finished), 1)
         self.assertEqual(finished[0]['status'], 'completed')
@@ -301,13 +322,19 @@ class OpenBotTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.adapter.active)
 
     async def test_cancel_is_honest_and_does_not_claim_stop(self):
-        self.adapter._run = AsyncMock(return_value=json.dumps(
-            {'messageId': 'm-1', 'deliveries': [{'id': 'delivery-1'}]}).encode())
+        async def fake(args, payload=None, timeout=45):
+            if args[0] == 'send':
+                return _receipt()
+            if args[0] == 'pending':
+                return _PENDING
+            return _delivery('running')
+        self.adapter._run = fake
         await self.adapter.call('message.send', {'agentId': 'agent-1', 'requestId': 'turn-1',
                                                  'text': 'Run the tests'})
         reply = await self.adapter.call('request.cancel', {'requestId': 'turn-1'})
         self.assertEqual(reply['status'], 'unsupported')
         self.assertTrue(reply['remoteMayContinue'])
+        self.assertTrue(self.adapter.active)
 
     async def test_send_failure_is_delivery_unknown_and_not_replayed(self):
         self.adapter._run = AsyncMock(side_effect=Fault('delivery_unknown', 'OpenBot host is unreachable.'))
@@ -319,6 +346,136 @@ class OpenBotTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(Fault) as caught:
             await self.adapter.call('message.send', params)
         self.assertEqual(caught.exception.code, 'duplicate_id')
+
+    async def test_bad_status_emits_one_terminal_failure(self):
+        self.adapter._run = AsyncMock(side_effect=[_receipt(), _delivery([])])
+        await self.adapter.call('message.send', {'agentId': 'agent-1', 'requestId': 'turn-1', 'text': 'Run the tests'})
+        finished = await self._finished()
+        self.assertEqual(len(finished), 1)
+        self.assertEqual(finished[0]['status'], 'failed')
+        self.assertEqual(finished[0]['error']['code'], 'invalid_response')
+        self.assertNotIn('[]', finished[0]['error']['message'])
+        self.assertFalse(self.adapter.active)
+
+    async def test_mismatched_recipient_is_rejected(self):
+        self.adapter._run = AsyncMock(return_value=json.dumps({'messageId': 'm-1', 'deliveries': [
+            {'id': 'delivery-1', 'recipientAgentId': 'someone-else'}]}).encode())
+        with self.assertRaises(Fault) as caught:
+            await self.adapter.call('message.send', {'agentId': 'agent-1', 'requestId': 'turn-1', 'text': 'Run the tests'})
+        self.assertEqual(caught.exception.code, 'invalid_response')
+        self.assertFalse(self.adapter.active)
+        self.assertFalse(any(name == 'message.finished' for name, _ in self.events))
+
+    async def test_mismatched_delivery_id_is_a_terminal_failure(self):
+        self.adapter._run = AsyncMock(side_effect=[
+            _receipt(),
+            json.dumps({'id': 'other-delivery', 'status': 'completed', 'answer': 'wrong turn'}).encode(),
+        ])
+        await self.adapter.call('message.send', {'agentId': 'agent-1', 'requestId': 'turn-1', 'text': 'Run the tests'})
+        finished = await self._finished()
+        self.assertEqual(len(finished), 1)
+        self.assertEqual(finished[0]['status'], 'failed')
+        self.assertEqual(finished[0]['error']['code'], 'invalid_response')
+        self.assertEqual(finished[0]['text'], '')
+        self.assertNotIn('wrong turn', json.dumps(finished))
+
+    async def test_unexpected_poll_error_emits_one_fixed_failure(self):
+        async def fake(args, payload=None, timeout=45):
+            if args[0] == 'send':
+                return _receipt()
+            raise RuntimeError('ssh: SUPERSECRET raw hop text')
+        self.adapter._run = fake
+        await self.adapter.call('message.send', {'agentId': 'agent-1', 'requestId': 'turn-1', 'text': 'Run the tests'})
+        finished = await self._finished()
+        self.assertEqual(len(finished), 1)
+        self.assertEqual(finished[0]['error']['message'], 'OpenBot polling failed.')
+        self.assertNotIn('SUPERSECRET', json.dumps(finished))
+
+    async def test_transport_failures_end_once_after_retries(self):
+        self.adapter._run = AsyncMock(side_effect=[
+            _receipt(),
+            Fault('unavailable', 'OpenBot host is unreachable.'),
+            Fault('unavailable', 'OpenBot host is unreachable.'),
+            Fault('unavailable', 'OpenBot host is unreachable.'),
+        ])
+        await self.adapter.call('message.send', {'agentId': 'agent-1', 'requestId': 'turn-1', 'text': 'Run the tests'})
+        finished = await self._finished()
+        self.assertEqual(len(finished), 1)
+        self.assertEqual(finished[0]['status'], 'failed')
+        self.assertEqual(finished[0]['error']['code'], 'unavailable')
+        self.assertTrue(finished[0]['remoteMayContinue'])
+
+    async def test_pending_request_is_a_handoff_without_answering(self):
+        calls = []
+        async def fake(args, payload=None, timeout=45):
+            calls.append(list(args))
+            if args[0] == 'send':
+                return _receipt()
+            if args[0] == 'pending':
+                return json.dumps({'prompts': [{
+                    'requestId': 'req-1', 'requiresOpenBot': True, 'questions': [],
+                    'question': 'SECRET-QUESTION'}], 'approvals': [{
+                    'requestId': 'apr-1', 'command': 'rm -rf SECRET-COMMAND'}],
+                    'browserTakeovers': [{'requestId': 'br-1', 'requiresOpenBot': True}]}).encode()
+            if calls.count(['delivery', 'agent-1', 'delivery-1']) == 1:
+                return _delivery('running')
+            return _delivery('completed', 'after you answer in OpenBot')
+        self.adapter._run = fake
+        await self.adapter.call('message.send', {'agentId': 'agent-1', 'requestId': 'turn-1', 'text': 'Run the tests'})
+        finished = await self._finished()
+        prompts = [params for name, params in self.events if name == 'prompt.required']
+        self.assertGreaterEqual(len(prompts), 3)
+        self.assertTrue(all(item['answerable'] is False for item in prompts))
+        blob = json.dumps(self.events)
+        self.assertNotIn('SECRET-QUESTION', blob)
+        self.assertNotIn('SECRET-COMMAND', blob)
+        self.assertTrue(any('OpenBot' in item['text'] for item in prompts))
+        self.assertTrue(any('browser takeover' in item['text'] for item in prompts))
+        self.assertTrue(any('cannot accept or decline' in item['text'] for item in prompts))
+        self.assertFalse(any(args[0] in {'answer', 'respond'} or 'answer' in '/'.join(args) for args in calls))
+        with self.assertRaises(Fault) as caught:
+            await self.adapter.call('prompt.answer', {'agentId': 'agent-1', 'promptId': 's-req-1', 'answer': 'yes'})
+        self.assertEqual(caught.exception.code, 'unsupported')
+        self.assertEqual(finished[0]['status'], 'completed')
+
+    def test_timeout_precedence(self):
+        self.assertEqual(delivery_budget({'timeoutSeconds': 600}, 180, None), 600)
+        self.assertEqual(ask_timeout('openbot', {}, 180, {'timeoutSeconds': 600}), (600, False))
+        self.assertEqual(ask_timeout('openbot', {'timeoutSeconds': 50}, 180, {'timeoutSeconds': 600}), (50, True))
+        self.assertEqual(ask_timeout('openbot', {}, 240, {}), (240, False))
+        self.assertEqual(ask_timeout('hermes', {'timeoutSeconds': 50}, 180, {'timeoutSeconds': 600}), (180, True))
+        with self.assertRaises(Fault):
+            delivery_budget({'timeoutSeconds': 0}, 180, None)
+
+    async def test_send_uses_openbot_timeout_not_the_shared_default(self):
+        seen = []
+        async def fake(args, payload=None, timeout=45):
+            if args[0] == 'send':
+                seen.append(timeout)
+                return _receipt()
+            if args[0] == 'pending':
+                return _PENDING
+            return _delivery('completed', 'ok')
+        self.adapter._run = fake
+        self.adapter.entry = {'timeoutSeconds': 50}
+        self.adapter.fallback = 180
+        await self.adapter.call('message.send', {'agentId': 'agent-1', 'requestId': 'turn-1', 'text': 'Run the tests'})
+        await self._finished()
+        self.events.clear()
+        self.adapter.entry = {'timeoutSeconds': 600}
+        await self.adapter.call('message.send', {'agentId': 'agent-1', 'requestId': 'turn-2',
+                                                 'text': 'Run the tests', 'timeoutSeconds': 40})
+        self.assertEqual(seen, [50, 40])
+
+    def test_configure_prefers_provider_timeout_over_shared(self):
+        adapter = OpenBot()
+        config = {'providers': {'openbot': {'timeoutSeconds': 600, 'hop': 'bash -lc'}}}
+        with patch.dict('os.environ', {'OPENBOT_LOCAL_SCRIPTS_HOP': ''}), \
+             patch('agent_desktop.config.configuration', return_value=config), \
+             patch('agent_desktop.config.timeout_seconds', side_effect=AssertionError('shared timeout used')):
+            adapter.configure()
+        self.assertEqual(adapter.timeout, 600)
+        self.assertEqual(adapter.hop, 'bash -lc')
 
 
 if __name__ == '__main__':

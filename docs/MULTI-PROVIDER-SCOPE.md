@@ -28,7 +28,7 @@ This is a desktop integration project. Agent runtimes continue to own their memo
 | Existing appearance, attachments, dictation, privacy and Open Bot Avatar v1 import/export | Accessory costumes and unrelated visual redesign |
 | Repository/product rename and upgrade compatibility | New permanent plugin ID unless separately decided |
 
-Dots is explicitly out of scope. OpenClaw and Muse are future candidates. An OpenBot Local scripts adapter is an experimental future candidate: it would use OpenBot's Local scripts API only, not the Team API, and would not claim attachments, cancellation or avatar sync. Team API support and those capabilities remain later work. The exact upstream projects, API availability, authentication and terms for other candidates are not established by this scope. No browser-session scraping or reverse-engineered credential extraction is assumed. An unavailable integration must be reported as unavailable, not emulated with a different agent.
+Dots is explicitly out of scope. OpenClaw and Muse are future candidates. An experimental, opt-in OpenBot Local scripts adapter uses that host API only. It does not use the Team API and does not claim attachments, cancellation, history, streaming or native avatar sync. Team API support remains a separate unresolved investigation. The exact upstream projects, API availability, authentication and terms for other candidates are not established by this scope. No browser-session scraping or reverse-engineered credential extraction is assumed. An unavailable integration must be reported as unavailable, not emulated with a different agent.
 
 ## Architecture and ownership
 

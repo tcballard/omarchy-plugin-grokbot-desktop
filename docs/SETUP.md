@@ -83,15 +83,16 @@ Files and images work only in local-agent mode. Webhook mode currently refuses a
 
 ## Optional: OpenBot Local scripts
 
-OpenBot support is experimental and optional. It uses OpenBot's Local scripts API only, so only agents with Local scripts enabled appear. See [OPENBOT.md](OPENBOT.md) for the API mapping, limits and helper usage.
+OpenBot support is experimental and optional. It needs a shell on the OpenBot host and that host's Local scripts token. It does not use Team API credentials. Only agents with Local scripts enabled appear. Questions and approvals are answered in OpenBot; stopping a request stops the wait only. See [OPENBOT.md](OPENBOT.md).
 
-The transport hop is required; there is no built-in host default. Set it in `~/.config/omarchy/agent-desktop.json` or with `OPENBOT_LOCAL_SCRIPTS_HOP`. Replace the generic host and container command with your own deployment:
+The hop is required. There is no built-in host. `automationDir` is the automation directory on the OpenBot host, quoted into the remote script so it crosses SSH. `/data/.config/OpenBot/automation` is the container path for the example below, not a native Linux desktop path. A local `OPENBOT_AUTOMATION_DIR` is not forwarded. `timeoutSeconds` is the OpenBot delivery wait and overrides the desktop's shared ask timeout.
 
 ```json
 {
   "providers": {
     "openbot": {
       "hop": "ssh -o BatchMode=yes -o ConnectTimeout=8 user@openbot-host docker exec -i openbot bash -lc",
+      "automationDir": "/data/.config/OpenBot/automation",
       "timeoutSeconds": 180
     }
   }
