@@ -397,7 +397,8 @@ Item {
   // askedFiles, bubbleBody, and noticeLinks. A new ask or notice moves the
   // latest here.
   property var history: []
-  readonly property int historyLimit: 40
+  // Exchanges kept per bot; earlier pages loaded on request count towards it.
+  readonly property int historyLimit: 200
   // Each bot keeps its own conversation. The one on screen lives in
   // history, askedText, bubbleBody, noticeLinks, and promptDraft; switching
   // bots puts it away under its bot and brings the next bot's back. They are
@@ -672,10 +673,44 @@ Item {
   // to this machine: the bot saved in shell.json must not be judged against it.
   property bool rosterRead: false
 
+  // Grok Bot's roster is shown only when Grok Bot is in use: a roster synced from the
+  // Grok Bot app, or a Grok webhook connection. Otherwise the bundled sample roster
+  // (Bob, OmaBot, …) stands in only while no other provider has agents, as before.
+  // Roster entries named after another provider's agents (a Hermes profile roster an
+  // older Hermes fork wrote to grokbot-bots.json) are not Grok bots and are skipped.
+  property var grokDesktop: ({})
+  readonly property bool grokWebhook: {
+    var conf = root.grokDesktop || {}
+    return String(conf.dispatch || "").toLowerCase() === "webhook" || String(conf.webhookUrl || "") !== ""
+  }
+
+  FileView {
+    id: grokDesktopFile
+    path: root.homePath + "/.config/omarchy/grokbot-desktop.json"
+    watchChanges: true
+    printErrors: false
+    onLoaded: {
+      var data = null
+      try { data = JSON.parse(text()) } catch (e) { data = null }
+      root.grokDesktop = data && typeof data === "object" ? data : ({})
+      root.applyBots(botsFile.text())
+    }
+    onFileChanged: reload()
+    onLoadFailed: root.grokDesktop = ({})
+  }
+
+  function grokRoster(text) {
+    var native = {}
+    ;(root.providerBots || []).forEach(function(bot) { if (bot.agentId) native[String(bot.agentId)] = true })
+    var synced = root.parseBots(text).filter(function(bot) { return !native[bot.id] })
+    if (synced.length > 0) return synced
+    if (root.grokWebhook || (root.providerBots || []).length === 0) return root.parseBots(bundledBots.text())
+    return []
+  }
+
   function applyBots(text) {
-    var parsed = root.parseBots(text)
-    if (parsed.length === 0) parsed = root.parseBots(bundledBots.text())
-    if (parsed.length === 0) return
+    var parsed = root.grokRoster(text)
+    if (parsed.length === 0 && (root.providerBots || []).length === 0) return
     // Grok IDs retain their legacy namespace; other providers use explicit prefixes.
     var ids = {}
     parsed.forEach(function(bot) { ids[bot.id] = true })
@@ -1074,6 +1109,158 @@ Item {
     onTriggered: root.saveSettings()
   }
 
+  // A provider's conversation history (Hermes: the profile's Bot Chat), loaded once
+  // into a conversation that is still empty here, then a page of 20 at a time on
+  // request ("Load 20 earlier messages"), up to olderCap exchanges.
+  readonly property string historyHelper: root.localPath(Qt.resolvedUrl("bin/agent-desktop-history"))
+  readonly property int olderCap: 100
+  property var olderInfo: ({})
+  property var historyTried: ({})
+  property string historyBot: ""
+  property bool historyOlder: false
+  readonly property bool olderHere: !!(root.olderInfo[root.threadBotId] && root.olderInfo[root.threadBotId].more)
+    && root.history.length < root.olderCap
+  readonly property bool olderLoading: !!(root.olderInfo[root.threadBotId] && root.olderInfo[root.threadBotId].loading)
+  // Set while an earlier page is prepended, so the thread keeps the reader's place.
+  property bool prependingOlder: false
+
+  function setOlder(botId, info) {
+    var next = Object.assign({}, root.olderInfo)
+    next[botId] = Object.assign({}, next[botId] || {}, info)
+    root.olderInfo = next
+  }
+
+  function historyEntries(items) {
+    var list = []
+    var i
+    for (i = 0; i < (items || []).length; i++) {
+      var body = root.cleanText(items[i].body, 4000)
+      if (body === "") continue
+      list.push({ asked: root.cleanText(items[i].asked, 4000), files: [], body: body, links: [], wait: "" })
+    }
+    return list
+  }
+
+  function runHistory(botId, cursor) {
+    var bot = root.findBot(botId)
+    if (!bot || !bot.provider || bot.provider === "grokbot" || historyProc.running) return false
+    if (root.historyHelper.indexOf("/bin/agent-desktop-history") < 0 || root.historyHelper.indexOf("..") >= 0) return false
+    root.historyBot = botId
+    root.historyOlder = cursor !== ""
+    var request = { provider: bot.provider, botId: bot.agentId || bot.id }
+    if (cursor !== "") request.cursor = cursor
+    root.historyRequest = JSON.stringify(request)
+    historyProc.command = ["/usr/bin/setpriv", "--pdeathsig", "TERM", "/usr/bin/python3", "-I", root.historyHelper]
+    historyProc.environment = root.askEnvironment()
+    historyProc.running = true
+    return true
+  }
+  property string historyRequest: ""
+
+  // The bot on screen, once, while its conversation here is still empty.
+  function maybeLoadHistory() {
+    var botId = root.threadBotId
+    if (botId === "" || root.historyTried[botId]) return
+    var bot = root.findBot(botId)
+    if (!bot || !bot.provider || bot.provider === "grokbot") return
+    if (root.history.length > 0 || root.askedText !== "" || root.bubbleBody !== "" || root.asking) return
+    if (!root.runHistory(botId, "")) return
+    var tried = Object.assign({}, root.historyTried)
+    tried[botId] = true
+    root.historyTried = tried
+  }
+
+  onThreadBotIdChanged: Qt.callLater(root.maybeLoadHistory)
+  onBotsChanged: Qt.callLater(root.maybeLoadHistory)
+  onAskingChanged: if (!root.asking) Qt.callLater(root.maybeLoadHistory)
+
+  function finishHistory(code, output) {
+    var botId = root.historyBot
+    var data = null
+    if (code === 0) {
+      try { data = JSON.parse(output) } catch (e) { data = null }
+    }
+    if (!data || !Array.isArray(data.items)) {
+      var tried = Object.assign({}, root.historyTried)
+      delete tried[botId]
+      root.historyTried = tried
+      root.setOlder(botId, { loading: false })
+    } else {
+      var next = typeof data.nextCursor === "string" ? data.nextCursor : ""
+      if (root.historyOlder) root.applyOlder(botId, data.items, next)
+      else root.applyHistory(botId, data.items, next)
+    }
+    if (botId !== root.threadBotId) Qt.callLater(root.maybeLoadHistory)
+  }
+
+  Process {
+    id: historyProc
+    clearEnvironment: true
+    stdinEnabled: true
+    stdout: StdioCollector { id: historyOut }
+    onStarted: {
+      historyProc.write(root.historyRequest + "\n")
+      historyProc.stdinEnabled = false
+    }
+    onExited: function (code) {
+      historyProc.stdinEnabled = true
+      root.finishHistory(code, historyOut.text)
+    }
+  }
+
+  function applyHistory(botId, items, next) {
+    var list = root.historyEntries(items).slice(-root.historyLimit)
+    root.setOlder(botId, { key: next, more: next !== "", loading: false })
+    if (list.length === 0) return
+    if (botId === root.threadBotId) {
+      if (root.history.length > 0 || root.askedText !== "" || root.bubbleBody !== "" || root.asking) return
+      root.history = list
+      return
+    }
+    var thread = root.threads[botId]
+    if (thread && ((thread.history || []).length > 0 || (thread.asked || "") !== "" || (thread.body || "") !== "")) return
+    var threads = Object.assign({}, root.threads)
+    threads[botId] = Object.assign({}, thread || {}, { history: list })
+    root.threads = threads
+  }
+
+  function loadOlder() {
+    var bot = root.threadBotId
+    var info = root.olderInfo[bot]
+    if (!info || !info.more || info.loading || !info.key) return "nothing"
+    if (root.history.length >= root.olderCap) return "limit"
+    if (!root.runHistory(bot, info.key)) return "busy"
+    root.setOlder(bot, { loading: true })
+    return "ok"
+  }
+
+  Timer {
+    id: olderSettle
+    interval: 500
+    onTriggered: root.prependingOlder = false
+  }
+
+  function applyOlder(botId, items, next) {
+    var shown = botId === root.threadBotId ? root.history.length : ((root.threads[botId] || {}).history || []).length
+    // Never past the cap: keep the newest part of a page that would cross it.
+    var room = Math.max(0, root.olderCap - shown)
+    var list = root.historyEntries(items)
+    list = list.slice(Math.max(0, list.length - room))
+    root.setOlder(botId, { loading: false, more: next !== "", key: next })
+    if (list.length === 0) return
+    if (botId === root.threadBotId) {
+      root.prependingOlder = true
+      root.history = list.concat(root.history).slice(-root.historyLimit)
+      olderSettle.restart()
+      return
+    }
+    var threads = Object.assign({}, root.threads)
+    var thread = Object.assign({}, threads[botId] || {})
+    thread.history = list.concat(thread.history || []).slice(-root.historyLimit)
+    threads[botId] = thread
+    root.threads = threads
+  }
+
   function stashThread(id) {
     var next = Object.assign({}, root.threads)
     next[id] = { history: root.history, asked: root.askedText, files: root.askedFiles, body: root.bubbleBody, links: root.noticeLinks, wait: root.awaitingId, draft: root.promptDraft, pending: root.pendingFiles }
@@ -1095,11 +1282,11 @@ Item {
 
   // A reply or status for the bot `id`: shown if its conversation is on
   // screen, otherwise kept with it and marked unread.
-  function deliver(id, body) {
+  function deliver(id, body, quiet) {
     var botId = id === "" ? root.threadBotId : id
     if (id === "" || id === root.threadBotId) {
       root.bubbleBody = body
-      root.announceReply(botId, body)
+      if (!quiet) root.announceReply(botId, body)
       return true
     }
     var next = Object.assign({}, root.threads)
@@ -1107,8 +1294,10 @@ Item {
     thread.body = body
     next[id] = thread
     root.threads = next
-    root.markUnread(id)
-    root.announceReply(botId, body)
+    if (!quiet) {
+      root.markUnread(id)
+      root.announceReply(botId, body)
+    }
     return false
   }
 
@@ -1282,6 +1471,7 @@ Item {
     root.bubbleOpen = true
     root.replyUnread = false
     root.clearReplyCue()
+    Qt.callLater(root.maybeLoadHistory)
     root.menuOpen = false
     root.wake()
     Qt.callLater(function () { if (root.hostBubble) root.hostBubble.focusPrompt() })
@@ -1678,6 +1868,7 @@ Item {
   }
 
   function submitPrompt(value) {
+    if (root.answerFromComposer(root.plainPrompt(value, 4000))) return
     var prompt = root.plainPrompt(value, 4000)
     // Attachments can go on their own, as in a chat app.
     if (prompt === "" && root.pendingFiles.length > 0) prompt = "Have a look at this."
@@ -1900,6 +2091,8 @@ Item {
       askId: root.pendingAskId,
       botId: bot ? bot.agentId || bot.id : root.defaultBotId,
       provider: bot ? bot.provider || "grokbot" : "grokbot",
+      // Providers stream the reply as JSON Lines; Grok keeps its plain one-shot reply.
+      stream: !!(bot && bot.provider && bot.provider !== "grokbot"),
       botName: root.botLabel(),
       prompt: prompt,
       host: "",
@@ -1908,6 +2101,11 @@ Item {
     root.askBotId = root.threadBotId
     root.asking = true
     root.expression = "work"
+    root.askStreaming = !!(bot && bot.provider && bot.provider !== "grokbot")
+    root.askLines = []
+    root.askFinal = ""
+    root.askFinalReceived = false
+    root.progressText = ""
     askProc.command = ["/usr/bin/setpriv", "--pdeathsig", "TERM", "/usr/bin/python3", "-I", root.askHelper]
     askProc.environment = root.askEnvironment()
     askProc.stdinEnabled = true
@@ -1916,10 +2114,204 @@ Item {
     return "ok"
   }
 
+  // Approvals and questions from a provider's agent, shown as messages with one button
+  // per answer. The answer goes back through the running ask's helper (stdin), which
+  // holds the adapter connection the prompt is waiting on.
+  property var clarifyWaiting: ({})
+  property var activePrompts: ({})
+  property var pendingAnswers: ({})
+  readonly property bool clarifyHere: root.clarifyWaiting[root.threadBotId] !== undefined
+  readonly property var approvalLabels: ({ once: "Allow once", session: "Allow this session", always: "Always allow", deny: "Deny" })
+
+  // The ask ended with prompts still showing: nothing here can answer them now.
+  function retirePrompts() {
+    var ids = {}
+    function collect(links) { (links || []).forEach(function (l) { if (l.promptId) ids[l.promptId] = true }) }
+    collect(root.noticeLinks)
+    root.history.forEach(function (item) { collect(item.links) })
+    Object.keys(root.threads).forEach(function (id) {
+      var thread = root.threads[id] || {}
+      collect(thread.links)
+      ;(thread.history || []).forEach(function (item) { collect(item.links) })
+    })
+    Object.keys(root.clarifyWaiting).forEach(function (bot) { ids[root.clarifyWaiting[bot]] = true })
+    Object.keys(root.activePrompts).forEach(function (id) { ids[id] = true })
+    Object.keys(ids).forEach(function (id) { root.dropPromptLinks(id, "(No longer answerable here; open Hermes.)") })
+    root.pendingAnswers = ({})
+  }
+
+  function sendAnswer(promptId, value) {
+    if (!askProc.running || !root.askStreaming || !root.asking || promptId === "" || value === "") return false
+    if (root.activePrompts[promptId] !== root.askBotId || root.pendingAnswers[promptId] !== undefined) return false
+    var pending = Object.assign({}, root.pendingAnswers)
+    pending[promptId] = value
+    root.pendingAnswers = pending
+    askProc.write(JSON.stringify({ op: "answer", promptId: promptId, answer: value }) + "\n")
+    return true
+  }
+
+  function answerResult(ev) {
+    var id = String(ev.promptId || "")
+    if (root.pendingAnswers[id] === undefined) return
+    var value = root.pendingAnswers[id]
+    var pending = Object.assign({}, root.pendingAnswers)
+    delete pending[id]
+    root.pendingAnswers = pending
+    if (ev.ok === true) {
+      if (root.clarifyWaiting[root.threadBotId] === id && root.promptDraft === value) root.promptDraft = ""
+      root.dropPromptLinks(id, "→ " + root.plainLine(value, 80))
+      root.progressText = ""
+    } else {
+      root.progressText = root.plainLine(ev.text || "The answer was not accepted. Try again.", 200)
+    }
+  }
+
+  function showPrompt(ev, mine) {
+    var bot = String(ev.bot || "")
+    var promptId = String(ev.promptId || "")
+    if (bot === "" || promptId === "" || !root.findBot(bot)) return
+    var text = root.cleanText(ev.text, 3000)
+    var links = []
+    var choices = Array.isArray(ev.choices) ? ev.choices : []
+    var i
+    if (ev.answerable) {
+      var active = Object.assign({}, root.activePrompts)
+      active[promptId] = bot
+      root.activePrompts = active
+    }
+    if (!ev.answerable) {
+      text = (ev.kind === "approval" ? "Needs your approval: " : "") + (text || "a request") + "\n\nOpen Hermes to review and answer this one."
+    } else if (ev.kind === "approval") {
+      var command = root.cleanText(ev.command, 4000)
+      var fence = "```"
+      while (command.indexOf(fence) >= 0) fence += "`"
+      text = "Needs your approval: " + (text && text !== command ? text : "run a command") + (command !== "" ? "\n\n" + fence + "\n" + command + "\n" + fence : "")
+      for (i = 0; i < choices.length; i++) {
+        var choice = String(choices[i])
+        links.push({ label: root.approvalLabels[choice] || root.plainLine(choice, 24), action: "respond", bot: bot, promptId: promptId, value: choice })
+      }
+    } else {
+      for (i = 0; i < choices.length; i++)
+        links.push({ label: root.plainLine(choices[i], 24), action: "answer", bot: bot, promptId: promptId, value: String(choices[i]) })
+      text = text + (!ev.answerable ? "" : (choices.length > 0 ? "\n\nPick one." : "\n\nType your answer below."))
+      if (choices.length === 0) {
+        var waiting = Object.assign({}, root.clarifyWaiting)
+        waiting[bot] = promptId
+        root.clarifyWaiting = waiting
+      }
+    }
+    if (mine && root.asking && bot === root.askBotId && bot === root.threadBotId) {
+      root.bubbleBody = text
+      root.noticeLinks = links
+    } else {
+      root.appendReply(bot, text, links)
+    }
+    root.flashExpression("alert", 1200)
+    if (!root.bubbleOpen) root.replyUnread = true
+  }
+
+  function dropPromptLinks(promptId, note) {
+    function strip(links) { return (links || []).filter(function (link) { return link.promptId !== promptId }) }
+    function had(links) { return (links || []).some(function (link) { return link.promptId === promptId }) }
+    function mark(body) { return note ? String(body || "") + "\n\n" + note : body }
+    if (had(root.noticeLinks)) {
+      root.bubbleBody = mark(root.bubbleBody)
+      root.noticeLinks = strip(root.noticeLinks)
+    }
+    root.history = root.history.map(function (item) {
+      return had(item.links) ? Object.assign({}, item, { body: mark(item.body), links: strip(item.links) }) : item
+    })
+    var threads = Object.assign({}, root.threads)
+    Object.keys(threads).forEach(function (id) {
+      var thread = threads[id]
+      if (!thread) return
+      var next = Object.assign({}, thread)
+      if (had(thread.links)) {
+        next.body = mark(thread.body)
+        next.links = strip(thread.links)
+      }
+      next.history = (thread.history || []).map(function (item) {
+        return had(item.links) ? Object.assign({}, item, { body: mark(item.body), links: strip(item.links) }) : item
+      })
+      threads[id] = next
+    })
+    root.threads = threads
+    var waiting = Object.assign({}, root.clarifyWaiting)
+    Object.keys(waiting).forEach(function (bot) { if (waiting[bot] === promptId) delete waiting[bot] })
+    root.clarifyWaiting = waiting
+    var active = Object.assign({}, root.activePrompts)
+    delete active[promptId]
+    root.activePrompts = active
+    var pending = Object.assign({}, root.pendingAnswers)
+    delete pending[promptId]
+    root.pendingAnswers = pending
+  }
+
+  function linkAction(link) {
+    if (!link) return
+    if (link.action !== "respond" && link.action !== "answer") {
+      root.openLink(link.url)
+      return
+    }
+    if (!root.sendAnswer(link.promptId, link.value)) return
+    root.progressText = "Sending answer…"
+  }
+
+  function answerPrompt(promptId, value) {
+    if (!root.sendAnswer(String(promptId || ""), String(value || ""))) return "not waiting"
+    root.progressText = "Sending answer…"
+    return "ok"
+  }
+
+  function answerFromComposer(prompt) {
+    if (prompt === "" || !root.clarifyHere || root.pendingFiles.length > 0) return false
+    if (root.answerPrompt(root.clarifyWaiting[root.threadBotId], prompt) !== "ok") return false
+    return true
+  }
+
+  // A streaming ask: the reply so far, what the agent is doing, and the final reply.
+  property bool askStreaming: false
+  property var askLines: []
+  property string askFinal: ""
+  property bool askFinalReceived: false
+  property string progressText: ""
+
+  function askLine(line) {
+    var raw = String(line)
+    if (root.askStreaming) {
+      var ev = null
+      try { ev = JSON.parse(raw) } catch (e) { ev = null }
+      if (ev && typeof ev === "object" && typeof ev.ev === "string") {
+        if (!root.asking) return
+        var value = root.cleanText(ev.text, 4000)
+        if (ev.ev === "delta" && value !== "") {
+          root.progressText = ""
+          root.deliver(root.askBotId, value, true)
+        } else if (ev.ev === "progress") {
+          root.progressText = root.plainLine(ev.text, 80)
+        } else if (ev.ev === "final") {
+          root.askFinal = value
+          root.askFinalReceived = true
+        } else if (ev.ev === "prompt") {
+          root.showPrompt(Object.assign({}, ev, { bot: root.askBotId }), true)
+        } else if (ev.ev === "settled") {
+          root.answerResult({ promptId: ev.promptId, ok: true })
+          root.dropPromptLinks(String(ev.promptId || ""), "")
+        } else if (ev.ev === "answered") {
+          root.answerResult(ev)
+        }
+        return
+      }
+    }
+    if (root.askLines.length < 4000) root.askLines = root.askLines.concat([raw])
+  }
+
   function cancelAsk() {
     askTimeout.stop()
-    if (askProc.running) askProc.running = false
+    root.progressText = ""
     root.asking = false
+    root.retirePrompts()
+    if (askProc.running) askProc.running = false
   }
 
   function stopAsk() {
@@ -2036,14 +2428,17 @@ Item {
     id: askProc
     clearEnvironment: true
     stdinEnabled: false
-    stdout: StdioCollector { id: askOut }
+    // Line by line, so a streaming provider's reply shows as it is written.
+    stdout: SplitParser { onRead: function (line) { root.askLine(line) } }
     stderr: StdioCollector { id: askErr }
     onStarted: {
-      if (root.pendingJson !== "") askProc.write(root.pendingJson)
-      askProc.stdinEnabled = false
+      if (root.pendingJson !== "") askProc.write(root.pendingJson + "\n")
+      // A streaming ask keeps stdin open for answers to the agent's prompts.
+      if (!root.askStreaming) askProc.stdinEnabled = false
     }
     onExited: function (code) {
       askTimeout.stop()
+      root.retirePrompts()
       if (!root.asking) return
       root.asking = false
       // The routine took the ask; its answer comes through reply.
@@ -2051,9 +2446,10 @@ Item {
         root.startWaiting(root.pendingAskId, root.askBotId)
         return
       }
-      var out = root.cleanText(askOut.text, 4000)
+      root.progressText = ""
+      var out = root.cleanText(root.askStreaming ? root.askFinal : root.askLines.join("\n"), 4000)
       var err = root.cleanText(askErr.text, 400)
-      var ok = code === 0 && out !== ""
+      var ok = code === 0 && (out !== "" || (root.askStreaming && root.askFinalReceived))
       var here = root.deliver(root.askBotId, ok ? out : (err !== "" ? err : "The ask didn't return a reply."))
       if (here && ok) {
         root.flashExpression("happy", 1600)
