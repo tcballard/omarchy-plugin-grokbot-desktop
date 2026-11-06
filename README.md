@@ -2,7 +2,8 @@
 
 <p align="center">Your bots, beside your work on Omarchy.</p>
 
-<p align="center"><a href="https://github.com/tcballard/omarchy-badges"><img alt="Built for Omarchy: Plugin" height="20" src="https://raw.githubusercontent.com/tcballard/omarchy-badges/75975e5b5bf75e7ede3764bcd2950046f7abfe2c/badges/v1/omarchy-plugin.svg"></a></p>
+<p align="center"><a href="https://github.com/tcballard/omarchy-badges"><img alt="Built for Omarchy: Plugin" height="20" src="https://raw.githubusercontent.com/tcballard/omarchy-badges/75975e5b5bf75e7ede3764bcd2950046f7abfe2c/badges/v1/omarchy-plugin.svg"></a>  <a href="https://buymeacoffee.com/tcballard"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?logo=buymeacoffee&logoColor=000" alt="Buy Me a Coffee" height="20"></a>
+</p>
 
 A floating desktop companion for Omarchy: pick a bot, ask a question, and keep working beside its reply. Sync names and avatar styles from the Grok Bot desktop app, then connect a webhook routine for real bot replies or use an authenticated local coding agent.
 
