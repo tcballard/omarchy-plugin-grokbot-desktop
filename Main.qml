@@ -13,6 +13,7 @@ import "qml/theme.js" as Theme
 import "qml/screens.js" as Screens
 import "qml/openbotavatar.js" as Avatar
 import "qml/pointer.js" as Pointer
+import "qml/backend.js" as Wire
 
 // Grok Bot desktop companion. A service inside omarchy-shell: a transparent
 // layer-shell window, click-through except for the mark (and the bubble or
@@ -878,6 +879,7 @@ Item {
     if (/^[A-Za-z0-9._-]{1,64}$/.test(monitor)) root.homeMonitor = monitor
     root.posRight = root.settingInt("marginX", 24, 0, 4000)
     root.posBottom = root.settingInt("marginY", 24, 0, 4000)
+    root.backendSetting = String(root.setting("backend", "legacy")) === "daemon" ? "daemon" : "legacy"
     if (root.bots.length === 0) root.applyBots("")
     if (root.rosterRead) root.settleChosenBot()
     root.ready = true
@@ -1084,12 +1086,14 @@ Item {
   }
 
   function stashThread(id) {
+    if (root.daemonMode) return root.daemonStashDraft(id)
     var next = Object.assign({}, root.threads)
     next[id] = { history: root.history, asked: root.askedText, files: root.askedFiles, body: root.bubbleBody, links: root.noticeLinks, wait: root.awaitingId, draft: root.promptDraft, pending: root.pendingFiles }
     root.threads = next
   }
 
   function loadThread(id) {
+    if (root.daemonMode) return root.daemonLoadDraft(id)
     var thread = root.threads[id] || {}
     root.history = thread.history || []
     root.askedText = thread.asked || ""
@@ -1583,6 +1587,7 @@ Item {
   // finds its question; a bot's name or id answers that bot's oldest
   // waiting question, or starts a new exchange when none is waiting.
   function receiveReply(target, text) {
+    if (root.daemonMode) return root.daemonReply(target, text)
     var body = root.cleanText(text, 4000)
     if (body === "") return "empty text"
     var key = String(target || "").trim()
@@ -1618,6 +1623,7 @@ Item {
   }
 
   function sayNotice(title, text, links) {
+    if (root.daemonMode) return root.daemonSay(title, text, links)
     var body = root.plainLine(text, 300)
     if (body === "") return "empty text"
     var who = root.plainLine(title, 80)
@@ -1663,6 +1669,7 @@ Item {
   readonly property bool canClear: !root.askingHere && (root.history.length > 0 || root.askedText !== "" || root.bubbleBody !== "" || root.noticeLinks.length > 0)
 
   function clearConversation() {
+    if (root.daemonMode) return root.daemonSimple("thread.clear", {}, root.canClear ? "ok" : "nothing to clear")
     if (!root.canClear) return "nothing to clear"
     root.clearedThread = { botId: root.threadBotId, history: root.history, asked: root.askedText, files: root.askedFiles, body: root.bubbleBody, links: root.noticeLinks, wait: root.awaitingId }
     root.history = []
@@ -1677,6 +1684,7 @@ Item {
   }
 
   function undoClear() {
+    if (root.daemonMode) return root.daemonSimple("thread.undo", {}, undefined)
     var cleared = root.clearedThread
     if (!cleared || cleared.botId !== root.threadBotId) return
     root.history = cleared.history
@@ -1696,6 +1704,7 @@ Item {
   }
 
   function submitPrompt(value) {
+    if (root.daemonMode) return root.daemonSubmit(value)
     var prompt = root.plainPrompt(value, 4000)
     // Attachments can go on their own, as in a chat app.
     if (prompt === "" && root.pendingFiles.length > 0) prompt = "Have a look at this."
@@ -1750,6 +1759,7 @@ Item {
   }
 
   function dictateText(text) {
+    if (root.daemonMode) return root.daemonDictate(text)
     root.dictating = false
     var raw = root.plainLine(text, 4000)
     if (raw === "") return "empty"
@@ -1927,6 +1937,7 @@ Item {
   }
 
   function launchAsk(prompt) {
+    if (root.daemonMode) return root.daemonAsk(prompt)
     if (askProc.running) return "busy"
     if (!root.findBot(root.chosenBotId)) {
       root.failAsk("Selected agent is unavailable. Refresh providers or select another agent.")
@@ -1970,12 +1981,14 @@ Item {
   }
 
   function cancelAsk() {
+    if (root.daemonMode) return root.daemonSimple("ask.cancel", { quiet: true }, undefined)
     askTimeout.stop()
     if (askProc.running) askProc.running = false
     root.asking = false
   }
 
   function stopAsk() {
+    if (root.daemonMode) return root.daemonSimple("ask.cancel", {}, undefined)
     if (!root.asking) return
     root.cancelAsk()
     root.deliver(root.askBotId, "Stopped waiting. Remote work may continue; check the provider.")
@@ -2126,6 +2139,312 @@ Item {
       if (root.deliver(root.askBotId, "That took too long, so I stopped waiting.")) root.replyLanded()
       root.expression = "idle"
     }
+  }
+
+  // ---- Daemon backend (opt-in; docs/DESKTOP-PROTOCOL.md) -----------------
+  // With `backend: "daemon"` in this plugin's shell.json entry, conversations
+  // and asks run in bin/agent-desktopd (qml/Backend.qml) and its `state`
+  // snapshots are assigned onto the properties above. The functions above
+  // that the protocol covers start with a one-line branch to the daemon*
+  // functions here. With the default "legacy" setting the loader stays
+  // inactive and daemonMode is false, so none of this runs. Drafts, the
+  // attachment note and menu, cues, expressions and every view property stay
+  // in QML.
+  property string backendSetting: "legacy"
+  // True from a hello answer (taken once the legacy path is idle) until the
+  // daemon goes away.
+  property bool daemonLive: false
+  readonly property bool daemonMode: root.backendSetting === "daemon" && root.daemonLive
+  readonly property var daemonBackend: daemonLoader.item
+  // The latest snapshot, as Wire.snapshotProps gives it.
+  property var daemonView: null
+  property string daemonShownBotId: ""
+  property bool daemonApplying: false
+  property var daemonDrafts: ({})
+  property var daemonAskIds: []
+  // Said once: when a restarted daemon is live, or when the session gives
+  // the daemon up.
+  property string daemonNote: ""
+  property string daemonTellLater: ""
+
+  Loader {
+    id: daemonLoader
+    active: root.backendSetting === "daemon"
+    source: active ? Qt.resolvedUrl("qml/Backend.qml") : ""
+    onLoaded: {
+      item.helper = root.localPath(Qt.resolvedUrl("bin/agent-desktopd"))
+      item.environment = root.askEnvironment()
+      item.start()
+    }
+  }
+
+  Connections {
+    target: daemonLoader.item
+    ignoreUnknownSignals: true
+    function onConnected() { root.daemonGoLive() }
+    function onLost(reason) { root.daemonLost() }
+    function onGaveUpForSession(reason) { root.daemonGaveUp() }
+    function onStateEvent(snapshot) { root.daemonApplyState(snapshot) }
+    function onDeltaEvent(params) { root.daemonDelta(params) }
+    function onEffectEvent(params) { root.daemonEffect(params) }
+  }
+
+  onThreadBotIdChanged: if (root.daemonMode) root.daemonFollowView()
+  onBotsChanged: if (root.daemonMode) root.daemonCall("roster.set", { bots: Wire.rosterParams(root.bots) })
+  onPendingFilesChanged: if (root.daemonMode && !root.daemonApplying) root.daemonCall("attachments.set", { files: Wire.fileList(root.pendingFiles) })
+
+  function daemonFollowView() {
+    root.daemonCall("view.set", { botId: root.threadBotId, bubbleOpen: root.bubbleOpen })
+    root.daemonShowView()
+  }
+
+  function daemonCall(method, params, callback) {
+    var done = typeof callback === "function" ? callback : root.daemonAnswer(method, undefined, null)
+    if (!root.daemonBackend) {
+      done(null, { code: "lost", message: "", retryable: true })
+      return false
+    }
+    return root.daemonBackend.call(method, params, done)
+  }
+
+  // A response handler: runs onOk on "ok", and logs an error, or a result
+  // other than the one already returned to the caller. Results are fixed
+  // words, never private text.
+  function daemonAnswer(method, expected, onOk) {
+    return function (result, error) {
+      if (error) {
+        if (error.code !== "lost") console.warn("Grok Bot desktop: agent daemon refused " + method + ": " + error.code)
+        return
+      }
+      if (result === "ok" && onOk) onOk()
+      if (expected !== undefined && result !== expected)
+        console.warn("Grok Bot desktop: agent daemon answered " + method + " with " + String(result).slice(0, 40) + ", not " + expected)
+    }
+  }
+
+  // IPC needs an answer now and the daemon's comes later, so the answer
+  // returned is the one the state on screen predicts.
+  function daemonSimple(method, params, expected) {
+    root.daemonCall(method, params, root.daemonAnswer(method, expected, null))
+    return expected
+  }
+
+  function daemonStashDraft(id) {
+    var next = Object.assign({}, root.daemonDrafts)
+    next[id] = root.promptDraft
+    root.daemonDrafts = next
+  }
+
+  function daemonLoadDraft(id) {
+    root.promptDraft = root.daemonDrafts[id] || ""
+  }
+
+  function daemonAskLaunched() {
+    root.attachNote = ""
+    if (root.hostBubble) root.hostBubble.attachMenuOpen = false
+  }
+
+  function daemonPredictAsk() {
+    if (root.asking) return "busy"
+    return root.findBot(root.threadBotId) ? "ok" : "error"
+  }
+
+  function daemonSubmit(value) {
+    root.queuedPrompt = null
+    root.daemonCall("ask.send", { text: Wire.clipText(value), mode: "prompt", attachments: Wire.fileList(root.pendingFiles) },
+      root.daemonAnswer("ask.send", undefined, root.daemonAskLaunched))
+  }
+
+  function daemonAsk(prompt) {
+    var expected = root.daemonPredictAsk()
+    root.daemonCall("ask.send", { text: Wire.clipText(prompt), mode: "line", attachments: Wire.fileList(root.pendingFiles) },
+      root.daemonAnswer("ask.send", expected, root.daemonAskLaunched))
+    return expected
+  }
+
+  function daemonDictate(text) {
+    root.dictating = false
+    var raw = root.plainLine(text, 4000)
+    var route = raw === "" ? null : Dictation.route(raw, root.bots, root.defaultBotId)
+    var expected = "empty"
+    if (route && !route.matched) expected = "ignored"
+    else if (route && root.asking) expected = "busy"
+    else if (route && !route.prompt) expected = "opened"
+    else if (route) expected = root.findBot(route.botId) || root.findBot(root.threadBotId) ? "ok" : "error"
+    root.daemonCall("dictate", { text: Wire.clipText(text) }, root.daemonAnswer("dictate", expected, null))
+    return expected
+  }
+
+  function daemonSay(title, text, links) {
+    var expected = root.plainLine(text, 300) === "" ? "empty text" : "ok"
+    return root.daemonSimple("notice.say", { title: Wire.clipText(title), text: Wire.clipText(text), links: links || [] }, expected)
+  }
+
+  function daemonKnownAsk(key) {
+    if (key === "") return false
+    if (root.daemonAskIds.indexOf(key) >= 0 || root.awaitingId === key) return true
+    return root.history.some(function (item) { return item.wait === key })
+  }
+
+  function daemonReply(target, text) {
+    var key = String(target || "").trim()
+    var expected = "empty text"
+    if (root.cleanText(text, 4000) !== "")
+      expected = root.daemonKnownAsk(key) || root.matchBot(key) ? "ok" : "unknown ask or bot"
+    return root.daemonSimple("reply.deliver", { target: Wire.clipText(target), text: Wire.clipText(text) }, expected)
+  }
+
+  // Sets a property only when its value changed, so an unchanged history
+  // does not rebuild the bubble's list on every snapshot.
+  function daemonSet(name, value) {
+    if (JSON.stringify(root[name]) !== JSON.stringify(value)) root[name] = value
+  }
+
+  function daemonApplyState(snapshot) {
+    if (!root.daemonMode) return
+    var view = Wire.snapshotProps(snapshot)
+    root.daemonView = view
+    root.asking = view.asking
+    root.askBotId = view.askBotId
+    root.daemonSet("unreadBots", view.unreadBots)
+    if (view.askId !== "" && root.daemonAskIds.indexOf(view.askId) < 0)
+      root.daemonAskIds = root.daemonAskIds.concat([view.askId]).slice(-64)
+    root.daemonShowView()
+  }
+
+  // Shows the latest snapshot if it is for the bot on screen. Until the
+  // daemon has followed a switch, the previous bot's snapshot is not shown.
+  function daemonShowView() {
+    var view = root.daemonView
+    if (!view || view.botId !== root.threadBotId) return
+    root.daemonApplying = true
+    root.daemonSet("history", view.history)
+    root.askedText = view.askedText
+    root.daemonSet("askedFiles", view.askedFiles)
+    // An attachment change still on its way to the daemon is newer.
+    if (!root.daemonBackend || root.daemonBackend.pending("attachments.set") === 0) root.daemonSet("pendingFiles", view.pendingFiles)
+    root.bubbleBody = view.bubbleBody
+    root.daemonSet("noticeLinks", view.noticeLinks)
+    root.awaitingId = view.awaitingId
+    if (view.undo !== root.undoShown) root.clearedThread = view.undo ? { botId: view.botId } : null
+    root.daemonApplying = false
+    if (view.botId !== root.daemonShownBotId) {
+      root.daemonShownBotId = view.botId
+      if (root.expression === "work" || root.expression === "idle") root.expression = root.busyHere ? "work" : "idle"
+    }
+  }
+
+  function daemonDelta(params) {
+    if (!root.daemonMode) return
+    var text = Wire.deltaBody(root.daemonView, params, root.threadBotId)
+    if (text !== null) root.bubbleBody = text
+  }
+
+  // The protocol's effects table.
+  function daemonEffect(params) {
+    if (!root.daemonMode || !params) return
+    var botId = typeof params.botId === "string" ? params.botId : ""
+    var text = typeof params.text === "string" ? params.text : ""
+    var steps = Wire.effectSteps(String(params.kind || ""))
+    var i
+    for (i = 0; i < steps.length; i++) {
+      var step = steps[i]
+      if (step === "openBubble") root.openBubble()
+      else if (step === "selectBot") { if (root.findBot(botId)) root.selectBot(botId) }
+      else if (step === "clearDraft") root.promptDraft = ""
+      else if (step === "endDictation") root.dictating = false
+      else if (step === "work") root.expression = "work"
+      else if (step === "idle") root.expression = "idle"
+      else if (step === "rest") { if (!root.busyHere && root.expression === "work") root.expression = "idle" }
+      else if (step === "flashHappy") root.flashExpression("happy", 1600)
+      else if (step === "syllables") syllableAnim.restart()
+      else if (step === "replyLanded") root.replyLanded()
+      else if (step === "unread") { if (!root.bubbleOpen) root.replyUnread = true; root.hop() }
+      else if (step === "activeCue") { if (text !== "" && root.canShowReplyCue(botId)) root.showActiveCue(text) }
+      else if (step === "peekCue") { if (text !== "" && root.canShowReplyCue(botId)) root.showPeekCue(botId, text) }
+      else if (step === "summon") root.summon()
+      else if (step === "flashAlert") root.flashExpression("alert", 1200)
+    }
+  }
+
+  // Hands the conversation to a daemon that has answered hello, once the
+  // legacy path has nothing in flight. What the legacy path held is dropped:
+  // the daemon starts empty.
+  function daemonGoLive() {
+    var backend = root.daemonBackend
+    if (root.daemonLive || root.backendSetting !== "daemon" || !backend || !backend.ready) return
+    if (askProc.running || root.asking || Object.keys(root.awaiting).length > 0) {
+      daemonLiveTimer.restart()
+      return
+    }
+    root.threads = ({})
+    root.awaiting = ({})
+    root.clearedThread = null
+    undoTimer.stop()
+    root.queuedPrompt = null
+    root.daemonDrafts = ({})
+    root.daemonAskIds = []
+    root.daemonView = null
+    root.daemonShownBotId = ""
+    backend.call("roster.set", { bots: Wire.rosterParams(root.bots) }, root.daemonAnswer("roster.set", "ok", null))
+    backend.call("view.set", { botId: root.threadBotId, bubbleOpen: root.bubbleOpen }, root.daemonAnswer("view.set", "ok", null))
+    backend.call("attachments.set", { files: Wire.fileList(root.pendingFiles) }, root.daemonAnswer("attachments.set", "ok", null))
+    root.daemonLive = true
+    if (root.daemonNote !== "") {
+      backend.call("notice.say", { title: "", text: root.daemonNote, links: [] }, root.daemonAnswer("notice.say", "ok", null))
+      root.daemonNote = ""
+    }
+  }
+
+  Timer {
+    id: daemonLiveTimer
+    interval: 500
+    onTriggered: root.daemonGoLive()
+  }
+
+  // The daemon went away: its ask ends with a plain message, and what only
+  // it held (other bots' conversations, unread marks, waiting questions) is
+  // gone. The legacy path carries on until a restarted daemon is live.
+  function daemonLost() {
+    if (!root.daemonLive) return
+    var onScreen = root.asking && root.askBotId === root.threadBotId
+    root.daemonLive = false
+    root.daemonView = null
+    root.asking = false
+    root.unreadBots = []
+    root.awaitingId = ""
+    root.history = root.history.map(function (item) { return Object.assign({}, item, { wait: "" }) })
+    root.clearedThread = null
+    if (root.expression === "work") root.expression = "idle"
+    if (onScreen) root.failAsk("The agent daemon stopped, so this ask ended.")
+    root.daemonNote = "The agent daemon stopped and was restarted. Conversations it held were lost."
+  }
+
+  function daemonGaveUp() {
+    var lost = root.daemonNote !== ""
+    root.daemonNote = ""
+    root.daemonTellLater = lost
+      ? "The agent daemon stopped and conversations it held were lost. It could not be restarted, so this session uses the standard asks."
+      : "The agent daemon could not be started, so this session uses the standard asks."
+  }
+
+  // The give-up line, a quiet notice once no legacy ask is running.
+  Timer {
+    interval: 1000
+    repeat: true
+    triggeredOnStart: true
+    running: root.daemonTellLater !== ""
+    onTriggered: root.daemonTell()
+  }
+
+  function daemonTell() {
+    if (root.daemonTellLater === "" || root.asking || askProc.running) return
+    root.archiveExchange()
+    root.noticeLinks = []
+    root.bubbleBody = root.daemonTellLater
+    root.daemonTellLater = ""
+    if (!root.bubbleOpen) root.replyUnread = true
+    root.hop()
   }
 
   // Continuous motion runs on the frame clock, so it is as smooth as the
