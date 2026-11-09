@@ -17,17 +17,22 @@ locked recording (`hex dictation start`) and the next press finishes it with
 `hex dictation stop --print`, which hands the transcript back; this helper prints it on
 stdout, and the shell inserts it into the field. Nothing else is ever printed there.
 
-Every backend runs as a child process, so a failure falls through to the next
-one. Nothing private is passed: the transcript goes from the backend straight
-to the focused field.
+The next backend is tried only when this one certainly did not toggle anything: its
+command is not installed, Omarchy does not know `dictation`, Voxtype's daemon is not
+running, or Hex could not be opened. Any other failure, and every timeout, stops here,
+because that backend may already be recording and a second one would start as well.
+Nothing private is passed: the transcript goes from the backend straight to the
+focused field.
 """
 from __future__ import annotations
 
 import json
 import os
+import selectors
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 BACKENDS = {
@@ -35,12 +40,33 @@ BACKENDS = {
     "voxtype": ["voxtype", "record", "toggle"],
     "hex": ["hex", "dictation", "toggle"],
 }
+NAMES = {"omarchy": "Omarchy", "superwhisper": "Superwhisper", "voxtype": "Voxtype", "hex": "Hex"}
 DEFAULT_ORDER = ["superwhisper", "voxtype", "hex"]
 HEX_NOT_RUNNING = 3
 HEX_NO_SPEECH = 4
+COMMAND_NOT_FOUND = 127
 TIMEOUT = 20
 # Finishing a dictation waits for its transcript.
 TRANSCRIBE_TIMEOUT = 90
+OUTPUT_LIMIT = 1024 * 1024
+
+# Outcomes of one backend attempt.
+TOOK = "took"      # the toggle happened
+SKIP = "skip"      # nothing was toggled; the next backend may be tried
+FAILED = "failed"  # it may have toggled; stop
+
+
+class Result:
+    def __init__(self, missing=False, timed_out=False, returncode=None, stdout="", stderr=""):
+        self.missing = missing
+        self.timed_out = timed_out
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+    @property
+    def ok(self) -> bool:
+        return self.returncode == 0
 
 
 def defaults_file() -> Path:
@@ -52,78 +78,174 @@ def defaults_file() -> Path:
 
 def read_backend() -> str:
     try:
-        line = defaults_file().read_text(encoding="utf-8").splitlines()[0].strip().lower()
+        with open(defaults_file(), "rb") as handle:
+            raw = handle.read(4096)
+        line = raw.decode("utf-8", errors="replace").splitlines()[0].strip().lower()
     except (OSError, IndexError):
         return ""
     return line if line in BACKENDS else ""
 
 
-def run(argv: list[str], timeout: float = TIMEOUT):
-    """The finished child, or None when the command is missing or would not run."""
+def decode(data) -> str:
+    return (data or b"")[:OUTPUT_LIMIT].decode("utf-8", errors="replace")
+
+
+def run(argv: list[str], timeout: float | None = None) -> Result:
+    timeout = TIMEOUT if timeout is None else timeout
     path = shutil.which(argv[0])
     if not path:
-        return None
+        return Result(missing=True)
     try:
-        return subprocess.run([path, *argv[1:]], stdin=subprocess.DEVNULL, capture_output=True,
-                              text=True, timeout=timeout)
-    except (OSError, subprocess.TimeoutExpired):
-        return None
+        proc = subprocess.Popen([path, *argv[1:]], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE)
+    except OSError:
+        # Found on PATH but could not be executed: it never ran.
+        return Result(missing=True)
+    out, err, finished = collect(proc, timeout)
+    if not finished:
+        return Result(timed_out=True)
+    return Result(returncode=proc.returncode, stdout=decode(out), stderr=decode(err))
 
 
-def ok(result) -> bool:
-    return result is not None and result.returncode == 0
+def collect(proc, timeout: float):
+    """Read a child's output until it exits or ``timeout`` passes.
+
+    A backend that launches a daemon (`hex start`) can leave the daemon holding the
+    pipes, so once the child itself has exited and the pipes go quiet, stop reading
+    instead of waiting for an end of file that may never come. On timeout the child
+    is killed and ``finished`` is False.
+    """
+    buffers = {proc.stdout.fileno(): bytearray(), proc.stderr.fileno(): bytearray()}
+    deadline = time.monotonic() + timeout
+    quiet_since = None
+    with selectors.DefaultSelector() as selector:
+        for stream in (proc.stdout, proc.stderr):
+            selector.register(stream, selectors.EVENT_READ)
+        while selector.get_map():
+            now = time.monotonic()
+            if now >= deadline:
+                break
+            events = selector.select(min(0.1, deadline - now))
+            for key, _ in events:
+                chunk = os.read(key.fd, 65536)
+                if not chunk:
+                    selector.unregister(key.fileobj)
+                    continue
+                buffer = buffers[key.fd]
+                if len(buffer) < OUTPUT_LIMIT:
+                    buffer.extend(chunk[:OUTPUT_LIMIT - len(buffer)])
+            if proc.poll() is None or events:
+                quiet_since = None
+            elif quiet_since is None:
+                quiet_since = now
+            elif now - quiet_since > 0.2:
+                break
+    out, err = bytes(buffers[proc.stdout.fileno()]), bytes(buffers[proc.stderr.fileno()])
+    proc.stdout.close()
+    proc.stderr.close()
+    if proc.poll() is None:
+        try:
+            proc.wait(timeout=max(0.0, deadline - time.monotonic()))
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            return out, err, False
+    return out, err, True
+
+
+def unknown_command(result: Result) -> bool:
+    if result.returncode == COMMAND_NOT_FOUND:
+        return True
+    said = (result.stdout + "\n" + result.stderr).lower()
+    return "unknown" in said and "command" in said
+
+
+def try_omarchy() -> str:
+    result = run(["omarchy", "dictation", "toggle"])
+    if result.missing:
+        return SKIP
+    if result.timed_out:
+        return FAILED
+    if result.ok:
+        return TOOK
+    return SKIP if unknown_command(result) else FAILED
 
 
 def hex_recording():
     """True / False for Hex's dictation capture, or None when Hex is not answering."""
     result = run(["hex", "status", "--json"])
-    if not ok(result):
+    if not result.ok:
         return None
     try:
         capture = (json.loads(result.stdout) or {}).get("capture") or {}
-    except ValueError:
+    except (ValueError, AttributeError):
+        return None
+    if not isinstance(capture, dict):
         return None
     return "record" in str(capture.get("state") or "").lower()
 
 
-def try_hex() -> bool:
+def try_hex() -> str:
     if shutil.which("hex") is None:
-        return False
+        return SKIP
     recording = hex_recording()
     if recording is None:
         # Control commands never launch Hex; `start` opens it and waits until it answers.
-        if not ok(run(["hex", "start"])):
-            return False
+        started = run(["hex", "start"])
+        if started.timed_out:
+            return FAILED
+        if not started.ok:
+            return SKIP
         recording = False
     if not recording:
-        return ok(run(["hex", "dictation", "start"]))
+        return TOOK if run(["hex", "dictation", "start"]).ok else FAILED
     result = run(["hex", "dictation", "stop", "--print"], timeout=TRANSCRIBE_TIMEOUT)
-    if result is None:
-        return False
     if result.returncode == HEX_NO_SPEECH:
-        return True
-    if result.returncode != 0:
-        return False
+        return TOOK
+    if not result.ok:
+        return FAILED
     sys.stdout.write(result.stdout.strip())
     sys.stdout.flush()
-    return True
+    return TOOK
 
 
-def try_backend(name: str) -> bool:
+def try_backend(name: str) -> str:
     if name == "hex":
         return try_hex()
-    return ok(run(BACKENDS[name]))
+    result = run(BACKENDS[name])
+    if result.missing:
+        return SKIP
+    if result.timed_out:
+        return FAILED
+    if result.ok:
+        return TOOK
+    # `voxtype record toggle` only signals its daemon, and fails when none is running.
+    if name == "voxtype" or unknown_command(result):
+        return SKIP
+    return FAILED
+
+
+def failed(name: str) -> int:
+    print(f"{NAMES.get(name, name)} did not take the dictation toggle; no other backend was tried "
+          "so a second recording is not started.", file=sys.stderr)
+    return 1
 
 
 def main() -> int:
     # On stable Omarchy this answers "Unknown Omarchy command", which is not the end of it.
-    if ok(run(["omarchy", "dictation", "toggle"])):
+    outcome = try_omarchy()
+    if outcome == TOOK:
         return 0
+    if outcome == FAILED:
+        return failed("omarchy")
     configured = read_backend()
     order = ([configured] if configured else []) + [name for name in DEFAULT_ORDER if name != configured]
     for name in order:
-        if try_backend(name):
+        outcome = try_backend(name)
+        if outcome == TOOK:
             return 0
+        if outcome == FAILED:
+            return failed(name)
     print("No dictation backend took the toggle. Start Hex, enable Voxtype, or install Superwhisper.",
           file=sys.stderr)
     return 1
