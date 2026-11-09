@@ -1,0 +1,7 @@
+# Lint for real errors only (syntax errors and pyflakes). The bin/ helpers
+# have no .py suffix, so they are listed explicitly in CI.
+target-version = "py311"
+extend-include = ["bin/*"]
+
+[lint]
+select = ["E9", "F"]
