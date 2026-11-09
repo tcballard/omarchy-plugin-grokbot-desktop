@@ -1,7 +1,5 @@
 import QtQuick
 import Quickshell.Io
-import "shapes.js" as Shapes
-import "palette.js" as Palette
 
 // Packaged Omarchy (e.g. 4.0.6 stable) has IpcHandler but not ShellIpc.
 // Keep methods in sync with CompanionShellIpc.qml. host lives on the wrapper,
@@ -37,14 +35,7 @@ Item {
       return host.selectBot(found.id)
     }
     function appearance(shape: string, color: string): string {
-      if (!Shapes.known(shape)) return "unknown shape"
-      if (!Palette.accepts(color)) return "unknown color"
-      host.syncOn = false
-      host.customShape = shape
-      host.customColor = color
-      host.retargetAppearance(false)
-      host.scheduleSave()
-      return "ok"
+      return host.setAppearance(shape, color)
     }
     function animate(name: string): string { return host.playAnimation(name) }
     function say(title: string, text: string): string { return host.sayNotice(title, text, []) }
