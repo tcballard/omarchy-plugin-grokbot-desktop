@@ -13,36 +13,42 @@ that snippet. `--install-voxtype-hook` appends it only when Voxtype does
 not already have a post-process command.
 
 Transcript files under the Superwhisper data and config directories are
-routed the same way for both backends.
+routed the same way for both backends. Symlinks, FIFOs and other
+non-regular files are skipped, and at most 1 MiB of a transcript is read.
+`--once` routes transcripts written in the last ONCE_LOOKBACK seconds.
+The roster is the one grokbot-dictation-route uses (see agent_desktop/wake.py).
 """
 from __future__ import annotations
 
-import importlib.machinery
-import importlib.util
 import json
 import os
+import selectors
+import shutil
+import stat
+import subprocess
 import sys
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from agent_desktop import wake  # noqa: E402
+
 POLL = 0.4
 TEXT_SUFFIXES = {".txt", ".md", ".json", ".vtt", ".srt"}
+TRANSCRIPT_LIMIT = 1024 * 1024
+CLIPBOARD_LIMIT = 64 * 1024
+CLIPBOARD_TIMEOUT = 1.0
+ONCE_LOOKBACK = 15.0
+SMALL_LIMIT = 4096
 
 
 def load_route():
-    path = Path(__file__).resolve().with_name("grokbot-dictation-route")
-    if not path.is_file():
-        raise RuntimeError("missing grokbot-dictation-route")
-    loader = importlib.machinery.SourceFileLoader("grokbot_dictation_route", str(path))
-    spec = importlib.util.spec_from_loader("grokbot_dictation_route", loader)
-    module = importlib.util.module_from_spec(spec)
-    loader.exec_module(module)
-    return module
+    """Compatibility: the wake-phrase module, which used to be loaded from the route script."""
+    return wake
 
 
 def config_home() -> Path:
-    raw = os.environ.get("XDG_CONFIG_HOME")
-    return Path(raw) if raw else Path.home() / ".config"
+    return wake.config_home()
 
 
 def data_home() -> Path:
@@ -83,7 +89,11 @@ def hook_block() -> str:
 
 def install_voxtype_hook() -> int:
     path = voxtype_config()
-    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
+    except OSError as error:
+        print(f"Could not read {path}: {error.strerror or error}", file=sys.stderr)
+        return 2
     if "grokbot-dictation-route" in text:
         print(f"Voxtype already calls grokbot-dictation-route ({path})")
         return 0
@@ -93,39 +103,79 @@ def install_voxtype_hook() -> int:
             file=sys.stderr,
         )
         return 2
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text + hook_block(), encoding="utf-8")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "ab") as handle:
+            handle.write(hook_block().encode("utf-8"))
+    except OSError as error:
+        print(f"Could not update {path}: {error.strerror or error}", file=sys.stderr)
+        return 1
     print(f"Added the wake-phrase filter to {path}")
     return 0
 
 
-def read_transcript(path: Path) -> str:
-    try:
-        raw = path.read_text(encoding="utf-8", errors="replace")[:8000]
-    except OSError:
-        return ""
-    if path.suffix.lower() == ".json":
+def extract_text(raw: bytes, suffix: str) -> str:
+    """The transcript line in a file's bytes. JSON is parsed whole before anything is cut."""
+    text = raw.decode("utf-8", errors="replace")
+    if suffix == ".json":
         try:
-            data = json.loads(raw)
-        except json.JSONDecodeError:
-            return raw
+            data = json.loads(text)
+        except (ValueError, RecursionError):
+            return text[:wake.TEXT_LIMIT]
         if isinstance(data, dict):
             for key in ("text", "transcript", "result", "content"):
                 value = data.get(key)
                 if isinstance(value, str) and value.strip():
-                    return value
+                    return value[:wake.TEXT_LIMIT]
         return ""
-    return raw
+    return text[:wake.TEXT_LIMIT]
 
 
-def decide(event: dict, bots: list, memory: dict, route) -> dict:
+def read_transcript(path: Path) -> str:
+    suffix = path.suffix.lower()
+    # A wake phrase is at the start, so plain text needs only its head; JSON must be whole.
+    raw = wake.read_regular(path, TRANSCRIPT_LIMIT, head=suffix != ".json")
+    if raw is None:
+        return ""
+    return extract_text(raw, suffix)
+
+
+def transcript_files():
+    """(path, mtime) for regular transcript files under the roots, without following symlinks."""
+    for root in transcript_roots():
+        try:
+            if not stat.S_ISDIR(os.lstat(root).st_mode):
+                continue
+        except OSError:
+            continue
+        for directory, _dirs, names in os.walk(root, followlinks=False):
+            for name in names:
+                path = Path(directory) / name
+                if path.suffix.lower() not in TEXT_SUFFIXES or name == "config.toml":
+                    continue
+                try:
+                    info = os.lstat(path)
+                except OSError:
+                    continue
+                if stat.S_ISREG(info.st_mode):
+                    yield path, info.st_mtime
+
+
+def backend_for(path: Path) -> str:
+    return "voxtype" if "voxtype" in str(path) else "superwhisper"
+
+
+def decide(event: dict, bots: list, memory: dict, route=wake) -> dict:
     text = str(event.get("text") or "")
     source = str(event.get("source") or "")
     backend = str(event.get("backend") or "")
     if backend not in ("superwhisper", "voxtype"):
         backend = "superwhisper"
     age = event.get("recordingAge")
-    now = float(event.get("now") or time.time())
+    try:
+        now = float(event.get("now") or time.time())
+    except (TypeError, ValueError):
+        now = time.time()
     ok, decided = route.should_deliver(text, source, age, now, memory, bots)
     return {
         "deliver": ok,
@@ -142,6 +192,23 @@ def enabled(argv: list[str]) -> bool:
     return "--enable" in argv or os.environ.get("GROKBOT_VOICE_WATCH") == "1"
 
 
+def option(argv: list[str], name: str) -> str | None:
+    """The value after ``name``; None when absent. A missing value is a usage error."""
+    if name not in argv:
+        return None
+    index = argv.index(name)
+    if index + 1 >= len(argv) or argv[index + 1].startswith("--"):
+        raise ValueError(f"{name} needs a value")
+    return argv[index + 1]
+
+
+def read_json_stdin(limit: int = TRANSCRIPT_LIMIT):
+    raw = sys.stdin.buffer.read(limit + 1)
+    if len(raw) > limit:
+        raise ValueError("input too large")
+    return json.loads(raw.decode("utf-8", errors="replace") or "null")
+
+
 def main(argv: list[str]) -> int:
     if "--print-voxtype-hook" in argv:
         sys.stdout.write(hook_block())
@@ -154,147 +221,121 @@ def main(argv: list[str]) -> int:
     if not enabled(argv):
         print("Voice watch is off. Pass --enable to watch Superwhisper and Voxtype.", file=sys.stderr)
         return 2
+    try:
+        backend_arg = option(argv, "--backend")
+        check_file = option(argv, "--check-file")
+    except ValueError as error:
+        print(f"{error}. Usage: grokbot-voice-watch --enable [--check-file PATH] "
+              "[--backend superwhisper|voxtype]", file=sys.stderr)
+        return 2
+    if backend_arg is not None and backend_arg not in ("superwhisper", "voxtype"):
+        print("backend must be superwhisper or voxtype", file=sys.stderr)
+        return 2
 
-    route = load_route()
-    bots = route.load_bots()
+    bots = wake.load_bots()
     memory: dict = {}
 
-    if "--decide-batch" in argv:
+    if "--decide-batch" in argv or "--decide" in argv:
+        batch = "--decide-batch" in argv
         try:
-            events = json.loads(sys.stdin.read() or "[]")
-        except json.JSONDecodeError:
+            data = read_json_stdin()
+        except (ValueError, RecursionError):
             return 2
-        if not isinstance(events, list):
+        if data is None:
+            data = [] if batch else {}
+        if batch:
+            if not isinstance(data, list):
+                return 2
+            results = [decide(event, bots, memory) for event in data if isinstance(event, dict)]
+            json.dump(results, sys.stdout)
+            sys.stdout.write("\n")
+            return 0
+        if not isinstance(data, dict):
             return 2
-        results = [decide(event, bots, memory, route) for event in events if isinstance(event, dict)]
-        json.dump(results, sys.stdout)
-        sys.stdout.write("\n")
-        return 0
-
-    if "--decide" in argv:
-        try:
-            event = json.loads(sys.stdin.read() or "{}")
-        except json.JSONDecodeError:
-            return 2
-        if not isinstance(event, dict):
-            return 2
-        result = decide(event, bots, memory, route)
+        result = decide(data, bots, memory)
         json.dump(result, sys.stdout)
         sys.stdout.write("\n")
         return 0 if result["deliver"] else 1
 
-    if "--check-file" in argv:
-        index = argv.index("--check-file")
-        if index + 1 >= len(argv):
-            return 2
-        backend = "superwhisper"
-        if "--backend" in argv:
-            backend = argv[argv.index("--backend") + 1]
-        if backend not in ("superwhisper", "voxtype"):
-            return 2
-        text = read_transcript(Path(argv[index + 1]))
+    if check_file is not None:
+        backend = backend_arg or "superwhisper"
+        text = read_transcript(Path(check_file))
         result = decide({
             "text": text,
             "source": "transcript",
             "backend": backend,
             "recordingAge": 0,
             "now": time.time(),
-        }, bots, memory, route)
+        }, bots, memory)
         if result["deliver"]:
-            route.deliver(text, backend)
+            wake.deliver(text, backend)
         json.dump(result, sys.stdout)
         sys.stdout.write("\n")
         return 0 if result["deliver"] else 1
 
     if "--once" in argv:
-        return scan_once(route, bots, memory)
-    return watch_loop(route, bots, memory)
+        return scan_once(bots, memory)
+    return watch_loop(bots, memory)
 
 
-def scan_once(route, bots, memory) -> int:
-    started = time.time()
+def scan_once(bots, memory, lookback: float = ONCE_LOOKBACK) -> int:
+    since = time.time() - lookback
     delivered = 0
-    for root in transcript_roots():
-        if not root.is_dir():
+    for path, mtime in sorted(transcript_files(), key=lambda row: row[1]):
+        if mtime < since:
             continue
-        for path in root.rglob("*"):
-            if not path.is_file() or path.suffix.lower() not in TEXT_SUFFIXES:
-                continue
-            if path.name == "config.toml":
-                continue
-            try:
-                if path.stat().st_mtime < started:
-                    continue
-            except OSError:
-                continue
-            text = read_transcript(path)
-            result = decide({
-                "text": text,
-                "source": "transcript",
-                "backend": "superwhisper" if "voxtype" not in str(path) else "voxtype",
-                "recordingAge": 0,
-                "now": time.time(),
-            }, bots, memory, route)
-            if result["deliver"] and route.deliver(text, result["backend"]):
-                delivered += 1
+        text = read_transcript(path)
+        result = decide({
+            "text": text,
+            "source": "transcript",
+            "backend": backend_for(path),
+            "recordingAge": 0,
+            "now": time.time(),
+        }, bots, memory)
+        if result["deliver"] and wake.deliver(text, result["backend"]):
+            delivered += 1
     print(f"routed {delivered}")
     return 0
 
 
-def watch_loop(route, bots, memory) -> int:
-    seen = {}
-    for root in transcript_roots():
-        if not root.is_dir():
-            continue
-        for path in root.rglob("*"):
-            if path.is_file():
-                try:
-                    seen[str(path)] = path.stat().st_mtime
-                except OSError:
-                    continue
-    state_path = Path(os.environ.get("XDG_RUNTIME_DIR", "")) / "voxtype" / "state"
+def read_state(path: Path) -> str:
+    raw = wake.read_regular(path, SMALL_LIMIT, head=True)
+    if not raw:
+        return ""
+    lines = raw.decode("utf-8", errors="replace").strip().splitlines()
+    return lines[0] if lines else ""
+
+
+def watch_loop(bots, memory) -> int:
+    seen = {str(path): mtime for path, mtime in transcript_files()}
+    state_path = Path(os.environ.get("XDG_RUNTIME_DIR", "") or "/nonexistent") / "voxtype" / "state"
     previous = ""
     finished_at = None
     while True:
         now = time.time()
-        if state_path.is_file():
-            try:
-                current = state_path.read_text(encoding="utf-8").strip().splitlines()[0]
-            except (OSError, IndexError):
-                current = ""
-            if route.recording_finished(previous, current):
-                finished_at = now
-            previous = current
-        for root in transcript_roots():
-            if not root.is_dir():
+        current = read_state(state_path)
+        if wake.recording_finished(previous, current):
+            finished_at = now
+        previous = current
+        for path, mtime in transcript_files():
+            key = str(path)
+            if seen.get(key) == mtime:
                 continue
-            for path in root.rglob("*"):
-                if not path.is_file() or path.suffix.lower() not in TEXT_SUFFIXES:
-                    continue
-                if path.name == "config.toml":
-                    continue
-                try:
-                    mtime = path.stat().st_mtime
-                except OSError:
-                    continue
-                key = str(path)
-                if seen.get(key) == mtime:
-                    continue
-                seen[key] = mtime
-                text = read_transcript(path)
-                backend = "voxtype" if "voxtype" in key else "superwhisper"
-                result = decide({
-                    "text": text,
-                    "source": "transcript",
-                    "backend": backend,
-                    "recordingAge": 0,
-                    "now": now,
-                }, bots, memory, route)
-                if result["deliver"]:
-                    route.deliver(text, backend)
-                    finished_at = now
+            seen[key] = mtime
+            text = read_transcript(path)
+            backend = backend_for(path)
+            result = decide({
+                "text": text,
+                "source": "transcript",
+                "backend": backend,
+                "recordingAge": 0,
+                "now": now,
+            }, bots, memory)
+            if result["deliver"]:
+                wake.deliver(text, backend)
+                finished_at = now
         age = None if finished_at is None else now - finished_at
-        if age is not None and 0 <= age <= route.CLIP_WINDOW:
+        if age is not None and 0 <= age <= wake.CLIP_WINDOW:
             clip = read_clipboard()
             if clip:
                 result = decide({
@@ -303,39 +344,69 @@ def watch_loop(route, bots, memory) -> int:
                     "backend": active_backend(),
                     "recordingAge": age,
                     "now": now,
-                }, bots, memory, route)
+                }, bots, memory)
                 if result["deliver"]:
-                    route.deliver(clip, result["backend"])
+                    wake.deliver(clip, result["backend"])
         time.sleep(POLL)
 
 
 def active_backend() -> str:
-    path = config_home() / "omarchy" / "defaults" / "dictation"
-    try:
-        name = path.read_text(encoding="utf-8").splitlines()[0].strip().lower()
-    except (OSError, IndexError):
-        return "superwhisper"
+    name = read_state(config_home() / "omarchy" / "defaults" / "dictation").strip().lower()
     return name if name in ("superwhisper", "voxtype") else "superwhisper"
 
 
+def bounded_output(argv: list[str], limit: int, timeout: float) -> bytes | None:
+    """At most ``limit`` bytes of a command's stdout, or None on failure or timeout."""
+    try:
+        proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                stderr=subprocess.DEVNULL)
+    except OSError:
+        return None
+    deadline = time.monotonic() + timeout
+    chunks = []
+    size = 0
+    complete = False
+    with selectors.DefaultSelector() as selector:
+        selector.register(proc.stdout, selectors.EVENT_READ)
+        while size <= limit:
+            left = deadline - time.monotonic()
+            if left <= 0 or not selector.select(left):
+                break
+            chunk = os.read(proc.stdout.fileno(), 65536)
+            if not chunk:
+                complete = True
+                break
+            chunks.append(chunk)
+            size += len(chunk)
+    if not complete:
+        proc.kill()
+    try:
+        code = proc.wait(timeout=max(0.1, deadline - time.monotonic()))
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+        return None
+    finally:
+        proc.stdout.close()
+    if not complete or code != 0:
+        return None
+    return b"".join(chunks)[:limit]
+
+
 def read_clipboard() -> str:
-    paste = shutil_which("wl-paste")
+    paste = shutil.which("wl-paste")
     if not paste:
         return ""
-    import subprocess
-    proc = subprocess.run([paste, "--no-newline", "--type", "text"], check=False, capture_output=True, text=True)
-    if proc.returncode != 0:
+    data = bounded_output([paste, "--no-newline", "--type", "text"], CLIPBOARD_LIMIT, CLIPBOARD_TIMEOUT)
+    if not data:
         return ""
-    return proc.stdout[:4000]
-
-
-def shutil_which(name: str) -> str:
-    import shutil
-    return shutil.which(name) or ""
+    return data.decode("utf-8", errors="replace")[:wake.TEXT_LIMIT]
 
 
 if __name__ == "__main__":
     try:
         raise SystemExit(main(sys.argv[1:]))
     except KeyboardInterrupt:
+        raise SystemExit(0)
+    except BrokenPipeError:
         raise SystemExit(0)
