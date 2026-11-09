@@ -3,30 +3,33 @@
   "version": "0.3.0",
   "input_commit": "7d86bf9d6c39bd2e1312197688e746f8a9b946e4",
   "date": "2026-11-09",
-  "platform": "No Omarchy desktop. Automated checks ran in a Linux container with Node 22, Python 3 and PySide6 6.12.0 (offscreen Qt); no Quickshell, Hyprland or omarchy-shell was available.",
-  "acceptance_basis": "Portable evidence only. The owner asked for the version to be set to 0.3.0; no tagging or publication is authorised by this record, and no part of 0.3.0 has been observed on a live desktop by the owner or by an agent.",
+  "platform": "Owner's Omarchy desktop for general use; host version, hardware, scale and installed commit were not captured. Automated checks: GitHub Actions ubuntu-24.04 (Node 22, Python 3, PySide6 6.12.0, offscreen Qt) and a Linux development container.",
+  "acceptance_basis": "The owner reported testing v0.3.0 on their desktop and that it looks good, through general use rather than the itemised checklist in TESTING-v0.3.0.md. This is owner-reported acceptance, not an agent-observed walkthrough. The owner authorised merging and tagging v0.3.0 and will write the published release notes themselves.",
   "portable": {
     "status": "passed",
     "command": "./tests/run; ruff check .; python3 -m compileall -q bin agent_desktop tests; pyside6-qmllint --only-explicit-categories --syntax warning *.qml qml/*.qml qml/*.js tests/*.qml; python3 tests/avatar-native.py; python3 tests/settings-native.py; python3 tests/backend-native.py",
-    "ci_url": null,
-    "ci_head_commit": null,
+    "ci_url": "https://github.com/tcballard/omarchy-plugin-grokbot-desktop/actions/runs/42699895853",
+    "ci_head_commit": "5c1d0ece02975049c8f060695b6af5d75e6debec",
     "results": [
-      "144 Node tests and 160 Python tests passed at input_commit.",
+      "144 Node tests and 160 Python tests passed at input_commit locally, and ./tests/run plus the native checks passed on GitHub CI at ci_head_commit (documentation-only changes after input_commit).",
       "ruff (E9, F), byte-compilation and the QML/JavaScript syntax check were clean.",
       "Offscreen Qt checks passed: avatar rendering, settings navigation, and qml/Backend.qml driving the real bin/agent-desktopd with the example provider."
     ],
     "local_limitations": [
-      "These results are from a development container, not GitHub Actions. The CI run for the pull request head should be recorded here before release.",
+      "Local results come from a development container; the GitHub CI run at ci_head_commit is the authoritative portable result.",
       "tests/grokbot-api.py test_cancellation_stops_stubborn_descendant_and_ignores_late_work failed once in one earlier run on a predecessor commit and passed on every rerun; it reads a pid marker file and appears to be an existing race."
     ]
   },
   "live": {
     "status": "pending",
-    "method": "None yet",
+    "method": "Owner-reported general use",
     "recording": null,
     "preview": null,
-    "confirmed": [],
+    "confirmed": [
+      "The owner used v0.3.0 on their Omarchy desktop and reported it looks good."
+    ],
     "pending": [
+      "Each item in TESTING-v0.3.0.md individually; the owner's general use did not itemise which were exercised.",
       "Specific failure messages for a real webhook routine and real local agents.",
       "Scroll-wheel and touchpad bot switching; a prompt sent straight after Stop; Grok Bot app close clearing reply-cue suppression at once.",
       "Multi-monitor dragging with and without input group membership, and the cursor helper's request rate and first-move latency on real hardware.",
@@ -38,6 +41,7 @@
     ]
   },
   "commands": [
+    "GitHub Actions CI on ci_head_commit: passed",
     "./tests/run: passed",
     "ruff check .: passed",
     "python3 -m compileall -q bin agent_desktop tests: passed",
@@ -48,7 +52,7 @@
   ],
   "results": [
     "Version, manifest and release notes are validated at input_commit. This record and the links to it are documentation-only changes after it.",
-    "All behaviour changes in 0.3.0 are covered by automated tests that run the helpers or the extracted logic; none is covered by a live observation."
+    "All behaviour changes in 0.3.0 are covered by automated tests that run the helpers or the extracted logic. Live coverage is the owner's general use only; which changed behaviours it exercised was not recorded."
   ],
   "limitations": [
     "Portable checks do not establish live desktop acceptance.",

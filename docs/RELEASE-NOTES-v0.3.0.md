@@ -1,6 +1,6 @@
 # Agent Desktop v0.3.0
 
-These are the changes since v0.2.0. v0.3.0 has not been tagged or published, and none of it has been tested on a live Omarchy desktop yet.
+These are the changes since v0.2.0. The owner has used v0.3.0 on an Omarchy desktop and reported it looks good; the itemised live checks below have not been run.
 
 - **Failures say why again.** When an ask fails, the bubble shows the real reason: `webhook status 401: Invalid API key`, or that `claude` isn't installed and how to install it, instead of a generic line. The text is the helper's own, trimmed to 400 characters with control characters removed.
 - **Scrolling picks one bot at a time.** Each wheel notch over the mark moves one bot. A touchpad swipe no longer spins through the whole roster.
@@ -21,9 +21,9 @@ These are the changes since v0.2.0. v0.3.0 has not been tagged or published, and
 - Error text from your local agent is now shown in the bubble as it printed it, within the limits above.
 - The daemon backend is experimental. Leave `backend` unset unless you are testing it.
 
-## Not yet verified on a live desktop
+## Not yet verified item by item
 
-Everything above was checked by the automated suites (`./tests/run`, plus ruff, byte-compilation, a QML/JavaScript syntax check and offscreen Qt checks in CI). None of it has been exercised on an Omarchy desktop ([what to try](TESTING-v0.3.0.md)), in particular:
+Everything above was checked by the automated suites (`./tests/run`, plus ruff, byte-compilation, a QML/JavaScript syntax check and offscreen Qt checks in CI). Beyond the owner's general use, none of these has been checked on its own ([what to try](TESTING-v0.3.0.md)):
 
 - multi-monitor dragging with and without `input` group membership, and the cursor helper's request rate on real hardware;
 - scroll-wheel and touchpad bot switching, and a prompt sent straight after Stop;

@@ -22,7 +22,7 @@ Status:
 - **[Agent Desktop v0.2.0 is released](https://github.com/tcballard/omarchy-plugin-grokbot-desktop/releases/tag/v0.2.0).** The owner has tested Grok and confirmed the Codex avatar-generation speed fix. Hermes remains experimental and has not been tested with a live setup. [Release notes](docs/RELEASE-NOTES-v0.2.0.md) · [Acceptance scope](docs/ACCEPTANCE-v0.2.0.json) · [Setup and testing](docs/TESTING-v0.2.0.md).
 - The published marketplace version remains v0.1.2.
 - Earlier v0.1 testing was accepted by the owner on an XPS running Omarchy `dev (573b518be)`; see [historical acceptance](docs/ACCEPTANCE.json). v0.2.0 evidence is recorded separately, above.
-- v0.3.0 is prepared in this source but not tagged or published, and has not been tested on a live desktop: [release notes](docs/RELEASE-NOTES-v0.3.0.md) · [acceptance scope](docs/ACCEPTANCE-v0.3.0.json).
+- v0.3.0 is not yet published. The owner has used it on a desktop and reported it looks good; the itemised live checks are still pending: [release notes](docs/RELEASE-NOTES-v0.3.0.md) · [acceptance scope](docs/ACCEPTANCE-v0.3.0.json).
 
 <img src="preview.png" width="800" alt="Earlier live Omarchy capture showing the orange companion, appearance drawer and Ask Bob bubble.">
 
