@@ -60,7 +60,7 @@ test('dictation falls through to Hex, and Hex hands the transcript back for the 
 test('a transcript handed back by the helper goes in at the field\'s cursor', () => {
   const main = fs.readFileSync(path.join(root, 'Main.qml'), 'utf8')
   const panel = fs.readFileSync(path.join(root, 'BubblePanel.qml'), 'utf8')
-  assert.match(main, /id: dictateProc\n\s*command: \["\/usr\/bin\/python3", root\.dictateHelper\]\n\s*stdout: StdioCollector/)
+  assert.match(main, /id: dictateProc\n\s*command: \["\/usr\/bin\/python3", "-I", root\.dictateHelper\]\n\s*stdout: StdioCollector/)
   assert.match(main, /if \(bubblePanel\) bubblePanel\.insertText\(text\)/)
   assert.match(panel, /function insertText\(value\) \{[\s\S]*?promptField\.insert\(at, text\)/)
 })

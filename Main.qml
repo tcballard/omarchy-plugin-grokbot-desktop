@@ -12,6 +12,7 @@ import "qml/dictation.js" as Dictation
 import "qml/theme.js" as Theme
 import "qml/screens.js" as Screens
 import "qml/openbotavatar.js" as Avatar
+import "qml/pointer.js" as Pointer
 
 // Grok Bot desktop companion. A service inside omarchy-shell: a transparent
 // layer-shell window, click-through except for the mark (and the bubble or
@@ -436,6 +437,10 @@ Item {
   property string homeMonitor: ""
   property bool dragDetached: false
   property bool pointerHeld: false
+  // Whether the cursor helper can see the left button ("buttons 1", or any
+  // "down"/"up"). Without readable event nodes it never reports a release.
+  property bool cursorSeesButtons: false
+  property var wheelState: Pointer.wheelStart()
   property var hostWin: null
   property var hostMark: null
   property var hostStage: null
@@ -941,15 +946,18 @@ Item {
   function hyprWindowEvent(name, data) {
     if (name === "openwindow") {
       var parts = data.split(",")
-      if (parts.length >= 3) {
+      var opened = parts.length >= 3 ? Pointer.windowAddress(parts[0]) : ""
+      if (opened !== "") {
         if (parts[2] === root.screensaverName)
-          root.screensaverWindows = root.screensaverWindows.concat([parts[0]])
-        if (parts[2] === root.grokAppClass && root.grokAppWindows.indexOf(parts[0]) < 0)
-          root.grokAppWindows = root.grokAppWindows.concat([parts[0]])
+          root.screensaverWindows = root.screensaverWindows.concat([opened])
+        if (parts[2] === root.grokAppClass && root.grokAppWindows.indexOf(opened) < 0)
+          root.grokAppWindows = root.grokAppWindows.concat([opened])
       }
     } else if (name === "closewindow") {
-      root.screensaverWindows = root.screensaverWindows.filter(function (address) { return address !== data })
-      root.grokAppWindows = root.grokAppWindows.filter(function (address) { return address !== data })
+      // Events spell the address without "0x"; hyprctl clients with it.
+      var closed = Pointer.windowAddress(data)
+      root.screensaverWindows = root.screensaverWindows.filter(function (address) { return address !== closed })
+      root.grokAppWindows = root.grokAppWindows.filter(function (address) { return address !== closed })
     } else if (name === "openlayer" && data === root.screensaverName) {
       root.screensaverLayers++
     } else if (name === "closelayer" && data === root.screensaverName) {
@@ -1001,8 +1009,9 @@ Item {
       var clients = JSON.parse(blob)
       var i
       for (i = 0; i < clients.length; i++) {
-        if (clients[i] && clients[i]["class"] === root.grokAppClass && clients[i].address)
-          found.push(String(clients[i].address))
+        var address = clients[i] ? Pointer.windowAddress(clients[i].address) : ""
+        if (address !== "" && clients[i]["class"] === root.grokAppClass && found.indexOf(address) < 0)
+          found.push(address)
       }
     } catch (e) {
       if (blob.indexOf('"' + root.grokAppClass + '"') >= 0 && root.grokAppWindows.length > 0) return
@@ -1163,6 +1172,15 @@ Item {
     root.retargetAppearance(false)
     root.scheduleSave()
     return "ok"
+  }
+
+  // The appearance IPC sets both at once, with the same effect as picking
+  // them on the appearance page.
+  function setAppearance(shape, color) {
+    if (!Shapes.known(shape)) return "unknown shape"
+    if (!Palette.accepts(color)) return "unknown color"
+    root.selectColor(color)
+    return root.selectShape(shape)
   }
 
   function selectColor(name) {
@@ -1682,6 +1700,14 @@ Item {
     // Attachments can go on their own, as in a chat app.
     if (prompt === "" && root.pendingFiles.length > 0) prompt = "Have a look at this."
     if (prompt === "" || root.asking) return
+    // The last ask is still exiting after Stop. Keep the draft and send it
+    // once the process is gone, instead of dropping it as busy.
+    if (askProc.running) {
+      root.queuedPrompt = { value: String(value || ""), botId: root.threadBotId, since: Date.now() }
+      queuedPromptTimer.restart()
+      return
+    }
+    root.queuedPrompt = null
     var route = Dictation.route(prompt, root.bots, root.defaultBotId)
     if (route.matched) {
       if (route.botId) root.selectBot(route.botId)
@@ -1694,6 +1720,33 @@ Item {
     }
     root.promptDraft = ""
     root.launchAsk(prompt)
+  }
+
+  property var queuedPrompt: null
+
+  // Sends a prompt queued behind an exiting ask, unless the user moved to
+  // another bot or changed the draft meanwhile. Gives up after 5 seconds and
+  // leaves the draft where it is.
+  function retryQueuedPrompt() {
+    var queued = root.queuedPrompt
+    if (!queued) return "none"
+    if (askProc.running) {
+      if (Date.now() - queued.since < 5000) return "waiting"
+      root.queuedPrompt = null
+      return "gave up"
+    }
+    root.queuedPrompt = null
+    if (root.asking || queued.botId !== root.threadBotId || queued.value !== root.promptDraft) return "dropped"
+    root.submitPrompt(queued.value)
+    return "sent"
+  }
+
+  Timer {
+    id: queuedPromptTimer
+    interval: 50
+    repeat: true
+    running: false
+    onTriggered: if (root.retryQueuedPrompt() !== "waiting") stop()
   }
 
   function dictateText(text) {
@@ -1731,7 +1784,7 @@ Item {
   // arrives on stdout, never on a command line, and goes in at the field's cursor.
   Process {
     id: dictateProc
-    command: ["/usr/bin/python3", root.dictateHelper]
+    command: ["/usr/bin/python3", "-I", root.dictateHelper]
     stdout: StdioCollector { id: dictateOut }
     onExited: function (code) {
       var text = root.cleanText(dictateOut.text, 4000)
@@ -2084,6 +2137,9 @@ Item {
 
   function cursorLine(line) {
     var text = String(line).trim()
+    var seesButtons = Pointer.buttonsReport(text)
+    if (seesButtons !== null) root.cursorSeesButtons = seesButtons
+    if (text === "buttons 0" || text === "buttons 1") return
     // The layer that took the press loses it at the output edge. The helper
     // reports the left button, and nothing else, so the drag can finish there.
     if (text === "down") {
@@ -2161,6 +2217,7 @@ Item {
     })
     stdout: SplitParser { onRead: function (line) { root.cursorLine(line) } }
     onExited: function () {
+      root.cursorSeesButtons = false
       if (root.present && cursorRestarts < 8) cursorRestart.restart()
     }
   }
@@ -3175,10 +3232,14 @@ Item {
         }
         onCanceled: function () {
           // Leaving the output cancels the press. The drag continues from
-          // the cursor helper until the left button comes up.
+          // the cursor helper until the left button comes up, when the
+          // helper can see the button; otherwise it ends here.
           if (root.dragging) {
             root.dragDetached = true
-            if (!root.pointerHeld) root.endDrag()
+            if (Pointer.cancelEndsDrag(root.pointerHeld, root.cursorSeesButtons)) {
+              if (!root.cursorSeesButtons) root.pointerHeld = false
+              root.endDrag()
+            }
           }
         }
         onWheel: function (wheel) {
@@ -3186,7 +3247,10 @@ Item {
           var dy = wheel.angleDelta.y !== 0 ? wheel.angleDelta.y : wheel.pixelDelta.y
           if (dy === 0) return
           wheel.accepted = true
-          root.cycleBot(dy > 0 ? -1 : 1)
+          // A touchpad sends many small deltas; one bot per notch's worth.
+          var turned = Pointer.wheelStep(root.wheelState, dy, Date.now())
+          root.wheelState = turned.state
+          if (turned.steps !== 0) root.cycleBot(turned.steps)
         }
         onContainsMouseChanged: {
           root.hovering = containsMouse

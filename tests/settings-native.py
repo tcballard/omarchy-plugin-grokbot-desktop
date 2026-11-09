@@ -5,7 +5,7 @@ from pathlib import Path
 import time
 from PySide6.QtCore import QUrl, QPointF, Qt, qInstallMessageHandler
 from PySide6.QtGui import QGuiApplication
-from PySide6.QtQuick import QQuickView, QQuickItem
+from PySide6.QtQuick import QQuickView
 from PySide6.QtTest import QTest
 
 ROOT = Path(__file__).resolve().parent.parent
