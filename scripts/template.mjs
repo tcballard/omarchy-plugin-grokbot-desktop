@@ -9,7 +9,7 @@ export const readJSON = p => JSON.parse(fs.readFileSync(p, 'utf8'));
 export const writeJSON = (p, v) => fs.writeFileSync(p, JSON.stringify(v, null, 2) + '\n');
 export function files(dir, base = dir) {
   return fs.readdirSync(dir, { withFileTypes: true }).sort((a,b)=>a.name.localeCompare(b.name)).flatMap(e => {
-    if (['.git', 'target', 'dist', 'node_modules'].includes(e.name)) return [];
+    if (['.git', '.claude', 'target', 'dist', 'node_modules'].includes(e.name)) return [];
     const p = path.join(dir, e.name);
     if (e.isSymbolicLink() || (!e.isFile() && !e.isDirectory())) throw Error(`Unsupported file: ${p}`);
     return e.isDirectory() ? files(p, base) : [path.relative(base, p)];
