@@ -23,7 +23,7 @@ These are the changes since v0.2.0. v0.3.0 has not been tagged or published, and
 
 ## Not yet verified on a live desktop
 
-Everything above was checked by the automated suites (`./tests/run`, plus ruff, byte-compilation, a QML/JavaScript syntax check and offscreen Qt checks in CI). None of it has been exercised on an Omarchy desktop, in particular:
+Everything above was checked by the automated suites (`./tests/run`, plus ruff, byte-compilation, a QML/JavaScript syntax check and offscreen Qt checks in CI). None of it has been exercised on an Omarchy desktop ([what to try](TESTING-v0.3.0.md)), in particular:
 
 - multi-monitor dragging with and without `input` group membership, and the cursor helper's request rate on real hardware;
 - scroll-wheel and touchpad bot switching, and a prompt sent straight after Stop;
