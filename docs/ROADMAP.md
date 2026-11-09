@@ -1,12 +1,19 @@
-# Current release target
+# Current state
 
-v0.2.0 combines the stability fixes, GrokBot/Hermes provider integration and Open Bot Avatar v1 native characters. See [test candidate](TESTING-v0.2.0.md). Dots is out of scope. Accessory costumes remain deferred.
+v0.2.0, which combined the stability fixes, GrokBot/Hermes provider integration and Open Bot Avatar v1 native characters, is released. See its [test candidate](TESTING-v0.2.0.md) and [release notes](RELEASE-NOTES-v0.2.0.md). Dots is out of scope. Accessory costumes remain deferred.
+
+## Unreleased
+
+Changes since v0.2.0 are summarised in [RELEASE-NOTES-unreleased.md](RELEASE-NOTES-unreleased.md). No version is assigned and none of them has had a live desktop pass. Open items:
+
+- **Daemon backend.** `bin/agent-desktopd` and its [protocol](DESKTOP-PROTOCOL.md) are in place behind the opt-in `"backend": "daemon"` setting. The shell side and a live pass on an Omarchy desktop are still needed before it can be recommended, and before streaming Hermes replies can be called supported.
+- **Live checks** for the changed helpers: multi-monitor dragging with and without `input` group membership, the cursor helper's request rate, dictation backend fallback on stable and dev Omarchy, and the specific failure reasons in the bubble.
 
 # Roadmap
 
 ## v0.2.0: Agent Desktop and multi-provider support
 
-Scoped on 2 November 2026 in [MULTI-PROVIDER-SCOPE.md](MULTI-PROVIDER-SCOPE.md). Implementation is not started.
+Scoped on 2 November 2026 in [MULTI-PROVIDER-SCOPE.md](MULTI-PROVIDER-SCOPE.md) and released as v0.2.0. The planning notes below are kept as written.
 
 - Work branch: `feature/multi-provider-companion`, based on v0.1.2 main (`928f73a`).
 - One companion and mixed roster for Grok, Hermes and existing local agents, behind a versioned provider contract.
