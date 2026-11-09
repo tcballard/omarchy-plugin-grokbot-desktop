@@ -45,7 +45,11 @@ def client_for(provider):
             if value is not None:
                 if not isinstance(value, str) or not value or len(value) > 4096:
                     raise Fault('invalid_config', 'Invalid Hermes path.')
-                options += [flag, str(Path(value).expanduser())]
+                try:
+                    expanded = Path(value).expanduser()
+                except RuntimeError:  # "~nosuchuser" has no home directory
+                    raise Fault('invalid_config', 'Invalid Hermes path.') from None
+                options += [flag, str(expanded)]
     return Client(provider, python=python, options=options)
 
 
