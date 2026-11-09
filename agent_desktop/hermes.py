@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 from types import SimpleNamespace
 
-from .protocol import Fault, identifier, text, MAX_PROMPT
+from .protocol import Fault, VERSION, encode, identifier, text, MAX_PROMPT
 from .hermes_gateway import BotLink, PROFILE, NOTE, history_page
 
 
@@ -14,13 +14,18 @@ class Hermes:
                     "history": True, "prompts": True, "multiSelect": False, "compaction": True}
 
     def __init__(self, root, agent_dir):
-        self.root = Path(root).expanduser().absolute()
-        self.agent_dir = Path(agent_dir).expanduser().absolute()
+        try:
+            self.root = Path(root).expanduser().absolute()
+            self.agent_dir = Path(agent_dir).expanduser().absolute()
+        except RuntimeError:
+            # "~name/..." for a user that does not exist.
+            raise Fault("invalid_config", "Hermes paths must be absolute or begin with ~/.") from None
         self.emit = None
         self.links = {}
         self.active = {}
         self.used = set()
         self.deadlines = {}
+        self.aborting = {}
         self.loaded = False
         self.gateway = SimpleNamespace(emit=self.on_gateway)
 
@@ -35,7 +40,9 @@ class Hermes:
         directory = self.root / "profiles"
         try:
             if directory.exists():
-                candidates += [(p.name, p) for p in sorted(directory.iterdir()) if not p.is_symlink() and p.is_dir()]
+                # "default" is always the root profile; a profiles/default folder cannot replace it.
+                candidates += [(p.name, p) for p in sorted(directory.iterdir())
+                               if p.name != "default" and not p.is_symlink() and p.is_dir()]
         except OSError:
             raise Fault("unavailable", "Cannot read Hermes profiles.") from None
         if len(candidates) > 128:
@@ -104,6 +111,11 @@ class Hermes:
             raise Fault("offline", "Hermes Bot Chat is unavailable; open it in Hermes and check its gateway.", True) from None
         return link
 
+    def deliver(self, name, params):
+        """Emit one event. Raises Fault, before the event takes a sequence number, if it cannot be framed."""
+        encode({"v": VERSION, "epoch": "0" * 32, "seq": 2 ** 53, "event": name, "params": params})
+        self.emit(name, params)
+
     def on_gateway(self, **event):
         if self.emit is None:
             return
@@ -112,38 +124,61 @@ class Hermes:
         params = {"agentId": agent, "sessionId": link.state.session_id if link else ""}
         request = event.get("askId")
         if request:
-            if self.active.get(request) != agent:
+            if self.active.get(request) != agent or request in self.aborting:
                 return
             params["requestId"] = request
         kind = event.get("ev")
         if kind == "status":
-            self.emit("agent.status", {**params, "availability": "ready" if event.get("state") == "up" else "offline"})
+            name, params = "agent.status", {**params, "availability": "ready" if event.get("state") == "up" else "offline"}
         elif kind == "delta":
-            self.emit("message.delta", {**params, "text": event.get("text", "")})
+            name, params = "message.delta", {**params, "text": event.get("text", "")}
         elif kind == "progress":
-            self.emit("message.progress", {**params, "text": event.get("text", "")})
+            name, params = "message.progress", {**params, "text": event.get("text", "")}
         elif kind == "complete":
             status = event.get("status", "complete")
             status = "cancelled" if status in ("cancelled", "interrupted") else "failed" if status in ("failed", "error") else "completed"
-            self.emit("message.finished", {**params, "status": status, "text": event.get("text", ""),
-                                           "background": not bool(request)})
-            self.finish(request)
+            name, params = "message.finished", {**params, "status": status, "text": event.get("text", ""),
+                                                "background": not bool(request)}
         elif kind == "prompt":
-            self.emit("prompt.required", {**params, "promptId": event.get("promptId"),
+            name, params = "prompt.required", {**params, "promptId": event.get("promptId"),
                 "kind": event.get("kind"), "text": event.get("text", ""),
                 "command": event.get("command", ""), "choices": event.get("choices", []),
-                "answerable": event.get("answerable", False), "multiSelect": event.get("multiSelect", False)})
+                "answerable": event.get("answerable", False), "multiSelect": event.get("multiSelect", False)}
         elif kind == "settled":
-            self.emit("prompt.settled", {**params, "promptId": event.get("promptId")})
+            name, params = "prompt.settled", {**params, "promptId": event.get("promptId")}
+        else:
+            return
+        try:
+            self.deliver(name, params)
+        except Fault:
+            # Text the protocol cannot carry (a lone surrogate, an oversized frame) fails this
+            # request only; the gateway link and other requests carry on. Background events drop.
+            if request:
+                self.abandon(request)
+            return
+        if kind == "complete":
+            self.finish(request)
 
     def finish(self, request):
         self.active.pop(request, None)
+        aborting = self.aborting.pop(request, None)
+        if aborting and aborting is not asyncio.current_task():
+            aborting.cancel()
         task = self.deadlines.pop(request, None)
         if task and task is not asyncio.current_task():
             task.cancel()
 
+    def abandon(self, request):
+        if request not in self.aborting:
+            self.aborting[request] = asyncio.get_running_loop().create_task(self.abort(
+                request, "internal_error", "Hermes sent a reply the desktop cannot receive; check it in Hermes."))
+
     async def expire(self, request, seconds):
         await asyncio.sleep(seconds)
+        await self.abort(request, "deadline_exceeded", "Request deadline exceeded.")
+
+    async def abort(self, request, code, message):
+        """Interrupt our own turn if we can, then fail the request."""
         agent = self.active.get(request)
         if not agent:
             return
@@ -159,9 +194,9 @@ class Hermes:
         if request not in self.active:
             return
         self.finish(request)
-        self.emit("message.finished", {"agentId": agent, "requestId": request,
+        self.deliver("message.finished", {"agentId": agent, "requestId": request,
             "sessionId": link.state.session_id if link else "", "status": "failed", "text": "",
-            "error": {"code": "deadline_exceeded", "message": "Request deadline exceeded.", "retryable": False},
+            "error": {"code": code, "message": message, "retryable": False},
             "remoteMayContinue": not confirmed})
 
     async def call(self, method, params):
@@ -183,7 +218,7 @@ class Hermes:
                 raise Fault("delivery_unknown", "Hermes did not confirm the interruption; the turn may continue.") from None
             if request in self.active:
                 self.finish(request)
-                self.emit("message.finished", {"agentId": agent, "requestId": request,
+                self.deliver("message.finished", {"agentId": agent, "requestId": request,
                     "sessionId": link.state.session_id, "status": "cancelled", "text": ""})
             return {"requestId": request, "status": "confirmed", "scope": "session"}
         if method not in {"message.send", "history.list", "prompt.answer", "session.compact"}:
@@ -206,7 +241,10 @@ class Hermes:
             self.used.add(request)
             self.active[request] = agent
             try:
-                link = await asyncio.wait_for(self.link(agent), min(seconds, 11))
+                try:
+                    link = await asyncio.wait_for(self.link(agent), min(seconds, 11))
+                except TimeoutError:
+                    raise Fault("offline", "Hermes Bot Chat is unavailable; open it in Hermes and check its gateway.", True) from None
                 if request not in self.active:
                     raise Fault("deadline_exceeded", "Request expired before submission.")
                 link.state.submitting += 1
@@ -281,10 +319,12 @@ class Hermes:
             except (Fault, TimeoutError):
                 pass
         await asyncio.gather(*(interrupt(request) for request in list(self.active)), return_exceptions=True)
-        tasks = list(self.deadlines.values()) + [link.task for link in self.links.values()]
+        tasks = (list(self.deadlines.values()) + list(self.aborting.values())
+                 + [link.task for link in self.links.values()])
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         self.links.clear()
         self.deadlines.clear()
+        self.aborting.clear()
         self.active.clear()
