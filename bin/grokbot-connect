@@ -6,18 +6,21 @@
   grokbot-connect --status        say how asks are sent now
   grokbot-connect --off           send asks to the local agent again; the URL and key stay
 
-The URL and key are tested with one short ask to Bob through bin/grokbot-ask,
+~/.config/omarchy/grokbot-desktop.json is read and checked first, so a
+file this cannot update stops it before anything is asked or sent. The URL
+and key are then tested with one short ask to Bob through bin/grokbot-ask,
 from a private temporary copy of the settings, before anything is saved. The
-key is read without echo (or as the second line of piped input) and is saved
-to ~/.config/omarchy/grokbot-webhook.key, mode 0600. Other settings in
-~/.config/omarchy/grokbot-desktop.json are kept.
+key is read without echo (or as the second line of piped input) and is saved,
+mode 0600, where asks read it: webhookKeyFile when that is set, otherwise
+~/.config/omarchy/grokbot-webhook.key (the header value likewise follows
+webhookHeaderFile). The settings are written first and the key files after;
+if writing a key fails, the earlier settings and keys are put back. Other
+settings in grokbot-desktop.json are kept.
 """
 from __future__ import annotations
 
 import argparse
 import getpass
-import importlib.machinery
-import importlib.util
 import json
 import os
 import stat
@@ -28,6 +31,10 @@ import urllib.parse
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 ASK = os.path.join(HERE, "grokbot-ask")
+sys.path.insert(0, os.path.dirname(HERE))
+
+from agent_desktop import transport  # noqa: E402
+
 BOB = "e0195a7d-f804-4688-9191-e2cf3574a6d1"
 TEST_PROMPT = "Connection test from the Omarchy desktop companion. Reply with a short hello."
 PASSED_ON = (
@@ -40,12 +47,9 @@ WHERE = """In Grok Bot, click Bob in the chat header, open Routines, then
 
 
 def helper():
-    """grokbot-ask as a library, so its URL, key and header rules are the
-    ones used here."""
-    loader = importlib.machinery.SourceFileLoader("grokbot_ask", ASK)
-    module = importlib.util.module_from_spec(importlib.util.spec_from_loader("grokbot_ask", loader))
-    loader.exec_module(module)
-    return module
+    """The transport grokbot-ask runs, so its URL, key and header rules are
+    the ones used here."""
+    return transport
 
 
 def ask_line(prompt, secret=False):
@@ -101,6 +105,60 @@ def save_settings(path, changes, removals=()):
     write_private(path, json.dumps(data, indent=2) + "\n", mode)
 
 
+def snapshot(path):
+    """(contents, mode) of a file as it is now, or None when there is none,
+    so a failed save can put it back."""
+    try:
+        st = os.lstat(path)
+    except FileNotFoundError:
+        return None
+    if not stat.S_ISREG(st.st_mode):
+        raise SystemExit(f"{path} is not a regular file; leaving it alone.")
+    with open(path, "r", encoding="utf-8", errors="surrogateescape") as handle:
+        return handle.read(), stat.S_IMODE(st.st_mode)
+
+
+def restore(path, saved):
+    if saved is None:
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass
+        return
+    directory = os.path.dirname(path)
+    fd, temp = tempfile.mkstemp(dir=directory, prefix=".grokbot-")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", errors="surrogateescape") as handle:
+            handle.write(saved[0])
+        os.chmod(temp, saved[1])
+        os.replace(temp, path)
+    except BaseException:
+        try:
+            os.unlink(temp)
+        except OSError:
+            pass
+        raise
+
+
+def save_connection(settings_path, changes, removals, secrets):
+    """Write the settings, then each (path, value) secret. If any write
+    fails, every file is put back as it was, so a new key never sits beside
+    old settings, nor old keys beside new settings."""
+    paths = [settings_path, *[path for path, _ in secrets]]
+    saved = {path: snapshot(path) for path in paths}
+    try:
+        save_settings(settings_path, changes, removals)
+        for path, value in secrets:
+            write_private(path, value + "\n")
+    except BaseException:
+        for path in reversed(paths):
+            try:
+                restore(path, saved[path])
+            except OSError:
+                pass
+        raise
+
+
 def test_ask(url, key, header):
     """One short ask to Bob through the real helper, from a temporary copy
     of the settings. Returns (exit code, stdout, stderr)."""
@@ -148,6 +206,23 @@ def connect(module, header_name):
         if not module.HEADER_NAME.fullmatch(header_name) or header_name.lower() in module.OWN_HEADERS:
             print(f"{header_name!r} can't be used: it must be a plain header name, and not one the companion sends itself.", file=sys.stderr)
             return 2
+    config = module.config_dir()
+    settings_path = os.path.join(config, "grokbot-desktop.json")
+    # A settings file this can't update stops it before anything is asked.
+    desktop, _ = load_settings(settings_path)
+    entry = module.plugin_entry()
+    # Saved where an ask will read them: webhookKeyFile and webhookHeaderFile
+    # when set, otherwise beside the settings.
+    targets = [module.key_file_path(entry, desktop)]
+    if header_name:
+        _, header_path = module.webhook_header(entry, {**desktop, "webhookHeader": header_name})
+        targets.append(header_path or os.path.join(config, "grokbot-webhook-header.key"))
+    for path in targets:
+        try:
+            snapshot(path)
+        except OSError as exc:
+            print(f"{path} can't be read ({exc.strerror or 'error'}); nothing was asked or saved.", file=sys.stderr)
+            return 1
     print(WHERE)
     print()
     url = module.validate_webhook_url(ask_line("Webhook URL: "))
@@ -172,14 +247,18 @@ def connect(module, header_name):
         print(f"Not saved. {explain(err)}", file=sys.stderr)
         return 1
 
-    config = module.config_dir()
-    write_private(os.path.join(config, "grokbot-webhook.key"), key + "\n")
+    secrets = [(targets[0], key)]
     if header:
-        write_private(os.path.join(config, "grokbot-webhook-header.key"), header[1] + "\n")
-        save_settings(os.path.join(config, "grokbot-desktop.json"), {"dispatch": "webhook", "webhookUrl": url, "webhookHeader": header[0]})
+        secrets.append((targets[1], header[1]))
+        changes, removals = {"dispatch": "webhook", "webhookUrl": url, "webhookHeader": header[0]}, ()
     else:
         # Saved as tested: a header from an earlier setup is dropped.
-        save_settings(os.path.join(config, "grokbot-desktop.json"), {"dispatch": "webhook", "webhookUrl": url}, ("webhookHeader",))
+        changes, removals = {"dispatch": "webhook", "webhookUrl": url}, ("webhookHeader",)
+    try:
+        save_connection(settings_path, changes, removals, secrets)
+    except OSError as exc:
+        print(f"Not saved: {exc.strerror or 'a file could not be written'}. The earlier settings and keys were kept.", file=sys.stderr)
+        return 1
 
     if code == 0:
         print(f"Connected. The webhook answered: {out.splitlines()[0] if out else '(empty)'}")
