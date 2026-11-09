@@ -8,6 +8,45 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from agent_desktop.config import client_for, configuration
 from agent_desktop.protocol import Fault, identifier
 
+def roster_rows(provider, reply):
+    """Desktop bots from one agents.list reply. Rows that are not valid agents are skipped."""
+    if not isinstance(reply, dict):
+        raise Fault('invalid_response', 'Invalid provider roster.')
+    if 'error' in reply:
+        error = reply['error']
+        message = error.get('message') if isinstance(error, dict) else None
+        raise Fault('unavailable', message if isinstance(message, str) else 'Provider unavailable.')
+    result = reply.get('result')
+    rows = result.get('agents') if isinstance(result, dict) else None
+    if not isinstance(rows, list) or len(rows) > 128:
+        raise Fault('invalid_response', 'Invalid provider roster.')
+    bots, skipped = [], 0
+    for row in rows:
+        try:
+            if not isinstance(row, dict):
+                raise Fault('invalid_response', 'Agent entry is not an object.')
+            native = identifier(row.get('id'))
+        except Fault:
+            skipped += 1
+            continue
+        bots.append({**row, 'id': provider+':'+native, 'agentId': native, 'provider': provider,
+                     'description': provider.title()})
+    return bots, skipped
+
+
+async def provider_roster(provider):
+    client = None
+    try:
+        client = client_for(provider)
+        async with asyncio.timeout(15):
+            await client.start()
+            await client.send('roster', 'agents.list')
+            return roster_rows(provider, await client.read())
+    finally:
+        if client is not None:
+            await client.close()
+
+
 async def main():
     config = configuration()
     configured = config.get('providers', {})
@@ -17,30 +56,23 @@ async def main():
     for provider in ('hermes', 'example'):
         if provider not in configured and not (provider == 'hermes' and (Path.home()/'.hermes/config.yaml').is_file()):
             continue
-        client = client_for(provider)
         try:
-            async with asyncio.timeout(15):
-                await client.start()
-                await client.send('roster', 'agents.list')
-                reply = await client.read()
-                if 'error' in reply:
-                    raise Fault('unavailable', reply['error'].get('message', 'Provider unavailable.'))
-                rows = reply.get('result', {}).get('agents')
-                if not isinstance(rows, list) or len(rows) > 128:
-                    raise Fault('invalid_response', 'Invalid provider roster.')
-                for row in rows:
-                    native = identifier(row.get('id'))
-                    bots.append({**row, 'id': provider+':'+native, 'agentId': native, 'provider': provider,
-                                 'description': provider.title()})
+            found, skipped = await provider_roster(provider)
+        except RuntimeError:
+            # Path.expanduser on "~name/..." for a user that does not exist.
+            errors.append(provider+': a configured path could not be expanded; use an absolute path or ~/.')
+            continue
         except (Fault, OSError, ValueError, TimeoutError) as exc:
-            errors.append(provider+': '+str(exc)[:240])
-        finally:
-            await client.close()
+            errors.append(provider+': '+(str(exc) or type(exc).__name__)[:240])
+            continue
+        bots.extend(found)
+        if skipped:
+            errors.append(f'{provider}: skipped {skipped} invalid agent entr{"y" if skipped == 1 else "ies"}.')
     print(json.dumps({'bots': bots, 'errors': errors}, ensure_ascii=False))
 
 if __name__ == '__main__':
     try:
         asyncio.run(main())
-    except (Fault, OSError, ValueError) as exc:
+    except (Fault, OSError, ValueError, RuntimeError) as exc:
         print(str(exc)[:400], file=sys.stderr)
         sys.exit(1)

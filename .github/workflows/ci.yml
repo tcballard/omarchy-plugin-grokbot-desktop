@@ -21,12 +21,23 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libegl1 libopengl0 libgl1
-      - run: python3 -m pip install PySide6==6.12.0 PyYAML==6.0.3
+      - run: python3 -m pip install PySide6==6.12.0 PyYAML==6.0.3 ruff==0.16.9
+      - name: Python lint (syntax errors and pyflakes, see ruff.toml)
+        run: ruff check .
+      - name: Python byte-compile
+        env:
+          PYTHONPYCACHEPREFIX: ${{ runner.temp }}/pycache
+        run: python3 -m compileall -q bin agent_desktop tests
+      - name: QML and JavaScript syntax (qmllint from PySide6)
+        # Syntax only: Quickshell and Omarchy types are not installed here, so
+        # the other qmllint categories report unresolved types, not bugs.
+        run: pyside6-qmllint --only-explicit-categories --syntax warning *.qml qml/*.qml qml/*.js tests/*.qml
       - run: ./tests/run
-      - name: Native Qt rendering and settings navigation
+      - name: Native Qt rendering, settings navigation and daemon client
         env:
           QT_QPA_PLATFORM: offscreen
           QT_QUICK_BACKEND: software
         run: |
           python3 tests/avatar-native.py
           python3 tests/settings-native.py
+          python3 tests/backend-native.py

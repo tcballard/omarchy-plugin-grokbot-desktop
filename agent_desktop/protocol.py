@@ -1,6 +1,7 @@
 import asyncio
 import json
 import math
+from pathlib import Path
 import re
 import sys
 import uuid
@@ -12,6 +13,22 @@ MAX_PROMPT = 4000
 IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 METHODS = {"hello", "agents.list", "message.send", "request.cancel", "prompt.answer",
            "history.list", "session.compact", "message.reply", "shutdown"}
+
+
+RELEASE_TEXT = re.compile(r"^[0-9]+(\.[0-9]+){0,3}([.+-][0-9A-Za-z.-]{1,32})?$")
+
+
+def release_version():
+    """The release in the project's VERSION file, or "0" when it is missing or odd."""
+    try:
+        with open(Path(__file__).resolve().parent.parent / "VERSION", "r", encoding="utf-8") as handle:
+            value = handle.read(65).strip()
+    except (OSError, UnicodeError):
+        return "0"
+    return value if RELEASE_TEXT.fullmatch(value) else "0"
+
+
+RELEASE = release_version()
 
 
 class Fault(Exception):
@@ -172,7 +189,7 @@ class Server:
                     raise Fault("invalid_request", "Handshake already completed.")
                 self.ready = True
                 self.reply(op, {"protocol": {"major": 1, "minor": 1}, "provider": self.backend.name,
-                                "adapterVersion": "0.1.0", "maxFrameBytes": MAX_FRAME,
+                                "adapterVersion": RELEASE, "maxFrameBytes": MAX_FRAME,
                                 "capabilities": self.backend.capabilities})
                 return True
             if not self.ready:

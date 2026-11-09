@@ -5,5 +5,10 @@ node scripts/check.mjs
 python3 tests/provider-api.py
 python3 tests/grokbot-api.py
 python3 tests/desktop-integration.py
+# Focused Python suites are discovered by name: add tests/test_<topic>.py.
+shopt -s nullglob
+for suite in tests/test_*.py; do
+  python3 "$suite"
+done
 node --test tests/*.test.mjs
 python3 tests/sync-app.py

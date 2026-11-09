@@ -78,8 +78,6 @@ def outlines(region, white, ox, oy, min_area=800):
         pad = 4
         y0, x0 = max(0, r0 - pad), max(0, c0 - pad)
         sub_b = body[y0:r1 + pad, x0:c1 + pad]
-        sub_o = o[y0:r1 + pad, x0:c1 + pad]
-        sub_t = t[y0:r1 + pad, x0:c1 + pad]
         cons = sorted(measure.find_contours(sub_b, 0.5), key=lambda c: -abs(area(c)))
         outer = cons[0]
         holes = [c for c in cons[1:] if abs(area(c)) > 20]

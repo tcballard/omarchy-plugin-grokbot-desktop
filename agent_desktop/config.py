@@ -45,11 +45,14 @@ def client_for(provider):
             if value is not None:
                 if not isinstance(value, str) or not value or len(value) > 4096:
                     raise Fault('invalid_config', 'Invalid Hermes path.')
-                options += [flag, str(Path(value).expanduser())]
+                try:
+                    expanded = Path(value).expanduser()
+                except RuntimeError:  # "~nosuchuser" has no home directory
+                    raise Fault('invalid_config', 'Invalid Hermes path.') from None
+                options += [flag, str(expanded)]
     return Client(provider, python=python, options=options)
 
 
 def timeout_seconds():
-    from .grokbot import legacy_module
-    legacy = legacy_module()
-    return legacy.ask_timeout(legacy.plugin_entry(), legacy.desktop_config(), 180)
+    from . import transport
+    return transport.ask_timeout(transport.plugin_entry(), transport.desktop_config(), 180)

@@ -1,29 +1,51 @@
 """Grok Bot transport behind the shared provider protocol."""
 import asyncio
-import importlib.machinery
-import importlib.util
 import json
 from pathlib import Path
+import re
 import uuid
 
+from . import transport as _transport
 from .protocol import Fault, identifier, text, MAX_PROMPT
 
 ROOT = Path(__file__).resolve().parent.parent
+WORKER = ROOT/'bin/grokbot-ask'
+DETAIL_LIMIT = 400
+_CONTROLS = re.compile(r'[\x00-\x1f\x7f-\x9f]')
+FAILURES = {2: ('invalid_config', 'Check Grok Bot dispatch settings and attachments.'),
+            3: ('unavailable', 'Grok Bot webhook credentials are missing or not private.'),
+            125: ('limit_exceeded', 'Grok Bot transport output exceeded its limit.'),
+            127: ('unavailable', 'The configured local agent is unavailable.'),
+            124: ('deadline_exceeded', 'The local agent timed out.')}
+UNCONFIRMED = ('delivery_unknown', 'Grok Bot did not confirm completion; inspect it before retrying.')
 
 
 def legacy_module():
-    loader = importlib.machinery.SourceFileLoader('agent_desktop_grok_transport', str(ROOT/'bin/grokbot-ask'))
-    spec = importlib.util.spec_from_loader(loader.name, loader)
-    module = importlib.util.module_from_spec(spec)
-    loader.exec_module(module)
-    return module
+    """The transport module; kept for callers written when it lived in bin/grokbot-ask."""
+    return _transport
+
+
+def worker_detail(raw):
+    """The worker's own one-line reason, bounded and without control
+    characters, or "" when it said nothing usable."""
+    words = ' '.join(_CONTROLS.sub(' ', raw.decode('utf-8', errors='replace')).split())
+    if words.startswith('Traceback '):
+        return ''
+    if len(words) > DETAIL_LIMIT:
+        words = words[:DETAIL_LIMIT - 1].rstrip() + '…'
+    return words
+
+
+def worker_fault(code, stderr):
+    error, message = FAILURES.get(code, UNCONFIRMED)
+    return Fault(error, worker_detail(stderr) or message)
 
 
 class GrokBot:
     name = 'grokbot'
 
     def __init__(self):
-        self.transport = legacy_module()
+        self.transport = _transport
         self.emit = None
         self.active = {}
         self.used = set()
@@ -83,7 +105,7 @@ class GrokBot:
         try:
             async with asyncio.timeout(seconds):
                 spawn = asyncio.create_task(asyncio.create_subprocess_exec('/usr/bin/setpriv', '--pdeathsig', 'TERM',
-                    '/usr/bin/python3', '-I', str(ROOT/'bin/grokbot-ask'),
+                    '/usr/bin/python3', '-I', str(WORKER),
                     stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE, limit=65538))
                 try:
@@ -107,7 +129,7 @@ class GrokBot:
                 out_task = asyncio.create_task(bounded(proc.stdout, 65537))
                 err_task = asyncio.create_task(bounded(proc.stderr, 16384))
                 try:
-                    out, _ = await asyncio.gather(out_task, err_task)
+                    out, err = await asyncio.gather(out_task, err_task)
                     code = await proc.wait()
                 finally:
                     for task in (out_task, err_task):
@@ -119,13 +141,7 @@ class GrokBot:
                     await row['reply'].wait()
                     return
                 if code != 0:
-                    errors = {2: ('invalid_config', 'Check Grok Bot dispatch settings and attachments.'),
-                              3: ('unavailable', 'Grok Bot webhook credentials are missing or not private.'),
-                              125: ('limit_exceeded', 'Grok Bot transport output exceeded its limit.'),
-                              127: ('unavailable', 'The configured local agent is unavailable.'),
-                              124: ('deadline_exceeded', 'The local agent timed out.')}
-                    error, message = errors.get(code, ('delivery_unknown', 'Grok Bot did not confirm completion; inspect it before retrying.'))
-                    raise Fault(error, message)
+                    raise worker_fault(code, err)
                 answer = out.decode('utf-8', errors='replace').strip()
                 if not answer:
                     raise Fault('delivery_unknown', 'Grok Bot returned no answer.')

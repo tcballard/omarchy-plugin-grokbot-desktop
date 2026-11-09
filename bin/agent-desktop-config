@@ -32,7 +32,11 @@ def main():
         value = request[key]
         if not isinstance(value, str) or len(value) > 4096 or '\x00' in value:
             raise Fault('invalid_request', 'Enter valid absolute paths.')
-        path = Path(value).expanduser()
+        try:
+            path = Path(value).expanduser()
+        except RuntimeError:
+            # "~name/..." for a user that does not exist.
+            raise Fault('invalid_request', 'Enter absolute paths or paths beginning with ~/.') from None
         if not path.is_absolute():
             raise Fault('invalid_request', 'Enter absolute paths or paths beginning with ~/.')
         if key == 'python' and (not path.is_file() or not os.access(path, os.X_OK)):
@@ -69,6 +73,6 @@ def main():
 if __name__ == '__main__':
     try:
         main()
-    except (Fault, OSError, ValueError) as exc:
+    except (Fault, OSError, ValueError, RuntimeError) as exc:
         print(str(exc)[:400], file=sys.stderr)
         sys.exit(1)

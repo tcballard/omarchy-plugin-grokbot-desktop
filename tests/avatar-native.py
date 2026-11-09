@@ -3,7 +3,6 @@ Requires PySide6; verifies Qt rendering, not a hosted Omarchy session.
 """
 import json
 from pathlib import Path
-import sys
 import time
 import subprocess
 import PySide6

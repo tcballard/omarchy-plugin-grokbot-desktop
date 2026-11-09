@@ -29,7 +29,9 @@ async def main():
             await client.start()
             def on_event(frame):
                 if frame.get('event') == 'prompt.required':
-                    raise Fault('approval_required', 'Hermes needs input or approval. Open Hermes to review it; this desktop request has stopped.')
+                    # Leaving closes the adapter connection, and the adapter then interrupts
+                    # the Hermes turn it started (see docs/PROVIDER-API.md).
+                    raise Fault('approval_required', 'Hermes asked for approval, which the desktop cannot show yet. The request was stopped; run it in Hermes.')
             event, result = await client.exchange(params, deferred=True, on_event=on_event)
             if event == 'message.deferred':
                 if result.get('deliveryId') != params['requestId']:

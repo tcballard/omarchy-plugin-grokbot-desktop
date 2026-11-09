@@ -45,8 +45,13 @@ After `message.finished`, stop with:
 {"v":1,"id":"stop-1","method":"shutdown"}
 ```
 
-EOF also detaches the adapter. Shutdown is **not** a promise to cancel remote
-work. Cancel explicitly and inspect its acknowledgement before detaching.
+EOF closes the adapter the same way. On close, each supplied adapter tries to
+stop the work this connection started: Hermes asks its gateway to interrupt the
+turns this connection admitted (two seconds each), GrokBot stops its local
+workers, and the example drops its pending answers. That attempt is not reported
+back and is **not** a promise that remote work stopped (a webhook routine, or a
+Hermes turn whose interruption was not acknowledged, may continue). Cancel
+explicitly and inspect its acknowledgement before detaching when you need to know.
 
 ## Wire contract
 
@@ -191,8 +196,8 @@ session before deciding whether to submit new work.
 The output queue holds at most 32 frames; a stalled consumer causes disconnection
 instead of unbounded memory or silent loss of terminal events. Writes have a
 5-second drain timeout. The host owns the adapter child and must reap it on exit.
-Hermes owns its gateway and conversation: adapter shutdown detaches without
-stopping that shared service or deleting any user data.
+Hermes owns its gateway and conversation: adapter shutdown interrupts only turns
+this connection admitted, and never stops that shared service or deletes any user data.
 
 ## GrokBot setup and desktop compatibility
 
@@ -293,4 +298,4 @@ still requires mixed-provider, native QML, and live Omarchy acceptance.
 
 The Providers settings page refreshes Hermes profiles and optional example agents through `bin/agent-desktop-roster`. Grok identities retain their legacy IDs for settings compatibility; Hermes and example identities use `<provider>:<native-id>`. A roster row carries `provider` and `agentId` separately, and the shared one-shot client sends only the native identity to its adapter. Exact ambiguous display names are rejected by reply routing.
 
-Provider runtime paths are configured in `~/.config/omarchy/agent-desktop.json`; see [candidate testing](TESTING-v0.2.0.md). Existing Grok credentials and dispatch configuration are preserved. The desktop currently consumes completed replies; the richer Hermes API methods remain available to protocol clients. Open Bot Avatar definitions belong to the desktop appearance settings and are never included in model prompts. Dots is out of scope.
+Provider runtime paths are configured in `~/.config/omarchy/agent-desktop.json`; see [candidate testing](TESTING-v0.2.0.md). Existing Grok credentials and dispatch configuration are preserved. The desktop currently consumes completed replies; the richer Hermes API methods remain available to protocol clients. The desktop cannot show approvals or clarifying questions yet: on `prompt.required` `bin/agent-desktop-ask` closes its connection, which interrupts that Hermes turn, and tells you to run the request in Hermes. Open Bot Avatar definitions belong to the desktop appearance settings and are never included in model prompts. Dots is out of scope.

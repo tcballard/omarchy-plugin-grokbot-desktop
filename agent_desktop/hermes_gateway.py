@@ -13,6 +13,9 @@ from pathlib import Path
 
 RETRY_MIN, RETRY_MAX = 2, 30
 
+# Completed admissions remembered so a replayed message.complete is not shown twice.
+COMPLETED_LIMIT = 4096
+
 PROFILE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 
 
@@ -144,7 +147,7 @@ class BotState:
         self.emit = emit
         self.session_id = ""
         self.generation = 0
-        self.completed: set[str] = set()
+        self.completed: dict[str, None] = {}  # insertion-ordered; the oldest is forgotten first
         self.mine: dict[str, str] = {}        # admission id -> askId
         self.streams: dict[str, str] = {}     # admission id -> text so far
         self.held: list[dict] = []            # events seen while a submit's receipt is in flight
@@ -271,9 +274,9 @@ class BotState:
         elif kind in ("approval.request", "clarify.request"):
             self.prompt({**payload, "kind": "clarify" if kind == "clarify.request" else "approval"}, ask)
         elif kind == "message.complete":
-            if len(self.completed) >= 4096:
-                raise RuntimeError("gateway event history limit; reconnect adapter")
-            self.completed.add(admission)
+            self.completed[admission] = None
+            while len(self.completed) > COMPLETED_LIMIT:
+                del self.completed[next(iter(self.completed))]
             text = payload.get("text") or payload.get("content") or self.streams.get(admission, "")
             self.streams.pop(admission, None)
             self.mine.pop(admission, None)
@@ -305,18 +308,25 @@ class BotLink:
     async def run(self) -> None:
         delay = RETRY_MIN
         while True:
+            was_up = False
             try:
                 await self.attach_once()
-                delay = RETRY_MIN
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # any transport failure: report, back off, retry
                 self.bridge.emit(ev="status", bot=self.bot, state="down", detail=type(exc).__name__)
             finally:
+                was_up = self.up.is_set()
                 self.client = None
                 self.up.clear()
-            await asyncio.sleep(delay)
+            if was_up:
+                # attach_once only returns by raising; a link that came up starts the backoff over.
+                delay = RETRY_MIN
+            await self.pause(delay)
             delay = min(RETRY_MAX, delay * 2)
+
+    async def pause(self, seconds: float) -> None:
+        await asyncio.sleep(seconds)
 
     async def attach_once(self) -> None:
         from websockets.asyncio.client import connect

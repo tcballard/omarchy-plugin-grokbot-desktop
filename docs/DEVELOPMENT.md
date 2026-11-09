@@ -6,6 +6,14 @@ The project is already initialized as `io.github.tcballard.grokbot-desktop`. Run
 ./tests/run
 ```
 
+CI (`.github/workflows/ci.yml`, Ubuntu 24.04) also runs, before `./tests/run`:
+
+- `ruff check .` with the rules in `ruff.toml`: syntax errors (E9) and pyflakes (F) only, including the extensionless helpers in `bin/`.
+- `python3 -m compileall -q bin agent_desktop tests`. Byte-compiling skips files without a `.py` suffix, so the ruff check is what covers `bin/`.
+- `pyside6-qmllint --only-explicit-categories --syntax warning` over every QML file and `qml/*.js`, using the qmllint that ships with the PySide6 wheel CI already installs. It checks syntax only. Quickshell and the Omarchy shell types are not available on the runner, so qmllint's other categories report unresolved types there, not real faults. `tests/smoke.sh` passes the older `--type` option, which the qmllint in PySide6 6.12 no longer accepts, so CI does not call it.
+
+To run the same checks locally: `python3 -m pip install ruff==0.16.9 PySide6==6.12.0`, then the commands above. None of them loads the plugin in Quickshell.
+
 On a target Omarchy machine, run `omarchy plugin validate .` and record `omarchy-version` in `docs/ACCEPTANCE.json`. Portable checks cover the service manifest, the 14-shape morph, the palette, the bundled roster, and the ask, sync, and cursor helpers. The installed host's validator is authoritative. Passing `./tests/run` does not mean the layer shell, Hyprland socket, or webhook was exercised on a desktop.
 
 `preview.png` is a frame from the live Try Omarchy session in `assets/grokbot-companion-demo.mp4` (`Virtual-1`, 1280×800). `tools/render-preview.py` remains a 3× supersampled offline drawing of the monochrome chrome and flat marks. When the design backdrop is present that script uses it; otherwise it paints a flat field. Regenerating with the script replaces the on-device preview, so keep the live frame unless the chrome itself has changed. The script still draws the older separate appearance drawer; the appearance settings now live on the bubble card's second page. The recorded session is in `docs/ACCEPTANCE.json`.
@@ -52,7 +60,7 @@ Before a public release, document the exact verified install command and the ins
 
 Also leave Hyprland bindings, `~/.local/share/applications/grokbot-desktop.desktop`, and `~/.local/bin/grokbot-desktop-close` unless those copies were part of the removal the owner requested.
 
-Installed runtime files are the manifest, QML, `qml/*.js`, `data/bots.json`, `data/avatar-design-prompt.md`, `bin/*`, `agent_desktop/*.py`, `assets/fonts/*` (Inter and its OFL licence), the licence, and the optional desktop, icon, and close helper. Authoring files (blueprint, workflows, tests, and `tools/`) are not part of that runtime set.
+Installed runtime files are the manifest, QML, `qml/*.js`, `data/bots.json`, `data/avatar-design-prompt.md`, `bin/*`, `agent_desktop/*.py`, `assets/fonts/*` (Inter and its OFL licence), the licence, and the optional desktop, icon, and close helper. Authoring files (blueprint, workflows, `ruff.toml`, tests, and `tools/`) are not part of that runtime set.
 
 ## Re-measuring Grok Bot's shapes
 
@@ -69,3 +77,5 @@ The tool needs numpy, scipy, scikit-image, and Pillow. It rewrites only the bloc
 `python3 tests/avatar-native.py` requires PySide6. Set `QT_QPA_PLATFORM=offscreen` for a headless run. This creates the actual Qt avatar component, renders bundled examples and exercises gaze/mood updates. It does not validate Quickshell or a running Omarchy desktop.
 
 The vendored Open Bot Avatar engine is built with `node scripts/vendor-avatar.mjs /path/to/open-bot-avatar`. Set `AVATAR_BUILD_PACKAGE` to the absolute package.json path of a build environment containing esbuild 0.25.12; Node 22.18+ is required. Neither Node nor esbuild is needed on the desktop at runtime. Keep the pinned revision in `data/open-bot-avatar-source.json` and MIT attribution when updating.
+
+`python3 tests/backend-native.py` (PySide6, `QT_QPA_PLATFORM=offscreen`) loads `qml/Backend.qml` in a real QML engine and drives the actual `bin/agent-desktopd` with the example provider. It checks the daemon client, not Quickshell's `Process` or the companion window.

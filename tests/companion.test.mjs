@@ -1186,7 +1186,7 @@ test('hover-scroll cycles the active bot and drag moves the stage', () => {
   const cycle = qmlFunction(main, 'cycleBot')
   assert.match(cycle, /selectBot\(list\[next\]\.id\)/)
   assert.match(main, /onWheel: function \(wheel\)/)
-  assert.match(main, /root\.cycleBot\(dy > 0 \? -1 : 1\)/)
+  assert.match(main, /Pointer\.wheelStep\(root\.wheelState, dy, Date\.now\(\)\)[\s\S]*?root\.cycleBot\(turned\.steps\)/)
   assert.match(qmlFunction(main, 'dragGlobal'), /root\.posRight =/)
   assert.match(qmlFunction(main, 'dragGlobal'), /root\.posBottom =/)
 })
@@ -1482,7 +1482,7 @@ test('a drag past the edge lands on the next monitor and stays there', () => {
   assert.doesNotMatch(save, /settings\.botId/)
   const cancel = main.slice(main.indexOf('onCanceled:'), main.indexOf('onCanceled:') + 500)
   assert.match(cancel, /dragDetached = true/)
-  assert.match(cancel, /if \(!root\.pointerHeld\) root\.endDrag\(\)/)
+  assert.match(cancel, /if \(Pointer\.cancelEndsDrag\(root\.pointerHeld, root\.cursorSeesButtons\)\) \{[\s\S]*?root\.endDrag\(\)/)
   const buttons = runPython('bin/grokbot-cursor', ['--self-test'])
   assert.equal(buttons.status, 0, buttons.stderr)
 })
@@ -1850,7 +1850,7 @@ test('a webhook answer waits under its question and lands there, whichever bot i
   // reply takes an ask id or a bot; say from a waiting bot counts too.
   assert.match(ipc, /function reply\(target: string, text: string\): string \{ return host\.receiveReply\(target, text\) \}/)
   const receive = qmlFunction(main, 'receiveReply')
-  assert.match(receive, /if \(root\.awaiting\[key\]\)/)
+  assert.match(receive, /if \(Object\.prototype\.hasOwnProperty\.call\(root\.awaiting, key\)\)/)
   assert.match(receive, /root\.oldestWaiting\(bot\.id\)/)
   assert.match(qmlFunction(main, 'sayNotice'), /var waiting = \(links \|\| \[\]\)\.length === 0 \? root\.oldestWaiting\(bot\.id\) : ""/)
   // A question waits ten minutes at most.
