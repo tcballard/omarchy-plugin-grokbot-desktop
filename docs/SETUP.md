@@ -11,7 +11,7 @@ cd ~/.config/omarchy/plugins/io.github.tcballard.grokbot-desktop
 
 If you have updated an existing installation and still see the old UI, run `omarchy restart shell`. Restarting clears the companion's in-memory conversations and waiting questions.
 
-Click the companion to open its bubble. To restore a hidden companion:
+Click the companion to open its bubble. Drag it to move it. Dragging it onto another monitor needs the cursor helper to read the mouse's `/dev/input/event*` nodes, which normally requires membership of the `input` group; without that, a drag that leaves the output ends at its edge. To restore a hidden companion:
 
 ```bash
 omarchy-shell io.github.tcballard.grokbot-desktop show
@@ -19,7 +19,7 @@ omarchy-shell io.github.tcballard.grokbot-desktop show
 
 ## 2. Load your actual bots
 
-Open the Grok Bot desktop app, sign in to the intended account, and let its bot list load. Right-click the companion, choose **Appearance & bots**, and press **Sync bots from Grok Bot**. Confirm the reported bot count, then select your bot in the bubble.
+Open the Grok Bot desktop app, sign in to the intended account, and let its bot list load. Right-click the companion, choose **Settings**, open **Providers**, select **GrokBot**, and press **Sync bots from Grok Bot**. Confirm the reported bot count, then select your bot in the bubble.
 
 Sync imports names, shapes, colours, and short descriptions from the app's last saved roster on this computer. It excludes groups and removed bots, does not import photos, and keeps the existing desktop roster on an error. It does not fetch directly from the cloud: changes from a phone or another computer must reach the desktop app first. Syncing the roster does not connect conversations to the real bots.
 
@@ -65,7 +65,7 @@ bin/grokbot-connect
 bin/grokbot-connect --status
 ```
 
-Enter the URL and Sender key when prompted. The helper sends a short test question and saves the configuration only if accepted. If your routine requires its own additional header, use `bin/grokbot-connect --header Header-Name` and supply its value when prompted. Keep keys out of release notes, screenshots and the repository.
+Enter the URL and Sender key when prompted. The helper checks `~/.config/omarchy/grokbot-desktop.json` before it asks anything, sends a short test question, and saves the configuration only if accepted. Keys are saved where asks read them, including a `webhookKeyFile` or `webhookHeaderFile` path you have set; if a write fails, the earlier settings and keys are restored. If your routine requires its own additional header, use `bin/grokbot-connect --header Header-Name` and supply its value when prompted. Keep keys out of release notes, screenshots and the repository.
 
 ### Use a local coding agent
 
@@ -93,7 +93,7 @@ Validate your binding changes with `hyprctl reload` and `hyprctl configerrors`. 
 
 ## 5. Optional dictation and wake phrases
 
-Install/configure Superwhisper or Voxtype and select your Omarchy dictation backend. The waveform button in the bubble invokes that backend; you can also dictate a prompt starting with “Hey Bob” or another bot's name into the composer.
+Install/configure Superwhisper or Voxtype and select your Omarchy dictation backend. The waveform button in the bubble invokes that backend. If a backend fails or times out, the button stops there rather than trying another, so a second recording is not started; you can also dictate a prompt starting with “Hey Bob” or another bot's name into the composer.
 
 For desktop-wide wake-phrase routing with Superwhisper, run this from the plugin directory:
 
@@ -101,7 +101,7 @@ For desktop-wide wake-phrase routing with Superwhisper, run this from the plugin
 bin/grokbot-voice-watch --enable
 ```
 
-This is a foreground watcher, not an automatically installed startup service. Keep it running for routing; arrange session autostart separately if wanted. It routes completed dictation transcripts, not a continuously listening microphone wake word. It briefly checks the clipboard after dictation finishes, as described in the README.
+Wake phrases match the roster the companion shows, so sync your bots first. This is a foreground watcher, not an automatically installed startup service. Keep it running for routing; arrange session autostart separately if wanted. It routes completed dictation transcripts, not a continuously listening microphone wake word. It briefly checks the clipboard after dictation finishes, as described in the README.
 
 For Voxtype, install the post-process filter so a routed wake phrase is not also typed into the focused application:
 

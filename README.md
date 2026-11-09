@@ -17,9 +17,12 @@ omarchy plugin add https://github.com/tcballard/omarchy-plugin-grokbot-desktop -
 
 **Next: [sync your bots and connect replies](docs/SETUP.md).** Roster sync does not connect chat automatically. Real bot replies need a configured webhook routine and return path; local-agent mode answers in the bot's name. Conversations and drafts clear on shell restart.
 
-Earlier v0.1 testing was accepted by the owner on an XPS running Omarchy `dev (573b518be)`; see [historical acceptance](docs/ACCEPTANCE.json). Current v0.2.0 evidence is recorded separately below.
+Status:
 
-**[Agent Desktop v0.2.0 is released](https://github.com/tcballard/omarchy-plugin-grokbot-desktop/releases/tag/v0.2.0).** The owner has tested Grok and confirmed the Codex avatar-generation speed fix. Hermes remains experimental and has not been tested with a live setup. [Release notes](docs/RELEASE-NOTES-v0.2.0.md) · [Acceptance scope](docs/ACCEPTANCE-v0.2.0.json) · [Setup and testing](docs/TESTING-v0.2.0.md). The published marketplace version remains v0.1.2.
+- **[Agent Desktop v0.2.0 is released](https://github.com/tcballard/omarchy-plugin-grokbot-desktop/releases/tag/v0.2.0).** The owner has tested Grok and confirmed the Codex avatar-generation speed fix. Hermes remains experimental and has not been tested with a live setup. [Release notes](docs/RELEASE-NOTES-v0.2.0.md) · [Acceptance scope](docs/ACCEPTANCE-v0.2.0.json) · [Setup and testing](docs/TESTING-v0.2.0.md).
+- The published marketplace version remains v0.1.2.
+- Earlier v0.1 testing was accepted by the owner on an XPS running Omarchy `dev (573b518be)`; see [historical acceptance](docs/ACCEPTANCE.json). v0.2.0 evidence is recorded separately, above.
+- Changes since v0.2.0 are unreleased and have not been tested on a live desktop: [unreleased notes](docs/RELEASE-NOTES-unreleased.md).
 
 <img src="preview.png" width="800" alt="Earlier live Omarchy capture showing the orange companion, appearance drawer and Ask Bob bubble.">
 
@@ -68,7 +71,18 @@ o.bind("SUPER + ALT + B", "Show or hide Grok Bot", "omarchy-shell io.github.tcba
 
 ## Use
 
-The companion sits in a corner. Clicks outside the mark pass through, and they keep passing through while the bubble is open, so you can work beside a reply. Close the bubble with its minimize button, Esc, or a click on the mark. Drag the mark anywhere on the screen. When you let go, that spot is written back to its own `plugins[]` entry as `marginX` and `marginY` from the corner chosen on the appearance page, and `monitor` is the output you dropped it on (`HDMI-A-1`, `DP-1`). The other settings in that entry are left as they were. It stays there when the shell starts again, and it does not follow the pointer between monitors. That corner also decides which way the bubble and the menu open first. Hold Super to move it without opening the bubble: the drag starts as soon as you press, and letting go never opens the bubble. Without Super, the drag starts once the pointer has moved a few pixels, and a click opens the bubble. The sliders button in the bubble, Right-click > Settings, or `settings` opens a wider settings view with a persistent category sidebar. Choose Providers to manage GrokBot/Hermes, Appearance for shapes and colours, or Behaviour for motion and placement. The close button returns to chat; the custom-avatar back button returns to Appearance. The appearance page is laid out like Grok Bot's avatar picker: its fourteen shapes in the chosen colour with a ring around the current one, its eleven colours plus the Omarchy theme accent, and Reset to default, which goes back to the bot's own look.
+The companion sits in a corner. Clicks outside the mark pass through, and they keep passing through while the bubble is open, so you can work beside a reply. Close the bubble with its minimize button, Esc, or a click on the mark.
+
+Drag the mark anywhere on the screen:
+
+- When you let go, that spot is written back to its own `plugins[]` entry as `marginX` and `marginY` from the corner chosen on the appearance page, and `monitor` is the output you dropped it on (`HDMI-A-1`, `DP-1`). The other settings in that entry are left as they were.
+- It stays there when the shell starts again, and it does not follow the pointer between monitors. That corner also decides which way the bubble and the menu open first.
+- Hold Super to move it without opening the bubble: the drag starts as soon as you press, and letting go never opens the bubble. Without Super, the drag starts once the pointer has moved a few pixels, and a click opens the bubble.
+- Dragging onto another monitor needs the cursor helper to see the left button, which it reads from the mouse's `/dev/input/event*` nodes. Reading those normally needs membership of the `input` group. Without it, a drag that leaves the output ends at the edge instead of continuing onto the next monitor.
+
+The sliders button in the bubble, Right-click > Settings, or `settings` opens a wider settings view with a persistent category sidebar. Choose Providers to manage GrokBot/Hermes, Appearance for shapes and colours, or Behaviour for motion and placement. The close button returns to chat; the custom-avatar back button returns to Appearance.
+
+The appearance page is laid out like Grok Bot's avatar picker: its fourteen shapes in the chosen colour with a ring around the current one, its eleven colours plus the Omarchy theme accent, and Reset to default, which goes back to the bot's own look.
 
 | Action | Result |
 | --- | --- |
@@ -76,7 +90,8 @@ The companion sits in a corner. Clicks outside the mark pass through, and they k
 | `+`, Ctrl+V, or dropping files on the bubble | Attaches files: `+` offers "Paste image" or "Choose a file…" (Omarchy's file chooser, `omarchy-file-select`; the bubble steps aside while it is open), Ctrl+V attaches a copied image and pastes text as usual otherwise, and any file can be dropped on the bubble. Up to four files, 25 MB each, wait above the field (images as thumbnails, other files by name) and go with the next ask; an ask can be attachments alone. In agent mode the agent is pointed at them (Codex gets `--image` for images); the webhook cannot take attachments yet |
 | Enter, or the send arrow (the waveform button turns into it once you type) | Sends the prompt. A leading "Hey <Bot>" selects that bot first. Long prompts wrap and the field grows to six lines before it scrolls; Shift+Enter starts a new line |
 | Waveform button on an empty field | Focuses the field and toggles Superwhisper or Voxtype |
-| Stop button while asking | Cancels the ask in flight |
+| Stop button while asking | Cancels the ask in flight. A prompt sent while the stopped ask is still exiting is kept and sent once it has, if you stay on that bot and leave the draft as it is; after 5 seconds it stays in the field unsent |
+| Scrolling over the mark | Steps to the previous bot (up) or the next (down), one bot per wheel notch. Touchpad scrolling adds up to a notch's worth first; a change of direction or a short pause starts the count again |
 | Right-click > Clear conversation, or `clear` | Clears the conversation with the bot on screen; an Undo chip offers it back for 8 seconds |
 | Right-click > Hide companion | Hides the companion. A notification says it is hidden, and clicking it brings it back. `show`, `summon`, `toggle`, and `toggleVisible` bring it back too, as does restarting the shell |
 | Escape | Steps back: closes the menu, then leaves the appearance page, then closes the bubble |
@@ -108,6 +123,8 @@ omarchy-shell io.github.tcballard.grokbot-desktop sayLink "PR Merged" "omarchy-s
 
 `say` with a bot's name as the title (`say "Bob" "…"`) is that bot speaking: the message goes in its own conversation, whose pill already names it, so no name line goes above it, and it keeps its line breaks, up to 4,000 characters. If another bot is on screen, the speaker's chip gets the unread dot. Any other title (`say "PR Merged" "…"`) is a one-line notice with the title above it. `animate` accepts `wave`, `think`, `happy`, `celebrate`, `alert`, `sleep`, `hop`, `spin`, and `morph`. `sayLinks` takes a second label and URL. Links must be `https`, or `http` to localhost, with no credentials. A button opens only when you click it.
 
+`appearance <shape> <colour>` does what picking both on the appearance page does: it turns appearance sync off, and it removes a custom avatar assigned to the selected agent.
+
 `bot` accepts an id, a short name (`OmaBot`, `Poteto`, `dr eggbot`), or the full profile name. `reply` answers a waiting webhook ask by its id, or the oldest waiting question of a bot named the same way; see [How a webhook ask comes back](#how-a-webhook-ask-comes-back).
 
 ```bash
@@ -122,9 +139,13 @@ TRANSCRIPT
 
 The composer's right-hand button changes with the field. With an empty field it shows the waveform: it focuses the field, lights the waveform, and runs `omarchy dictation toggle`. Once you type it becomes a send arrow, and while an ask runs it becomes Stop.
 
-Omarchy reads `~/.config/omarchy/defaults/dictation` and toggles whichever backend you picked, Superwhisper or Voxtype. On stable Omarchy, which has no `omarchy dictation`, the button tries the backend named there, then Superwhisper, Voxtype (only while its daemon runs) and [Hex](https://github.com/anomalyco/hex), and uses the first that takes the toggle. Hex pastes into the focused app window, which the companion's card is not, so with Hex the button starts a recording (`hex dictation start`, opening Hex first when it is closed) and the next press finishes it with `hex dictation stop --print`; the transcript comes back on the helper's stdout and goes in at the field's cursor. Finishing with Hex's own shortcut instead pastes into the app behind the card. Superwhisper's own toggle is Alt+Space (`superwhisper record`). Voxtype's is `voxtype record toggle`, also bound to Super+Ctrl+X. If `omarchy` is not on `PATH`, the button calls that backend command directly. Both backends share one wake-phrase router.
+Omarchy reads `~/.config/omarchy/defaults/dictation` and toggles whichever backend you picked, Superwhisper or Voxtype. On stable Omarchy, which has no `omarchy dictation`, the button tries the backend named there, then Superwhisper, Voxtype (only while its daemon runs) and [Hex](https://github.com/anomalyco/hex), and uses the first that takes the toggle. It moves on to the next only when the one it tried certainly did nothing: the command is not installed, it answers that it does not know the subcommand (as stable Omarchy does for `dictation`), Voxtype's daemon is not running, or Hex could not be opened. Any other failure, and every timeout, stops there without trying another backend, because that one may already be recording.
+
+Hex pastes into the focused app window, which the companion's card is not, so with Hex the button starts a recording (`hex dictation start`, opening Hex first when it is closed) and the next press finishes it with `hex dictation stop --print`; the transcript comes back on the helper's stdout and goes in at the field's cursor. Finishing with Hex's own shortcut instead pastes into the app behind the card. Superwhisper's own toggle is Alt+Space (`superwhisper record`). Voxtype's is `voxtype record toggle`, also bound to Super+Ctrl+X. If `omarchy` is not on `PATH`, the button calls that backend command directly. Both backends share one wake-phrase router.
 
 Say "Hey Bot", "Hey Bob", "Hey Grok", or "Hey Grok Bot" and the companion asks Bob (`e0195a7d-f804-4688-9191-e2cf3574a6d1`). Say "Hey OmaBot", "Hey Writer", "Hey Inbox Admin", or any other roster short name or full name, and it selects that bot. The wake phrase and a following comma or colon are removed, the bubble opens, and the rest is asked immediately. Submitting "Hey OmaBot check the VM" from the field does the same thing.
+
+The Voxtype filter, the wtype wrapper and the watcher below match against the roster the companion shows: the synced `$XDG_CONFIG_HOME/omarchy/grokbot-bots.json`, then `~/.config/omarchy/grokbot-bots.json`, then the bundled `data/bots.json`. A symlink, a file that is not a regular file, or one over 1 MiB is skipped. `GROKBOT_BOTS=<path>` overrides all of them. Only the first 4,000 characters of a wake line are routed.
 
 Desktop-wide routing is opt-in. The companion does not watch the clipboard on its own.
 
@@ -137,9 +158,9 @@ fallback_on_empty = false
 timeout_ms = 5000
 ```
 
-`bin/grokbot-voice-watch --print-voxtype-hook` prints that block with the installed script path. `bin/grokbot-voice-watch --enable --install-voxtype-hook` appends it only when Voxtype does not already have a post-process command. A wake phrase is sent to the companion and is not typed. Every other transcript is returned unchanged for Voxtype to type, including through wtype. `bin/grokbot-dictation-route --wtype` is the same rule as a wtype wrapper: a wake phrase is routed, other text is typed using `wtype -` with text on stdin.
+`bin/grokbot-voice-watch --print-voxtype-hook` prints that block with the installed script path. `bin/grokbot-voice-watch --enable --install-voxtype-hook` appends it only when Voxtype does not already have a post-process command. A wake phrase is sent to the companion and is not typed. Every other transcript is returned unchanged, byte for byte and whatever its length, for Voxtype to type, including through wtype. `bin/grokbot-dictation-route --wtype` is the same rule as a wtype wrapper: a wake phrase is routed, other text is typed using `wtype -` with text on stdin.
 
-The router passes dictated text to the control helper on stdin, then directly to Omarchy's private IPC socket. It does not put the transcript in command arguments, environment variables, or temporary files. Private-socket delivery requires Omarchy with `ShellIpc` and the shell socket introduced in [Omarchy #13435](https://github.com/omacom/omarchy/pull/13435), plus the session's `OMARCHY_PATH` and private `XDG_RUNTIME_DIR`. The companion still loads on packaged stable Omarchy that only has `IpcHandler` (toggle and other `omarchy-shell` calls work; private-socket dictation does not). After updating the plugin, run `omarchy restart shell` to load its socket registration. If the socket or handler is unavailable, delivery fails with an error and never falls back to command-line text. The filter returns the original transcript on failure; the wtype wrapper types it through stdin. Neither retries a call that may already have reached the shell.
+The router passes dictated text to the control helper on stdin, then directly to Omarchy's private IPC socket (the experimental daemon's control socket is tried first, and used when that backend is running). It does not put the transcript in command arguments, environment variables, or temporary files. Private-socket delivery requires Omarchy with `ShellIpc` and the shell socket introduced in [Omarchy #13435](https://github.com/omacom/omarchy/pull/13435), plus the session's `OMARCHY_PATH` and private `XDG_RUNTIME_DIR`. The companion still loads on packaged stable Omarchy that only has `IpcHandler` (toggle and other `omarchy-shell` calls work; private-socket dictation does not). After updating the plugin, run `omarchy restart shell` to load its socket registration. If the socket or handler is unavailable, delivery fails with an error and never falls back to command-line text. The filter returns the original transcript on failure; the wtype wrapper types it through stdin. Neither retries a call that may already have reached the shell.
 
 Superwhisper (`superwhisper.service`, transcripts under `~/.local/share/superwhisper`, `~/.config/superwhisper`, and `~/superwhisper/recordings`) and Voxtype (`voxtype.service`) use the same watcher:
 
@@ -147,11 +168,11 @@ Superwhisper (`superwhisper.service`, transcripts under `~/.local/share/superwhi
 bin/grokbot-voice-watch --enable
 ```
 
-It routes a new transcript that starts with a wake phrase. It reads the clipboard only during the three seconds after a recording finishes, and only when that text starts with a wake phrase. A copy you make at any other time is left alone. The same line is not routed twice in ten seconds.
+It routes a new transcript that starts with a wake phrase. It reads the clipboard only during the three seconds after a recording finishes, and only when that text starts with a wake phrase. A copy you make at any other time is left alone. The same line is not routed twice in ten seconds. Symlinks, FIFOs and other non-regular transcript files are skipped, and at most 1 MiB of a transcript is read. `bin/grokbot-voice-watch --enable --once` makes a single pass over transcripts written in the last 15 seconds and exits.
 
 ## Dispatch
 
-Each ask is one JSON object on the stdin of `bin/grokbot-ask`, launched as `/usr/bin/setpriv` and `/usr/bin/python3 -I`. The prompt is not an argument.
+Each ask is one JSON object on the stdin of `bin/agent-desktop-ask`, launched as `/usr/bin/setpriv --pdeathsig TERM` and `/usr/bin/python3 -I` with a cleared environment. The prompt is not an argument. That client starts `bin/agent-desktop-provider` for the bot's provider and talks to it over private pipes using the [provider API](docs/PROVIDER-API.md). For GrokBot, the adapter runs `bin/grokbot-ask` once per ask as its worker process; the webhook and local-agent transport itself is `agent_desktop/transport.py`, which `bin/grokbot-ask` wraps.
 
 Set `dispatch` to `webhook` or `agent` in `~/.config/omarchy/grokbot-desktop.json`. The same keys on this plugin's `shell.json` entry win when they are present.
 
@@ -163,7 +184,7 @@ Webhook mode sends each ask to Grok Bot's "Omarchy desktop companion" routine, s
 bin/grokbot-connect
 ```
 
-It says where to find the routine's Webhook URL and Sender key in Grok Bot (click Bob in the chat header, open Routines, then Omarchy desktop companion), asks for both, and sends Bob one short test ask. Only if Grok Bot takes it does it save anything: the key to `~/.config/omarchy/grokbot-webhook.key` (mode `0600`), and the URL and `"dispatch": "webhook"` to `~/.config/omarchy/grokbot-desktop.json`, keeping your other settings. A refused key or a wrong address is explained, and nothing is saved. `bin/grokbot-connect --status` says how asks are sent now, and `bin/grokbot-connect --off` goes back to the local agent, keeping the URL and key.
+It first checks `~/.config/omarchy/grokbot-desktop.json`: if that file is not a regular file, not valid JSON, or not a JSON object, it stops before asking or sending anything. It then says where to find the routine's Webhook URL and Sender key in Grok Bot (click Bob in the chat header, open Routines, then Omarchy desktop companion), asks for both, and sends Bob one short test ask. Only if Grok Bot takes it does it save anything: first the URL and `"dispatch": "webhook"` to `grokbot-desktop.json`, keeping your other settings, then the key to `~/.config/omarchy/grokbot-webhook.key` (or `webhookKeyFile`; see [Webhook details](#webhook-details)), mode `0600`. If a write fails, the earlier settings and keys are put back. A refused key or a wrong address is explained, and nothing is saved. `bin/grokbot-connect --status` says how asks are sent now, and `bin/grokbot-connect --off` goes back to the local agent, keeping the URL and key.
 
 ### How a webhook ask comes back
 
@@ -173,13 +194,13 @@ The routine takes an ask at once and answers later, so the question keeps its ty
 bin/grokbot-desktop-ctl reply 4f9c2a7e1b03 < answer.txt
 ```
 
-The helper sends the answer over Omarchy's private socket, preserving Unicode and line breaks, with a 4,000-character limit. It rejects argument text, protocol delimiters and oversized input without an argv fallback. The answer lands under the waiting question even when another bot is selected. Existing routines must migrate from the old string-valued `replyWith` command to the argument array and stdin transport. Do not use `omarchy-shell reply` or `say` with private answer text: both expose arguments in process listings. Restart the shell after updating. A question still waiting after ten minutes says the reply will be in Grok Bot. A webhook that answers in its response, with a `reply`, `text`, `message`, or `output` field or plain text, is shown straight away.
+The helper sends the answer over Omarchy's private socket (or, when the [experimental daemon backend](#experimental-daemon-backend) is running, over its control socket first), preserving Unicode and line breaks, with a 4,000-character limit. It rejects argument text, protocol delimiters and oversized input without an argv fallback. The answer lands under the waiting question even when another bot is selected. Existing routines must migrate from the old string-valued `replyWith` command to the argument array and stdin transport. Do not use `omarchy-shell reply` or `say` with private answer text: both expose arguments in process listings. Restart the shell after updating. A question still waiting after ten minutes says the reply will be in Grok Bot. A webhook that answers in its response, with a `reply`, `text`, `message`, or `output` field or plain text, is shown straight away.
 
 ### Webhook details
 
-The Sender key goes in both `Authorization: Bearer <key>` and `X-Automation-Key: <key>`. It is read from `~/.config/omarchy/grokbot-webhook.key` or from `GROKBOT_WEBHOOK_KEY` in the helper's own environment; the shell does not put that variable on the helper command line, and a key file other users can read is ignored. If the routine also asks for a header of its own, run `bin/grokbot-connect --header <Name>`, or name it in `webhookHeader` and put its value in `~/.config/omarchy/grokbot-webhook-header.key` with mode `0600`; the ask is not sent while that value is missing or exposed, and a name the companion already sends, such as `Authorization`, is refused. The URL must be `https`, or `http` to localhost; the routine's has the form `https://api2.cursor.sh/automations/webhook/<id>`.
+The Sender key goes in both `Authorization: Bearer <key>` and `X-Automation-Key: <key>`. It is read from `~/.config/omarchy/grokbot-webhook.key` or from `GROKBOT_WEBHOOK_KEY` in the helper's own environment; the shell does not put that variable on the helper command line, and a key file other users can read is ignored. If the routine also asks for a header of its own, run `bin/grokbot-connect --header <Name>`, or name it in `webhookHeader` and put its value in `~/.config/omarchy/grokbot-webhook-header.key` with mode `0600`; the ask is not sent while that value is missing or exposed, and a name the companion already sends, such as `Authorization`, is refused. `webhookKeyFile` and `webhookHeaderFile`, absolute paths in either settings file, move those two files; asks and `bin/grokbot-connect` both use them. The URL must be `https`, or `http` to localhost; the routine's has the form `https://api2.cursor.sh/automations/webhook/<id>`.
 
-A failed ask says why: no connection within 10 seconds, a name that couldn't be looked up, a refused connection, a certificate that didn't verify, a proxy that couldn't connect, no answer within 45 seconds, or the webhook's own error, such as `{"code":"error","message":"Invalid API key"}`, which is never shown as the bot's reply.
+A failed ask says why: no connection within 10 seconds, a name that couldn't be looked up, a refused connection, a certificate that didn't verify, a proxy that couldn't connect, no answer within 45 seconds, or the webhook's own error, such as `{"code":"error","message":"Invalid API key"}` (shown as `webhook status 401: Invalid API key`), which is never shown as the bot's reply. The bubble shows the worker's own reason, up to 400 characters with control characters removed. When the worker printed nothing usable, such as a Python traceback, a generic line for that kind of failure is shown instead.
 
 ### Agent mode
 
@@ -216,7 +237,13 @@ This plugin's entry in Omarchy's `shell.json`, which the companion keeps up to d
 }
 ```
 
-`size` may be `small`, `medium`, `large`, or `custom` with `sizePx` from 48 to 320. `motion` is `calm` (the default: the body holds still and does not blink, as Grok Bot's avatars do at rest, while the face turns toward the pointer: the eyes cross the face and shrink as it turns away, and the outline tilts with it, as Grok Bot moves Bob; while an ask runs it looks around as Bob does while "Working…"), `playful` (breathing, a gentle bob, and blinks), or `hyper` (Playful plus an orbit and hops). `idleMotion: true` is the older switch for Playful. When Omarchy's animations are off (`omarchy toggle animations`, which the shell reads as `Style.reduceMotion`), the companion holds still whatever `motion` says: no breathing, bob, orbit, or hops, and morphs and panel changes happen at once. Shells without `Style.reduceMotion` keep the chosen motion. `anchor` is `br`, `bl`, `tr`, or `tl`, and `marginX` / `marginY` are the insets from that corner. `monitor` is the output the companion sits on. Dropping a drag on another output updates it. `syncAppearance: false` keeps a custom shape and colour while asks still go to the selected Bot. `recentBots` is written by the companion: the bubble pins the primary bot and the three you used most recently, in roster order, and the rest sit behind the `+N` expander. A small name badge beneath the companion always identifies the selected bot. Long names are shortened to fit.
+`size` may be `small`, `medium`, `large`, or `custom` with `sizePx` from 48 to 320. `motion` is `calm` (the default: the body holds still and does not blink, as Grok Bot's avatars do at rest, while the face turns toward the pointer: the eyes cross the face and shrink as it turns away, and the outline tilts with it, as Grok Bot moves Bob; while an ask runs it looks around as Bob does while "Working…"), `playful` (breathing, a gentle bob, and blinks), or `hyper` (Playful plus an orbit and hops). `idleMotion: true` is the older switch for Playful. When Omarchy's animations are off (`omarchy toggle animations`, which the shell reads as `Style.reduceMotion`), the companion holds still whatever `motion` says: no breathing, bob, orbit, or hops, and morphs and panel changes happen at once. Shells without `Style.reduceMotion` keep the chosen motion. `anchor` is `br`, `bl`, `tr`, or `tl`, and `marginX` / `marginY` are the insets from that corner. `monitor` is the output the companion sits on. Dropping a drag on another output updates it. `syncAppearance: false` keeps a custom shape and colour while asks still go to the selected Bot. `recentBots` is written by the companion: the bubble pins the primary bot and the three you used most recently, in roster order, and the rest sit behind the `+N` expander. A small name badge beneath the companion always identifies the selected bot. Long names are shortened to fit. `backend` is `legacy`, the default, or `daemon`; see below.
+
+### Experimental daemon backend
+
+`"backend": "daemon"` on this plugin's `shell.json` entry selects an opt-in backend, `bin/agent-desktopd`: one long-lived process per shell session that holds the conversations and runs every ask. It is experimental and has not been live-tested on an Omarchy desktop. Leave `backend` unset, or set it to `legacy`, for the path described above.
+
+With it enabled, a reply from a provider that streams (of the bundled ones, Hermes; GrokBot does not) can grow in the bubble as it arrives. Conversations are still kept only in memory and still clear when the shell restarts. `bin/grokbot-desktop-ctl reply` and `dictate` try its private control socket, `$XDG_RUNTIME_DIR/agent-desktop/ctl.sock`, before Omarchy's shell socket. The [desktop protocol](docs/DESKTOP-PROTOCOL.md) is the full contract.
 
 ## Roster
 
@@ -228,7 +255,7 @@ The same refresh is available from the command line:
 bin/grokbot-sync --app
 ```
 
-`data/bots.json` is the bundled roster: ids, names, shapes, and colours from the live export, with descriptions shortened to a public role line. `bin/grokbot-sync` refreshes `~/.config/omarchy/grokbot-bots.json` from a local agents directory (`--from`, `agentsDir`, or `GROKBOT_AGENTS_DIR`). It keeps `id`, `name`, `avatarShape`, `avatarColor`, and a redacted one-line description. The companion watches that file.
+`data/bots.json` is the bundled roster: ids, names, shapes, and colours from the live export, with descriptions shortened to a public role line. `bin/grokbot-sync` refreshes `~/.config/omarchy/grokbot-bots.json` from a local agents directory (`--from`, `agentsDir`, or `GROKBOT_AGENTS_DIR`). It keeps `id`, `name`, `avatarShape`, `avatarColor`, and a redacted one-line description. Every mode writes the roster through an exclusive temporary file in the same directory and renames it into place, so a planted link cannot redirect the write; a failed write is a one-line error. The companion watches that file.
 
 ## Remove
 
@@ -243,6 +270,8 @@ That removes the plugin checkout and its `shell.json` entry. The companion's run
 ```bash
 ./tests/run
 ```
+
+`./tests/run` also runs every `tests/test_*.py` suite it finds. CI adds `ruff check` (syntax errors and pyflakes), a byte-compile pass and a QML/JavaScript syntax check; see [Development](docs/DEVELOPMENT.md).
 
 [Build, run and remove](docs/DEVELOPMENT.md) · [Architecture](ARCHITECTURE.md) · [Release process](docs/RELEASE.md) · [Roadmap](docs/ROADMAP.md)
 
