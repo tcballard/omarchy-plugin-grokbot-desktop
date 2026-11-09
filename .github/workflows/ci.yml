@@ -33,10 +33,11 @@ jobs:
         # the other qmllint categories report unresolved types, not bugs.
         run: pyside6-qmllint --only-explicit-categories --syntax warning *.qml qml/*.qml qml/*.js tests/*.qml
       - run: ./tests/run
-      - name: Native Qt rendering and settings navigation
+      - name: Native Qt rendering, settings navigation and daemon client
         env:
           QT_QPA_PLATFORM: offscreen
           QT_QUICK_BACKEND: software
         run: |
           python3 tests/avatar-native.py
           python3 tests/settings-native.py
+          python3 tests/backend-native.py

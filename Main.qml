@@ -1536,7 +1536,8 @@ Item {
   // in that bot's conversation, wherever the question now sits. Returns
   // whether it is on screen.
   function answerWaiting(askId, text) {
-    var info = root.awaiting[askId]
+    // Own keys only: an id such as "constructor" must not reach Object.prototype.
+    var info = Object.prototype.hasOwnProperty.call(root.awaiting, askId) ? root.awaiting[askId] : null
     if (!info) return false
     var rest = Object.assign({}, root.awaiting)
     delete rest[askId]
@@ -1591,7 +1592,7 @@ Item {
     var body = root.cleanText(text, 4000)
     if (body === "") return "empty text"
     var key = String(target || "").trim()
-    if (root.awaiting[key]) {
+    if (Object.prototype.hasOwnProperty.call(root.awaiting, key)) {
       root.landReply(root.answerWaiting(key, body))
       return "ok"
     }

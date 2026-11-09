@@ -1850,7 +1850,7 @@ test('a webhook answer waits under its question and lands there, whichever bot i
   // reply takes an ask id or a bot; say from a waiting bot counts too.
   assert.match(ipc, /function reply\(target: string, text: string\): string \{ return host\.receiveReply\(target, text\) \}/)
   const receive = qmlFunction(main, 'receiveReply')
-  assert.match(receive, /if \(root\.awaiting\[key\]\)/)
+  assert.match(receive, /if \(Object\.prototype\.hasOwnProperty\.call\(root\.awaiting, key\)\)/)
   assert.match(receive, /root\.oldestWaiting\(bot\.id\)/)
   assert.match(qmlFunction(main, 'sayNotice'), /var waiting = \(links \|\| \[\]\)\.length === 0 \? root\.oldestWaiting\(bot\.id\) : ""/)
   // A question waits ten minutes at most.
