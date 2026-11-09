@@ -50,6 +50,5 @@ def client_for(provider):
 
 
 def timeout_seconds():
-    from .grokbot import legacy_module
-    legacy = legacy_module()
-    return legacy.ask_timeout(legacy.plugin_entry(), legacy.desktop_config(), 180)
+    from . import transport
+    return transport.ask_timeout(transport.plugin_entry(), transport.desktop_config(), 180)
