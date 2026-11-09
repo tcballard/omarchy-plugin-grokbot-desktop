@@ -5,6 +5,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from agent_desktop import state as conv  # noqa: E402
+from agent_desktop import wake  # noqa: E402
 
 GROK = conv.DEFAULT_BOT_ID
 BOTS = [
@@ -102,7 +103,7 @@ class Wake(unittest.TestCase):
         for phrase in ["hello bot", "hey adams", "they bot", "hey", "hey botty"]:
             route = self.route(phrase)
             self.assertFalse(route["matched"], phrase)
-            self.assertEqual(route["prompt"], conv._wake_normalize(phrase))
+            self.assertEqual(route["prompt"], wake.normalize(phrase))
 
 
 class Roster(Base):

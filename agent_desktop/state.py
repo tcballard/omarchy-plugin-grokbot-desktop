@@ -9,6 +9,8 @@ See docs/DESKTOP-PROTOCOL.md for how each effect maps to QML.
 import re
 import secrets
 
+from .wake import route as _route_wake
+
 DEFAULT_BOT_ID = "e0195a7d-f804-4688-9191-e2cf3574a6d1"
 HISTORY_LIMIT = 40
 REPLY_WAIT_MS = 600000
@@ -115,54 +117,7 @@ def preview_snippet(text):
     return plain_line(text, 160)
 
 
-# Private copy of qml/dictation.js. A shared agent_desktop/wake.py is being
-# written separately; this function is to be replaced by it once both exist.
-_WORDISH = re.compile("[a-z0-9]", re.IGNORECASE | re.ASCII)
-_LEAD = re.compile(f"^[{_JS_SPACE},;:.!?\\-–—]+")
-
-
-def _wake_normalize(text):
-    return js_trim(_SPACES.sub(" ", re.sub("[\u0000-\u001f]+", " ", js_string(text))))
-
-
-def _wake_boundary(rest, length):
-    if len(rest) == length:
-        return True
-    return not _WORDISH.fullmatch(rest[length:length + 1])
-
-
-def _wake_strip(value):
-    return js_trim(_LEAD.sub("", js_string(value)))
-
-
-def _route_wake(text, bots, primary_id=DEFAULT_BOT_ID):
-    raw = _wake_normalize(text)
-    folded = raw.lower()
-    missed = {"matched": False, "botId": "", "prompt": raw, "wake": ""}
-    if not folded.startswith("hey "):
-        return missed
-    rest, rest_fold = raw[4:], folded[4:]
-    primary = js_string(primary_id) or DEFAULT_BOT_ID
-    if rest_fold == "grok bot" or (rest_fold.startswith("grok bot") and _wake_boundary(rest_fold, 8)):
-        return {"matched": True, "botId": primary, "prompt": _wake_strip(rest[8:]), "wake": "hey grok bot"}
-    best, best_len = None, 0
-    for bot in bots or []:
-        for label in (bot.get("shortName"), bot.get("name")):
-            label = _wake_normalize(label).lower()
-            if not label or len(label) <= best_len:
-                continue
-            if rest_fold[:len(label)] != label or not _wake_boundary(rest_fold, len(label)):
-                continue
-            best, best_len = bot, len(label)
-    if best:
-        who = _wake_normalize(best.get("shortName") or best.get("name"))
-        return {"matched": True, "botId": js_string(best.get("id")), "prompt": _wake_strip(rest[best_len:]),
-                "wake": "hey " + who if who else "hey"}
-    for tail in ("bot", "bob", "grok"):
-        if rest_fold[:len(tail)] != tail or not _wake_boundary(rest_fold, len(tail)):
-            continue
-        return {"matched": True, "botId": primary, "prompt": _wake_strip(rest[len(tail):]), "wake": "hey " + tail}
-    return missed
+# Wake phrases share one implementation with the dictation router and watcher.
 
 
 def _thread(value=None):
