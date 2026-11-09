@@ -22,7 +22,7 @@ Status:
 - **[Agent Desktop v0.2.0 is released](https://github.com/tcballard/omarchy-plugin-grokbot-desktop/releases/tag/v0.2.0).** The owner has tested Grok and confirmed the Codex avatar-generation speed fix. Hermes remains experimental and has not been tested with a live setup. [Release notes](docs/RELEASE-NOTES-v0.2.0.md) · [Acceptance scope](docs/ACCEPTANCE-v0.2.0.json) · [Setup and testing](docs/TESTING-v0.2.0.md).
 - The published marketplace version remains v0.1.2.
 - Earlier v0.1 testing was accepted by the owner on an XPS running Omarchy `dev (573b518be)`; see [historical acceptance](docs/ACCEPTANCE.json). v0.2.0 evidence is recorded separately, above.
-- Changes since v0.2.0 are unreleased and have not been tested on a live desktop: [unreleased notes](docs/RELEASE-NOTES-unreleased.md).
+- v0.3.0 is prepared in this source but not tagged or published, and has not been tested on a live desktop: [release notes](docs/RELEASE-NOTES-v0.3.0.md).
 
 <img src="preview.png" width="800" alt="Earlier live Omarchy capture showing the orange companion, appearance drawer and Ask Bob bubble.">
 
@@ -241,7 +241,7 @@ This plugin's entry in Omarchy's `shell.json`, which the companion keeps up to d
 
 ### Experimental daemon backend
 
-`"backend": "daemon"` on this plugin's `shell.json` entry selects an opt-in backend, `bin/agent-desktopd`: one long-lived process per shell session that holds the conversations and runs every ask. It is experimental and has not been live-tested on an Omarchy desktop. Leave `backend` unset, or set it to `legacy`, for the path described above.
+`"backend": "daemon"` on this plugin's `shell.json` entry selects an opt-in backend, `bin/agent-desktopd`: one long-lived process per shell session that holds the conversations and runs every ask. It is experimental and has not been live-tested on an Omarchy desktop. Leave `backend` unset, or set it to `legacy`, for the path described above. The setting is read when the shell starts, so run `omarchy restart shell` after changing it. If the daemon cannot be started, or fails three times within a minute, the session returns to the standard path and says so once; conversations the daemon held are lost when it stops.
 
 With it enabled, a reply from a provider that streams (of the bundled ones, Hermes; GrokBot does not) can grow in the bubble as it arrives. Conversations are still kept only in memory and still clear when the shell restarts. `bin/grokbot-desktop-ctl reply` and `dictate` try its private control socket, `$XDG_RUNTIME_DIR/agent-desktop/ctl.sock`, before Omarchy's shell socket. The [desktop protocol](docs/DESKTOP-PROTOCOL.md) is the full contract.
 

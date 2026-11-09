@@ -77,3 +77,5 @@ The tool needs numpy, scipy, scikit-image, and Pillow. It rewrites only the bloc
 `python3 tests/avatar-native.py` requires PySide6. Set `QT_QPA_PLATFORM=offscreen` for a headless run. This creates the actual Qt avatar component, renders bundled examples and exercises gaze/mood updates. It does not validate Quickshell or a running Omarchy desktop.
 
 The vendored Open Bot Avatar engine is built with `node scripts/vendor-avatar.mjs /path/to/open-bot-avatar`. Set `AVATAR_BUILD_PACKAGE` to the absolute package.json path of a build environment containing esbuild 0.25.12; Node 22.18+ is required. Neither Node nor esbuild is needed on the desktop at runtime. Keep the pinned revision in `data/open-bot-avatar-source.json` and MIT attribution when updating.
+
+`python3 tests/backend-native.py` (PySide6, `QT_QPA_PLATFORM=offscreen`) loads `qml/Backend.qml` in a real QML engine and drives the actual `bin/agent-desktopd` with the example provider. It checks the daemon client, not Quickshell's `Process` or the companion window.

@@ -2,11 +2,11 @@
 
 v0.2.0, which combined the stability fixes, GrokBot/Hermes provider integration and Open Bot Avatar v1 native characters, is released. See its [test candidate](TESTING-v0.2.0.md) and [release notes](RELEASE-NOTES-v0.2.0.md). Dots is out of scope. Accessory costumes remain deferred.
 
-## Unreleased
+## v0.3.0 (prepared, not released)
 
-Changes since v0.2.0 are summarised in [RELEASE-NOTES-unreleased.md](RELEASE-NOTES-unreleased.md). No version is assigned and none of them has had a live desktop pass. Open items:
+Changes since v0.2.0 are summarised in [RELEASE-NOTES-v0.3.0.md](RELEASE-NOTES-v0.3.0.md). The version is set in the source, but nothing is tagged or published and none of the changes has had a live desktop pass. Open items:
 
-- **Daemon backend.** `bin/agent-desktopd` and its [protocol](DESKTOP-PROTOCOL.md) are in place behind the opt-in `"backend": "daemon"` setting. The shell side and a live pass on an Omarchy desktop are still needed before it can be recommended, and before streaming Hermes replies can be called supported.
+- **Daemon backend.** `bin/agent-desktopd`, its [protocol](DESKTOP-PROTOCOL.md) and the shell client (`qml/Backend.qml`) are in place behind the opt-in `"backend": "daemon"` setting. A live pass on an Omarchy desktop is still needed before it can be recommended or made the default.
 - **Live checks** for the changed helpers: multi-monitor dragging with and without `input` group membership, the cursor helper's request rate, dictation backend fallback on stable and dev Omarchy, and the specific failure reasons in the bubble.
 
 # Roadmap
