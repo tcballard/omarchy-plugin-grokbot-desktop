@@ -9,7 +9,7 @@ import subprocess
 import sys
 import tempfile
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from agent_desktop.grokbot import legacy_module
+from agent_desktop import transport as grok_transport
 
 ROOT = Path(__file__).resolve().parent.parent
 FLAGS = {
@@ -72,7 +72,7 @@ def main():
     request = json.loads(raw)
     if not isinstance(request, dict):
         raise ValueError('Invalid avatar request.')
-    transport = legacy_module()
+    transport = grok_transport
     agent = transport.default_agent_name()
     if request.get('action') == 'info':
         print(json.dumps({'agent':agent, 'supported':agent in FLAGS}))

@@ -84,15 +84,21 @@ class GrokBotTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(Fault) as caught:
             self.adapter.agents()
         self.assertEqual(caught.exception.code, 'invalid_config')
-    async def test_overflow_and_errors_do_not_leak_diagnostics(self):
+    async def test_overflow_and_errors_keep_codes_and_bound_diagnostics(self):
         self.settings(command=['/usr/bin/python3', '-c', 'print("x"*200000)'])
         await self.send()
         await self.finish()
         self.assertEqual(self.events[-1][1]['error']['code'], 'limit_exceeded')
-        self.settings(command=['/usr/bin/python3', '-c', 'import sys; sys.stderr.write("private-token"); sys.exit(1)'])
+        # The agent's own reason is shown (README: "what it printed"), bounded
+        # and without control characters; the error code stays the same.
+        self.settings(command=['/usr/bin/python3', '-c', 'import sys; sys.stderr.write("signed-out\\x1b[31m" + "y"*5000); sys.exit(1)'])
         await self.send('other')
         await self.finish()
-        self.assertNotIn('private-token', json.dumps(self.events))
+        error = self.events[-1][1]['error']
+        self.assertEqual(error['code'], 'delivery_unknown')
+        self.assertTrue(error['message'].startswith('agent command: signed-out'))
+        self.assertLessEqual(len(error['message']), 400)
+        self.assertNotIn('\x1b', error['message'])
     async def test_webhook_capabilities_and_callback_correlation(self):
         self.settings(dispatch='webhook', webhookUrl='https://example.invalid/hook')
         self.assertFalse(self.adapter.capabilities['attachments'])
