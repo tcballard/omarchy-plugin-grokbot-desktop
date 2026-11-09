@@ -1,0 +1,39 @@
+#!/usr/bin/python3 -I
+"""Agent Desktop daemon: conversation state and ask I/O for the shell (experimental, opt-in).
+
+Speaks NDJSON on stdin/stdout as described in docs/DESKTOP-PROTOCOL.md and
+accepts `reply` and `dictate` from bin/grokbot-desktop-ctl on
+$XDG_RUNTIME_DIR/agent-desktop/ctl.sock. It exits on stdin EOF, SIGTERM,
+SIGINT or `shutdown`, stopping any ask in flight. Conversations are kept in
+memory only.
+"""
+import asyncio
+from pathlib import Path
+import signal
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from agent_desktop.daemon import Daemon, Output, stdio_pair
+
+
+async def main():
+    if len(sys.argv) > 1:
+        print(__doc__.strip(), file=sys.stderr)
+        return 0 if sys.argv[1:] in (["-h"], ["--help"]) else 2
+    reader, writer = await stdio_pair()
+    daemon = Daemon(Output(writer))
+    loop = asyncio.get_running_loop()
+    for signum in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(signum, daemon.stopping.set)
+    return await daemon.serve(reader)
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(asyncio.run(main()))
+    except ValueError:
+        print("agent-desktopd: stdin and stdout must be pipes or sockets", file=sys.stderr)
+        sys.exit(2)
+    except (OSError, RuntimeError) as exc:
+        print(f"agent-desktopd: {type(exc).__name__}", file=sys.stderr)
+        sys.exit(1)

@@ -4,8 +4,11 @@
   grokbot-desktop-ctl dictate          # private text on stdin only
   grokbot-desktop-ctl summon
 
-Dictation and asynchronous replies use Omarchy's user-private socket directly, without an argv
-fallback. Other methods retain the ordinary omarchy-shell command interface.
+Dictation and asynchronous replies go to the Agent Desktop daemon's private socket
+($XDG_RUNTIME_DIR/agent-desktop/ctl.sock) when the daemon backend is running, and otherwise
+to Omarchy's user-private shell socket, never through argv. The shell socket is used only when
+the daemon socket is absent or nothing is listening on it, so no input is delivered twice.
+Other methods retain the ordinary omarchy-shell command interface.
 """
 from __future__ import annotations
 
@@ -27,13 +30,44 @@ IPC_TIMEOUT = 2.0
 REPLY_LIMIT = 4096
 
 
-def dictation_socket() -> str:
-    """Match omarchy-shell's config/display-scoped socket, in a private dir."""
+DAEMON_MAGIC = "agent-desktop/1"
+
+
+class NotListening(Exception):
+    """Nothing accepted the connection, so nothing can have been delivered."""
+
+
+def runtime_dir() -> Path:
     runtime = Path(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}")
     info = runtime.stat()
     if (not runtime.is_absolute() or not stat.S_ISDIR(info.st_mode)
             or info.st_uid != os.getuid() or info.st_mode & 0o077):
         raise ValueError("XDG_RUNTIME_DIR must be a private directory owned by you")
+    return runtime
+
+
+def daemon_socket() -> str | None:
+    """The daemon's control socket, or None when the daemon backend is not running."""
+    directory = runtime_dir() / "agent-desktop"
+    try:
+        info = os.lstat(directory)
+    except FileNotFoundError:
+        return None
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+        raise ValueError("The agent-desktop runtime directory must be private and owned by you")
+    path = directory / "ctl.sock"
+    try:
+        info = os.lstat(path)
+    except FileNotFoundError:
+        return None
+    if not stat.S_ISSOCK(info.st_mode) or info.st_uid != os.getuid():
+        raise ValueError("The agent-desktop control socket must be owned by you")
+    return str(path)
+
+
+def dictation_socket() -> str:
+    """Match omarchy-shell's config/display-scoped socket, in a private dir."""
+    runtime = runtime_dir()
     omarchy = os.environ.get("OMARCHY_PATH", "")
     if not omarchy or not Path(omarchy, "shell", "shell.qml").is_file():
         raise ValueError("OMARCHY_PATH must point to your Omarchy installation")
@@ -51,40 +85,58 @@ def dictation_socket() -> str:
     return str(path)
 
 
+def exchange(path: str, request: bytes, refused_ok: bool = False) -> bytes:
+    """Send one request and return the reply frame, without its record separator."""
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+        deadline = time.monotonic() + IPC_TIMEOUT
+        client.settimeout(IPC_TIMEOUT)
+        try:
+            client.connect(path)
+        except (ConnectionRefusedError, FileNotFoundError):
+            if refused_ok:
+                raise NotListening() from None
+            raise
+        peer = client.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i"))
+        if struct.unpack("3i", peer)[1] != os.getuid():
+            raise ValueError("The IPC peer must be owned by you")
+        client.sendall(request)
+        reply = bytearray()
+        while b"\x1e" not in reply:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError()
+            client.settimeout(remaining)
+            chunk = client.recv(REPLY_LIMIT + 1 - len(reply))
+            if not chunk or len(reply) + len(chunk) > REPLY_LIMIT:
+                raise ValueError("Incomplete or oversized IPC reply")
+            reply.extend(chunk)
+    return bytes(reply).split(b"\x1e", 1)[0]
+
+
 def private_call(method: str, *fields: str) -> int:
-    # These bytes delimit fields and records in Omarchy's IPC protocol.
+    # These bytes delimit fields and records in both IPC protocols.
     # Refuse them, never retry through qs/omarchy-shell with text in argv.
     if any(char in field for field in fields for char in ("\x00", "\x1e", "\x1f")):
         print("Input contains unsupported IPC control characters", file=sys.stderr)
         return 2
     try:
-        path = dictation_socket()
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
-            deadline = time.monotonic() + IPC_TIMEOUT
-            client.settimeout(IPC_TIMEOUT)
-            client.connect(path)
-            peer = client.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i"))
-            if struct.unpack("3i", peer)[1] != os.getuid():
-                raise ValueError("Omarchy's IPC peer must be owned by you")
+        frame = None
+        path = daemon_socket()
+        if path is not None:
+            request = "\x1f".join((DAEMON_MAGIC, method, *fields)) + "\x1e"
+            try:
+                frame = exchange(path, request.encode("utf-8"), refused_ok=True)
+            except NotListening:
+                frame = None  # A stale daemon socket: the shell socket below is the only delivery.
+        if frame is None:
             request = "\x1f".join((TARGET, method, *fields)) + "\x1e"
-            client.sendall(request.encode("utf-8"))
-            reply = bytearray()
-            while b"\x1e" not in reply:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    raise TimeoutError()
-                client.settimeout(remaining)
-                chunk = client.recv(REPLY_LIMIT + 1 - len(reply))
-                if not chunk or len(reply) + len(chunk) > REPLY_LIMIT:
-                    raise ValueError("Incomplete or oversized IPC reply")
-                reply.extend(chunk)
+            frame = exchange(dictation_socket(), request.encode("utf-8"))
     except (OSError, ValueError):
         # A failed/partial reply can mean the call already ran. No retry,
         # and no raw error or reply that might contain the private text.
         print("Private IPC failed; check OMARCHY_PATH and XDG_RUNTIME_DIR, "
               "and update/restart the Omarchy shell. Delivery was not confirmed.", file=sys.stderr)
         return 1
-    frame = bytes(reply).split(b"\x1e", 1)[0]
     if frame in (b"OK\x1fok", b"OK\x1fopened"):
         return 0
     if frame == b"SKIP":
