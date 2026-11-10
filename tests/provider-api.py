@@ -164,6 +164,11 @@ class HermesTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.events[-1][1]['text'], 'done')
         self.assertFalse(self.adapter.active)
         self.assertFalse(self.adapter.deadlines)
+    async def test_prompt_reaches_hermes_exactly_as_typed(self):
+        await self.send()
+        submit = [c for c in self.client.rpc.await_args_list if c.args and c.args[0] == 'prompt.submit']
+        self.assertEqual(len(submit), 1)
+        self.assertEqual(submit[0].kwargs['text'], 'hello')
     async def test_uncertain_submission_never_retried(self):
         self.client.rpc.side_effect = TimeoutError('secret')
         with self.assertRaises(Fault) as caught:
