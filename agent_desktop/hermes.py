@@ -5,7 +5,7 @@ import sys
 from types import SimpleNamespace
 
 from .protocol import Fault, VERSION, encode, identifier, text, MAX_PROMPT
-from .hermes_gateway import BotLink, PROFILE, NOTE, history_page
+from .hermes_gateway import BotLink, PROFILE, history_page
 
 
 class Hermes:
