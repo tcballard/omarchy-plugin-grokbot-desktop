@@ -1,5 +1,7 @@
 import contextlib
 import io
+import importlib.machinery
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -35,6 +37,68 @@ class DesktopIntegration(unittest.TestCase):
         answer=self.run_helper('agent-desktop-ask',dict(provider=row['provider'],botId=row['agentId'],askId='abcdef123456',prompt='Private test'))
         self.assertEqual(answer.returncode,0,answer.stderr)
         self.assertEqual(answer.stdout.strip(),'Example: Private test')
+    def test_plain_ask_accepts_pretty_json_from_a_pipe_or_regular_file(self):
+        request = json.dumps(dict(provider='example', botId='echo', askId='plain-input', prompt='Pretty JSON'), indent=2)
+        args = ['/usr/bin/python3', '-I', str(ROOT/'bin'/'agent-desktop-ask')]
+        piped = subprocess.run(args, env=self.env, input=request, text=True, capture_output=True, timeout=10)
+        with tempfile.TemporaryFile(mode='w+') as handle:
+            handle.write(request)
+            handle.seek(0)
+            redirected = subprocess.run(args, env=self.env, stdin=handle, text=True, capture_output=True, timeout=10)
+        for result in (piped, redirected):
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, 'Example: Pretty JSON\n')
+
+    def test_streaming_ask_sends_json_lines_and_a_final_reply(self):
+        (self.config/'agent-desktop.json').write_text(json.dumps({'providers':{'example':{}}}))
+        answer=self.run_helper('agent-desktop-ask',dict(provider='example',botId='echo',askId='abcdef123457',prompt='Streamed test',stream=True))
+        self.assertEqual(answer.returncode,0,answer.stderr)
+        lines=[json.loads(line) for line in answer.stdout.splitlines()]
+        self.assertTrue(lines and all(set(line)=={'ev','text'} for line in lines))
+        self.assertEqual(lines[-1],{'ev':'final','text':'Example: Streamed test'})
+        self.assertIn('delta',[line['ev'] for line in lines[:-1]])
+        # Without stream, the reply stays the plain one-shot text the Grok path relies on.
+        plain=self.run_helper('agent-desktop-ask',dict(provider='example',botId='echo',askId='abcdef123458',prompt='Plain test'))
+        self.assertEqual(plain.stdout,'Example: Plain test\n')
+    def test_streaming_ask_takes_its_request_as_the_first_line_and_keeps_stdin_open(self):
+        (self.config/'agent-desktop.json').write_text(json.dumps({'providers':{'example':{}}}))
+        proc=subprocess.Popen(['/usr/bin/python3','-I',str(ROOT/'bin'/'agent-desktop-ask')],env=self.env,
+            stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+        proc.stdin.write(json.dumps(dict(provider='example',botId='echo',askId='abcdef123459',prompt='Open stdin',stream=True))+'\n')
+        proc.stdin.flush()
+        try:
+            proc.wait(timeout=20)
+            self.assertFalse(proc.stdin.closed)
+            out,err=proc.stdout.read(),proc.stderr.read()
+        finally:
+            if proc.poll() is None:
+                proc.terminate(); proc.wait(timeout=5)
+            proc.stdin.close(); proc.stdout.close(); proc.stderr.close()
+        self.assertEqual(proc.returncode,0,err)
+        self.assertEqual(json.loads(out.splitlines()[-1]),{'ev':'final','text':'Example: Open stdin'})
+    def test_a_question_without_a_command_is_forwarded(self):
+        # A clarifying question has no command; an empty field must not abort the ask.
+        loader=importlib.machinery.SourceFileLoader('agent_desktop_ask',str(ROOT/'bin'/'agent-desktop-ask'))
+        spec=importlib.util.spec_from_loader('agent_desktop_ask',loader)
+        ask=importlib.util.module_from_spec(spec); loader.exec_module(ask)
+        line=ask.prompt_line({'promptId':'q1','kind':'clarify','text':'Red or blue?','command':'','choices':['red','blue'],'answerable':True})
+        self.assertEqual(line,{'ev':'prompt','promptId':'q1','kind':'clarify','text':'Red or blue?','command':'',
+                               'choices':['red','blue'],'multiSelect':False,'answerable':True})
+        self.assertEqual(ask.prompt_line({'promptId':'a1','text':'','command':''})['text'],'')
+        approval = {'promptId': 'a1', 'kind': 'approval', 'text': 'Run this?',
+                    'choices': ['once', 'deny'], 'answerable': True}
+        command = 'echo ' + 'x' * 3985 + '\necho tail'
+        self.assertEqual(ask.prompt_line({**approval, 'command': command})['command'], command)
+        for unsafe in (command + 'x', 'echo safe\x1b[2J\necho hidden'):
+            line = ask.prompt_line({**approval, 'command': unsafe})
+            self.assertFalse(line['answerable'])
+            self.assertEqual(line['choices'], [])
+    def test_history_helper_answers_empty_for_providers_without_history(self):
+        (self.config/'agent-desktop.json').write_text(json.dumps({'providers':{'example':{}}}))
+        for provider in ('example', 'grokbot'):
+            result=self.run_helper('agent-desktop-history',dict(provider=provider,botId='echo'))
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertEqual(json.loads(result.stdout),{'items':[],'nextCursor':None})
     def test_broken_hermes_does_not_remove_working_example(self):
         (self.config/'agent-desktop.json').write_text(json.dumps({'providers':{'example':{},'hermes':{'root':str(self.home/'missing')}}}))
         result=self.run_helper('agent-desktop-roster')

@@ -1,0 +1,32 @@
+{
+  "status": "pending-live",
+  "version": "0.3.1",
+  "input_commit": "528c023bef010fcde99b07ff3e75b3441c9ae07d",
+  "date": "2026-11-10",
+  "platform": "GitHub Actions ubuntu-24.04 with Node 22 and PySide6 6.12.0 offscreen. Local x86_64 Omarchy dev (f97d3e7dc8) for manifest validation and focused fixture tests.",
+  "portable": {
+    "status": "passed",
+    "ci_url": "https://github.com/tcballard/omarchy-plugin-grokbot-desktop/actions/runs/42773619101",
+    "ci_head_commit": "528c023bef010fcde99b07ff3e75b3441c9ae07d"
+  },
+  "live": {
+    "status": "pending",
+    "reason": "The available Omarchy host has no configured Hermes gateway.",
+    "pending": [
+      "Live Hermes streaming, progress, history paging, approvals and questions with a disposable profile.",
+      "Live Omarchy install, upgrade, removal, and daemon smoke checks."
+    ]
+  },
+  "commands": [
+    "./tests/run",
+    "ruff check .",
+    "python3 -m compileall -q bin agent_desktop tests",
+    "pyside6-qmllint --only-explicit-categories --syntax warning *.qml qml/*.qml qml/*.js tests/*.qml",
+    "python3 tests/avatar-native.py; python3 tests/settings-native.py; python3 tests/backend-native.py",
+    "omarchy plugin validate <candidate checkout>"
+  ],
+  "results": [
+    "All portable, lint, byte-compilation, QML syntax and offscreen Qt jobs passed on GitHub Actions at input_commit.",
+    "Local Omarchy manifest validation and focused provider, approval, daemon, pointer and Markdown tests passed."
+  ]
+}

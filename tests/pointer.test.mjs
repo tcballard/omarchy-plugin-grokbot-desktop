@@ -116,7 +116,7 @@ function submitHarness() {
   const launched = [];
   const askProc = {running: false};
   const timer = {restarts: 0, restart() { this.restarts++; }};
-  const root = harness(['submitPrompt', 'retryQueuedPrompt'], {
+  const root = harness(['submitPrompt', 'retryQueuedPrompt', 'answerFromComposer'], {
     asking: false, pendingFiles: [], promptDraft: '', threadBotId: 'grok', queuedPrompt: null,
     bots: [], defaultBotId: 'grok',
     plainPrompt: (v, n) => String(v || '').trim().slice(0, n),

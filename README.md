@@ -22,13 +22,21 @@ Status:
 - **[Agent Desktop v0.2.0 is released](https://github.com/tcballard/omarchy-plugin-grokbot-desktop/releases/tag/v0.2.0).** The owner has tested Grok and confirmed the Codex avatar-generation speed fix. Hermes remains experimental and has not been tested with a live setup. [Release notes](docs/RELEASE-NOTES-v0.2.0.md) · [Acceptance scope](docs/ACCEPTANCE-v0.2.0.json) · [Setup and testing](docs/TESTING-v0.2.0.md).
 - The published marketplace version remains v0.1.2.
 - Earlier v0.1 testing was accepted by the owner on an XPS running Omarchy `dev (573b518be)`; see [historical acceptance](docs/ACCEPTANCE.json). v0.2.0 evidence is recorded separately, above.
-- v0.3.0 is not yet published. The owner has used it on a desktop and reported it looks good; the itemised live checks are still pending: [release notes](docs/RELEASE-NOTES-v0.3.0.md) · [acceptance scope](docs/ACCEPTANCE-v0.3.0.json).
+- **[Agent Desktop v0.3.0](https://github.com/tcballard/omarchy-plugin-grokbot-desktop/releases/tag/v0.3.0)** is the published release. See the [release notes](docs/RELEASE-NOTES-v0.3.0.md) and [acceptance record](docs/ACCEPTANCE-v0.3.0.json).
 
 <img src="preview.png" width="800" alt="Earlier live Omarchy capture showing the orange companion, appearance drawer and Ask Bob bubble.">
 
 **Earlier preview, 27 October 2026:** [watch the 70-second demo](assets/grokbot-companion-demo.mp4). This live Try Omarchy capture predates the current UI, roster-sync button and persistent name badge.
 
 **Inspired by [Clippy for Omarchy](https://github.com/jankeesvw/omarchy-clippy) and [Clanky](https://github.com/rdoupe/omarchy-clanky).** The layer-shell window, click-through mask, dodge behaviour, cursor helper, and speech-bubble IPC follow those companions. Plugin conventions come from [Build Omarchy Plugins](https://github.com/tcballard/build-omarchy-plugins).
+
+## Agent Desktop v0.3.1
+
+The standard backend streams Hermes replies and progress, loads recent history with earlier pages, and lets you answer supported approvals and questions from the bubble. Replies render Markdown and long conversations offer a Scroll down button. Hermes-only setups omit unused Grok sample bots, and the adapter passes the prompt through without adding a desktop note. Thanks to [Yani3rt](https://github.com/Yani3rt) for the Hermes desktop work.
+
+History imports up to 100 exchanges; a conversation retains up to 200 exchanges for the shell session. Failed history requests can retry when the bubble is reopened or the provider roster refreshes. Approval choices remain available after a rejected answer, and Stop clears pending questions. Partial replies update the conversation without repeatedly showing desktop reply cues.
+
+See the [release notes](docs/RELEASE-NOTES-v0.3.1.md) and [live test checklist](docs/TESTING-v0.3.1.md).
 
 ## Agent Desktop v0.2.0
 
@@ -96,7 +104,7 @@ The appearance page is laid out like Grok Bot's avatar picker: its fourteen shap
 | Right-click > Hide companion | Hides the companion. A notification says it is hidden, and clicking it brings it back. `show`, `summon`, `toggle`, and `toggleVisible` bring it back too, as does restarting the shell |
 | Escape | Steps back: closes the menu, then leaves the appearance page, then closes the bubble |
 | Tab, then Enter or Space | Moves between the bubble's controls and presses the focused one |
-| Switch Bot | Morphs into that Bot's shape and colour when sync is on, and routes the next ask there. Each bot keeps its own conversation, as a scrolling history of up to 40 exchanges, and its unsent draft for the session (never written to disk); a reply to a bot you have switched away from waits in its conversation with a dot on its chip, which shows on the header pill while the row is folded away and on the mark while the bubble is closed. One ask runs at a time. Before a conversation the bots sit in a row under the header; once one starts the row folds away and the header pill (the bot's name and chevron; its role slides out on hover) is the switch button, which unfolds every bot until you pick one |
+| Switch Bot | Morphs into that Bot's shape and colour when sync is on, and routes the next ask there. Each bot keeps its own conversation, as a scrolling history of up to 200 exchanges, and its unsent draft for the session (never written to disk); a reply to a bot you have switched away from waits in its conversation with a dot on its chip, which shows on the header pill while the row is folded away and on the mark while the bubble is closed. One ask runs at a time. Before a conversation the bots sit in a row under the header; once one starts the row folds away and the header pill (the bot's name and chevron; its role slides out on hover) is the switch button, which unfolds every bot until you pick one |
 | Pointer nearby, dodge on | Fades as the pointer approaches (down to 28%). The mark remains clickable and restores immediately on hover; clicks outside the mark/card still pass through |
 | Pointer idle for 2 minutes | The capsule eyes close into lid lines |
 
@@ -243,7 +251,7 @@ This plugin's entry in Omarchy's `shell.json`, which the companion keeps up to d
 
 `"backend": "daemon"` on this plugin's `shell.json` entry selects an opt-in backend, `bin/agent-desktopd`: one long-lived process per shell session that holds the conversations and runs every ask. It is experimental and has not been live-tested on an Omarchy desktop. Leave `backend` unset, or set it to `legacy`, for the path described above. The setting is read when the shell starts, so run `omarchy restart shell` after changing it. If the daemon cannot be started, or fails three times within a minute, the session returns to the standard path and says so once; conversations the daemon held are lost when it stops.
 
-With it enabled, a reply from a provider that streams (of the bundled ones, Hermes; GrokBot does not) can grow in the bubble as it arrives. Conversations are still kept only in memory and still clear when the shell restarts. `bin/grokbot-desktop-ctl reply` and `dictate` try its private control socket, `$XDG_RUNTIME_DIR/agent-desktop/ctl.sock`, before Omarchy's shell socket. The [desktop protocol](docs/DESKTOP-PROTOCOL.md) is the full contract.
+With it enabled, a reply from a provider that streams (of the bundled ones, Hermes; GrokBot does not) can grow in the bubble as it arrives. Conversations are still kept only in memory and still clear when the shell restarts. `bin/grokbot-desktop-ctl reply` and `dictate` try its private control socket, `$XDG_RUNTIME_DIR/agent-desktop/ctl.sock`, before Omarchy's shell socket. For Hermes history, progress and in-bubble approvals, use the standard backend. The [desktop protocol](docs/DESKTOP-PROTOCOL.md) describes daemon mode.
 
 ## Roster
 

@@ -44,10 +44,11 @@ function method(source, name) {
   const open = source.indexOf('{', start);
   return source.slice(start + 2, open) + '{' + braces(source, open) + '}';
 }
-// A one-line `onX: statement` handler of Main.qml.
+// A statement or block handler of Main.qml.
 function handler(source, name) {
   const match = new RegExp('^  ' + name + ': (.*)$', 'm').exec(source);
   assert.ok(match, `missing handler ${name}`);
+  if (match[1].trim() === '{') return braces(source, source.indexOf('{', match.index));
   return match[1];
 }
 // A readonly binding: an expression on one line, or a { } block.
@@ -93,14 +94,14 @@ function makeRoot(env, log) {
     hop() { log.push('hop'); },
     showActiveCue(text) { log.push('activeCue:' + text); },
     showPeekCue(botId, text) { log.push('peekCue:' + botId + ':' + text); },
-    retargetAppearance() {}, scheduleSave() {}, settleChosenBot() {}, applyBots() {},
+    retargetAppearance() {}, scheduleSave() {}, settleChosenBot() {}, applyBots() {}, maybeLoadHistory() {},
   };
   let chosen = root.defaultBotId, pending = [], bots = [], body = '';
   root.bodies = [];
   Object.defineProperty(root, 'bubbleBody', {get: () => body, set: value => { body = value; root.bodies.push(value); }});
   const ids = {
     root, Wire, Dictation, console: {warn: m => log.push('warn:' + m), info: m => log.push('info:' + m)},
-    Quickshell: {env: key => env[key]}, askProc: {running: false},
+    Qt: {callLater: callback => callback()}, Quickshell: {env: key => env[key]}, askProc: {running: false},
     undoTimer: {stop() {}, restart() {}}, daemonLiveTimer: {restart() { log.push('liveTimer'); }},
     syllableAnim: {restart() { log.push('syllables'); }},
     Avatar: {validateAvatar: value => ({ok: true, value})},

@@ -1286,7 +1286,7 @@ test('a bot saved in shell.json is restored, not replaced by the bundled roster'
   // The watched roster loads asynchronously, so startup reads the settings first
   // and then settles on the bundled roster, which knows nothing about the bots
   // synced here. The saved bot must survive that and win when the roster lands.
-  const source = ['parseBots', 'applyBots', 'settleChosenBot', 'findBot', 'primaryBot']
+  const source = ['parseBots', 'grokRoster', 'applyBots', 'settleChosenBot', 'findBot', 'primaryBot']
     .map((name) => qmlFunction(main, name)).join('\n')
   const bundledBots = { text: () => read('data/bots.json') }
   const roster = JSON.stringify({ bots: [
@@ -1302,7 +1302,7 @@ test('a bot saved in shell.json is restored, not replaced by the bundled roster'
     const context = vm.createContext({ root, bundledBots })
     vm.runInContext(source, context)
     // The QML calls these through `root.`, so lend them back to the object.
-    for (const name of ['parseBots', 'applyBots', 'settleChosenBot', 'findBot', 'primaryBot']) {
+    for (const name of ['parseBots', 'grokRoster', 'applyBots', 'settleChosenBot', 'findBot', 'primaryBot']) {
       root[name] = context[name]
     }
     return { root, applyBots: context.applyBots, settleChosenBot: context.settleChosenBot }
@@ -1701,7 +1701,7 @@ test('each bot keeps its own conversation, and a reply lands with the bot asked'
   assert.match(main, /readonly property bool askingHere: root\.asking && root\.askBotId === root\.threadBotId/)
   assert.match(main, /property real workBlend: root\.busyHere && !root\.reduceMotion/)
   const panel = read('BubblePanel.qml')
-  assert.match(panel, /readonly property bool asking: app \? app\.askingHere : false/)
+  assert.match(panel, /readonly property bool asking: app \? app\.askingHere && !answering : false/)
   assert.match(panel, /"Waiting for " \+ app\.askingLabel\(\) \+ " to answer…"/)
   assert.equal((panel.match(/visible: app\.unreadBots\.indexOf\(modelData\.id\) >= 0/g) || []).length, 2)
   assert.match(panel, /opacity: mode === "send" && app && app\.asking && !app\.askingHere \? 0\.45 : 1/)
@@ -2026,4 +2026,99 @@ test('the chat and appearance pages crossfade, pinned to the edge the card grows
 test('both IPC bridges expose the same methods with the same bodies', () => {
   const methods = (src) => src.slice(src.indexOf('target:')).replace(/^\s*\/\/.*$/gm, '').replace(/^[ \t]+/gm, '').replace(/[\s}]+$/, '')
   assert.equal(methods(ipcBridges[0]), methods(ipcBridges[1]))
+})
+
+test('the Grok roster shows only when Grok Bot is in use, and never doubles another provider', () => {
+  const names = ['parseBots', 'grokRoster', 'applyBots', 'settleChosenBot', 'findBot', 'primaryBot']
+  const source = names.map((name) => qmlFunction(main, name)).join('\n')
+  const bundledBots = { text: () => read('data/bots.json') }
+  const hermes = ['donna', 'sentinel'].map((agentId) => ({ id: 'hermes:' + agentId, agentId, name: agentId, provider: 'hermes' }))
+  const make = ({ providers = [], webhook = false } = {}) => {
+    const root = {
+      bots: [], chosenBotId: 'hermes:donna', rosterRead: true, ready: false, providerBots: providers,
+      grokConfigured: webhook, defaultBotId: 'e0195a7d-f804-4688-9191-e2cf3574a6d1',
+      safeImage: () => '', retargetAppearance() {},
+    }
+    const context = vm.createContext({ root, bundledBots })
+    vm.runInContext(source, context)
+    for (const name of names) root[name] = context[name]
+    return root
+  }
+  const ids = (root) => Array.from(root.bots, (bot) => String(bot.id))
+  const bundled = JSON.parse(read('data/bots.json')).bots.length
+
+  // No Grok set-up and Hermes agents present: only the Hermes agents.
+  let root = make({ providers: hermes })
+  root.applyBots('')
+  assert.deepEqual(ids(root), ['hermes:donna', 'hermes:sentinel'])
+
+  // A Hermes roster an older fork wrote to grokbot-bots.json is not a Grok roster.
+  root = make({ providers: hermes })
+  root.applyBots(JSON.stringify({ bots: [{ id: 'donna', name: 'Donna' }, { id: 'sentinel', name: 'Sentinel' }] }))
+  assert.deepEqual(ids(root), ['hermes:donna', 'hermes:sentinel'])
+
+  // A synced Grok roster still shows beside the providers.
+  root = make({ providers: hermes })
+  root.applyBots(JSON.stringify({ bots: [{ id: 'grok-1', name: 'Bob' }] }))
+  assert.deepEqual(ids(root), ['grok-1', 'hermes:donna', 'hermes:sentinel'])
+
+  // Grok's webhook in use: the bundled roster stays, as before.
+  root = make({ providers: hermes, webhook: true })
+  root.applyBots('')
+  assert.equal(root.bots.length, bundled + 2)
+
+  // No provider agents at all: the bundled roster, as before.
+  root = make()
+  root.applyBots('')
+  assert.equal(root.bots.length, bundled)
+})
+
+test('a provider ask streams into the bubble, with what the agent is doing beneath it', () => {
+  const panel = read('BubblePanel.qml')
+  // Providers stream; Grok keeps its plain reply.
+  assert.match(main, /stream: !!\(bot && bot\.provider && bot\.provider !== "grokbot"\)/)
+  assert.match(main, /stdout: SplitParser \{ onRead: function \(line\) \{ root\.askLine\(line\) \} \}/)
+  const line = qmlFunction(main, 'askLine')
+  assert.match(line, /if \(ev\.ev === "delta" && value !== ""\) \{\n\s*root\.progressText = ""/)
+  assert.match(line, /root\.deliver\(root\.askBotId, value, true\)/)
+  assert.match(line, /root\.progressText = root\.plainLine\(ev\.text, 80\)/)
+  assert.match(main, /var out = root\.cleanText\(root\.askStreaming \? root\.askFinal : root\.askLines\.join\("\\n"\), 4000\)/)
+  assert.match(qmlFunction(main, 'cancelAsk'), /root\.progressText = ""/)
+  assert.match(panel, /status: app && app\.askingHere \? app\.progressText : ""/)
+})
+test('a provider\'s approvals and questions are answered from the bubble, through the running ask', () => {
+  const panel = read('BubblePanel.qml')
+  assert.match(main, /approvalLabels: \(\{ once: "Allow once", session: "Allow this session", always: "Always allow", deny: "Deny" \}\)/)
+  // Answers go to the helper that holds the prompt, on its stdin, and only while it runs.
+  assert.match(main, /if \(!root\.askStreaming\) askProc\.stdinEnabled = false/)
+  // A prompt the adapter cannot answer safely points to Hermes, without buttons.
+  assert.match(qmlFunction(main, 'showPrompt'), /if \(!ev\.answerable\) \{/)
+  // Answered anywhere: the buttons go. The ask ended: they are retired with a note.
+  assert.match(qmlFunction(main, 'submitPrompt'), /if \(root\.answerFromComposer\(root\.plainPrompt\(value, 4000\)\)\) return/)
+  assert.match(panel, /onActivated: app\.linkAction\(modelData\)/)
+  assert.match(panel, /readonly property bool asking: app \? app\.askingHere && !answering : false/)
+})
+
+test('a provider bot opens on its recent history, and earlier pages load twenty at a time', () => {
+  const panel = read('BubblePanel.qml')
+  // Once per bot, only into a conversation that is still empty here, never for Grok.
+  const maybe = qmlFunction(main, 'maybeLoadHistory')
+  assert.match(maybe, /if \(root\.history\.length > 0 \|\| root\.askedText !== "" \|\| root\.bubbleBody !== "" \|\| root\.asking\) return/)
+  assert.match(qmlFunction(main, 'runHistory'), /bot\.provider === "grokbot"/)
+  assert.match(qmlFunction(main, 'loadOlder'), /if \(root\.history\.length >= root\.olderCap\) return "limit"/)
+  assert.match(main, /readonly property int olderCap: 100/)
+  assert.match(qmlFunction(main, 'applyOlder'), /root\.history = list\.concat\(root\.history\)\.slice\(-root\.historyLimit\)/)
+  // The chip arrives noticeably, and the reader's place is held while a page goes in above.
+  assert.match(panel, /text: app && app\.olderLoading \? "Loading…" : "Load 20 earlier messages"/)
+  assert.match(panel, /onShownChanged: if \(shown\) arrowNudge\.restart\(\)/)
+  assert.match(panel, /contentY = Math\.max\(0, contentHeight - olderFromBottom\)/)
+})
+
+test('a "Scroll down" chip floats over the thread while the latest message is out of view', () => {
+  const panel = read('BubblePanel.qml')
+  assert.match(panel, /id: downChip\n\s*readonly property bool shown: threadFlick\.contentHeight > threadFlick\.height \+ 4\n\s*&& threadFlick\.contentY \+ threadFlick\.height < threadFlick\.contentHeight - 24/)
+  assert.match(panel, /Behavior on t \{ NumberAnimation \{ duration: bubble\.ms\(downChip\.shown \? 360 : 180\)/)
+  assert.match(panel, /text: "Scroll down"/)
+  assert.match(panel, /onActivated: bubble\.scrollToEnd\(\)/)
+  assert.match(panel, /function scrollToEnd\(\) \{[\s\S]*?scrollAnim\.to = end/)
 })
