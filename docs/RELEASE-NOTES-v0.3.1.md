@@ -9,4 +9,4 @@ Hermes conversations can pick up where you left off. Open a bot to see recent ex
 
 Thanks to [Yani3rt](https://github.com/Yani3rt) for the Hermes conversation work. Leave the backend at its default for history, progress and in-bubble approvals. The opt-in daemon still offers experimental reply streaming.
 
-[Live test checklist](TESTING-v0.3.1.md)
+Hermes support remains experimental. The full automated suite passed. Live Hermes and Omarchy lifecycle checks are pending. [CI run](https://github.com/tcballard/omarchy-plugin-grokbot-desktop/actions/runs/42773619101) · [Live test checklist](https://github.com/tcballard/omarchy-plugin-grokbot-desktop/blob/v0.3.1/docs/TESTING-v0.3.1.md)
