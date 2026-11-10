@@ -24,9 +24,11 @@ are the same either way."""
 import argparse
 import asyncio
 import json
+import os
 import re
 from pathlib import Path
 import signal
+import stat
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -136,14 +138,37 @@ async def streamed(client, params, reader, on_event, out):
         await asyncio.gather(frame_task, input_task, return_exceptions=True)
 
 
+async def read_request(reader):
+    if stat.S_ISREG(os.fstat(sys.stdin.fileno()).st_mode):
+        reader.feed_eof()
+        return decode(sys.stdin.buffer.read(MAX_FRAME + 1))
+
+    loop = asyncio.get_running_loop()
+    await loop.connect_read_pipe(lambda: asyncio.StreamReaderProtocol(reader), sys.stdin)
+    first = await reader.readline()
+    try:
+        header = decode(first)
+    except Fault as exc:
+        if exc.code != 'invalid_request':
+            raise
+    else:
+        if header.get('stream') is True:
+            return header
+
+    # Plain asks keep the original whole-stdin JSON contract, including pretty-printed input.
+    try:
+        tail = await reader.readexactly(MAX_FRAME + 1 - len(first))
+    except asyncio.IncompleteReadError as exc:
+        tail = exc.partial
+    return decode(first + tail)
+
+
 async def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--provider', choices=['grokbot', 'hermes', 'example'], default='grokbot')
     args = parser.parse_args()
-    loop = asyncio.get_running_loop()
     reader = asyncio.StreamReader(limit=MAX_FRAME + 1)
-    await loop.connect_read_pipe(lambda: asyncio.StreamReaderProtocol(reader), sys.stdin)
-    payload = decode(await reader.readline())
+    payload = await read_request(reader)
     params = dict(agentId=identifier(payload.get('botId')), requestId=identifier(payload.get('askId')),
                   text=text(payload.get('prompt'), MAX_PROMPT), attachments=payload.get('attachments', []))
     seconds = timeout_seconds()

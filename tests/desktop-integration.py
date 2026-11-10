@@ -37,6 +37,18 @@ class DesktopIntegration(unittest.TestCase):
         answer=self.run_helper('agent-desktop-ask',dict(provider=row['provider'],botId=row['agentId'],askId='abcdef123456',prompt='Private test'))
         self.assertEqual(answer.returncode,0,answer.stderr)
         self.assertEqual(answer.stdout.strip(),'Example: Private test')
+    def test_plain_ask_accepts_pretty_json_from_a_pipe_or_regular_file(self):
+        request = json.dumps(dict(provider='example', botId='echo', askId='plain-input', prompt='Pretty JSON'), indent=2)
+        args = ['/usr/bin/python3', '-I', str(ROOT/'bin'/'agent-desktop-ask')]
+        piped = subprocess.run(args, env=self.env, input=request, text=True, capture_output=True, timeout=10)
+        with tempfile.TemporaryFile(mode='w+') as handle:
+            handle.write(request)
+            handle.seek(0)
+            redirected = subprocess.run(args, env=self.env, stdin=handle, text=True, capture_output=True, timeout=10)
+        for result in (piped, redirected):
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, 'Example: Pretty JSON\n')
+
     def test_streaming_ask_sends_json_lines_and_a_final_reply(self):
         (self.config/'agent-desktop.json').write_text(json.dumps({'providers':{'example':{}}}))
         answer=self.run_helper('agent-desktop-ask',dict(provider='example',botId='echo',askId='abcdef123457',prompt='Streamed test',stream=True))
