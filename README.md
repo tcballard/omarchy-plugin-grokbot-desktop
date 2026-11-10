@@ -19,10 +19,9 @@ omarchy plugin add https://github.com/tcballard/omarchy-plugin-grokbot-desktop -
 
 Status:
 
-- **[Agent Desktop v0.2.0 is released](https://github.com/tcballard/omarchy-plugin-grokbot-desktop/releases/tag/v0.2.0).** The owner has tested Grok and confirmed the Codex avatar-generation speed fix. Hermes remains experimental and has not been tested with a live setup. [Release notes](docs/RELEASE-NOTES-v0.2.0.md) · [Acceptance scope](docs/ACCEPTANCE-v0.2.0.json) · [Setup and testing](docs/TESTING-v0.2.0.md).
-- The published marketplace version remains v0.1.2.
-- Earlier v0.1 testing was accepted by the owner on an XPS running Omarchy `dev (573b518be)`; see [historical acceptance](docs/ACCEPTANCE.json). v0.2.0 evidence is recorded separately, above.
-- **[Agent Desktop v0.3.0](https://github.com/tcballard/omarchy-plugin-grokbot-desktop/releases/tag/v0.3.0)** is the published release. See the [release notes](docs/RELEASE-NOTES-v0.3.0.md) and [acceptance record](docs/ACCEPTANCE-v0.3.0.json).
+- **[Agent Desktop v0.3.1](https://github.com/tcballard/omarchy-plugin-grokbot-desktop/releases/tag/v0.3.1)** is the latest GitHub source release. Hermes support remains experimental. Live Hermes and Omarchy lifecycle checks are pending. [Release notes](docs/RELEASE-NOTES-v0.3.1.md) · [Acceptance record](docs/ACCEPTANCE-v0.3.1.json).
+- [Omarchy Plugin Marketplace listing](https://plugins.omarchy.org/plugin.html?id=io.github.tcballard.grokbot-desktop).
+- Earlier v0.1 testing was accepted by the owner on an XPS running Omarchy `dev (573b518be)`. See the [historical acceptance](docs/ACCEPTANCE.json), [v0.2.0 acceptance](docs/ACCEPTANCE-v0.2.0.json) and [v0.3.0 acceptance](docs/ACCEPTANCE-v0.3.0.json).
 
 <img src="preview.png" width="800" alt="Earlier live Omarchy capture showing the orange companion, appearance drawer and Ask Bob bubble.">
 
