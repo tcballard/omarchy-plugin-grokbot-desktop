@@ -13,7 +13,9 @@ Column {
     font.family: field.fontFamily; font.pixelSize: 11
     textFormat: Text.PlainText; color: Theme.textMuted
   }
-  TextField {
+  SafeTextArea {
+    singleLine: true
+    wrapMode: TextEdit.NoWrap
     id: input
     width: parent.width; height: 36
     font.family: field.fontFamily; font.pixelSize: 12

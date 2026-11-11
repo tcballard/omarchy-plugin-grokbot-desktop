@@ -915,7 +915,7 @@ test('Superwhisper and Voxtype wake lines route instead of being typed', () => {
   })
   assert.equal(batch.status, 0, batch.stderr)
   const decisions = JSON.parse(batch.stdout)
-  assert.deepEqual(decisions.map((item) => item.deliver), [true, false, false, false, true, true])
+  assert.deepEqual(decisions.map((item) => item.deliver), [false, false, false, false, true, true])
   assert.equal(decisions[4].botId, OMA)
   assert.equal(decisions[4].prompt, 'check the VM')
   assert.equal(decisions[5].backend, 'superwhisper')
@@ -1356,7 +1356,7 @@ test('the prompt bubble fits short prompts', () => {
 
 test('a long prompt wraps and the field grows so all of it shows before sending', () => {
   const panel = read('BubblePanel.qml')
-  assert.match(panel, /TextArea\.flickable: TextArea \{\s*id: promptField/)
+  assert.match(panel, /TextArea\.flickable: SafeTextArea \{\s*id: promptField/)
   assert.match(panel, /wrapMode: TextArea\.Wrap/)
   assert.doesNotMatch(panel, /TextField \{/)
   // Up to six lines, then it scrolls with the caret kept in view.
@@ -1954,7 +1954,7 @@ test('the composer attaches pasted images, chosen files, and dropped files', () 
   assert.match(panel, /id: attachButton/)
   assert.match(panel, /\{ label: "Paste image", mode: "paste" \},\s*\{ label: "Choose a file…", mode: "choose" \}/)
   assert.doesNotMatch(panel + main, /screenshot/i)
-  assert.match(panel, /if \(app\.attach\("paste", "quiet"\) !== "ok"\) promptField\.paste\(\)/)
+  assert.match(panel, /if \(app\.attach\("paste", "quiet"\) !== "ok"\) promptField\.safePaste\(\)/)
   assert.match(main, /if \(root\.attachQuiet && root\.hostBubble\) root\.hostBubble\.pasteText\(\)\n\s*else root\.attachNote = "There's no image on the clipboard\."/)
   // Omarchy's own portal chooser picks the files; the card steps aside meanwhile.
   assert.match(main, /exec omarchy-file-select --title 'Attach to your question' --multiple/)

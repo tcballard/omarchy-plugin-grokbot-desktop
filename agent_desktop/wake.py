@@ -189,10 +189,7 @@ def should_deliver(text: str, source: str, recording_age, now: float, memory: di
     decided = route(text, bots)
     if not decided["matched"]:
         return False, decided
-    if source == "clipboard":
-        if not isinstance(recording_age, (int, float)) or recording_age < 0 or recording_age > CLIP_WINDOW:
-            return False, decided
-    elif source != "transcript":
+    if source != "transcript":
         return False, decided
     key = normalize(text).lower()
     last = memory.get(key)

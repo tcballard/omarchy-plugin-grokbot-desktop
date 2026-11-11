@@ -28,6 +28,7 @@ import subprocess
 import sys
 import tempfile
 import urllib.parse
+import unicodedata
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 ASK = os.path.join(HERE, "grokbot-ask")
@@ -44,6 +45,10 @@ PASSED_ON = (
 )
 WHERE = """In Grok Bot, click Bob in the chat header, open Routines, then
 "Omarchy desktop companion". It shows the Webhook URL and the Sender key."""
+
+
+def terminal_text(text):
+    return "".join(char for char in text if not unicodedata.category(char).startswith("C"))
 
 
 def helper():
@@ -261,7 +266,7 @@ def connect(module, header_name):
         return 1
 
     if code == 0:
-        print(f"Connected. The webhook answered: {out.splitlines()[0] if out else '(empty)'}")
+        print(f"Connected. The webhook answered: {terminal_text(out.splitlines()[0]) if out else '(empty)'}")
     else:
         print("Connected. Grok Bot took the test ask.")
         print("Bob's answers come back to the bubble when his routine sends them with the companion's")
