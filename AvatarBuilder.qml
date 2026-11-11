@@ -22,7 +22,7 @@ Column {
     font.family: app.fontFamily; font.pixelSize: 11
     textFormat: Text.PlainText; wrapMode: Text.Wrap
   }
-  TextArea {
+  SafeTextArea {
     width: parent.width; height: 82
     text: app.avatarBuilderDescription
     placeholderText: "A chunky rocket with two eyes on its window…"

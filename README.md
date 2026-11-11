@@ -175,7 +175,7 @@ Superwhisper (`superwhisper.service`, transcripts under `~/.local/share/superwhi
 bin/grokbot-voice-watch --enable
 ```
 
-It routes a new transcript that starts with a wake phrase. It reads the clipboard only during the three seconds after a recording finishes, and only when that text starts with a wake phrase. A copy you make at any other time is left alone. The same line is not routed twice in ten seconds. Symlinks, FIFOs and other non-regular transcript files are skipped, and at most 1 MiB of a transcript is read. `bin/grokbot-voice-watch --enable --once` makes a single pass over transcripts written in the last 15 seconds and exits.
+It routes a new transcript that starts with a wake phrase. Automatic routing uses backend transcript files. Generic clipboard text requires explicit paste and submission. The same line is not routed twice in ten seconds. Symlinks, FIFOs and other non-regular transcript files are skipped, and at most 1 MiB of a transcript is read. `bin/grokbot-voice-watch --enable --once` makes a single pass over transcripts written in the last 15 seconds and exits.
 
 ## Dispatch
 

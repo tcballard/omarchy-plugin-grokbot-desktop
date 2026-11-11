@@ -162,7 +162,7 @@ Rectangle {
   // helper reports none and the text is pasted as usual.
   function pasteText() {
     promptField.forceActiveFocus()
-    promptField.paste()
+    promptField.safePaste()
   }
 
   property bool attachMenuOpen: false
@@ -1253,7 +1253,7 @@ Rectangle {
             boundsBehavior: Flickable.StopAtBounds
             contentWidth: width
             contentHeight: promptField.implicitHeight
-            TextArea.flickable: TextArea {
+            TextArea.flickable: SafeTextArea {
               id: promptField
               readonly property real oneLine: Math.ceil(fontMetrics.height)
               topPadding: 11
@@ -1288,9 +1288,9 @@ Rectangle {
                   promptFlick.contentY = r.y + r.height + bottomPadding - promptFlick.height
               }
               Keys.onPressed: function (event) {
-                if (event.key === Qt.Key_V && (event.modifiers & Qt.ControlModifier) && !(event.modifiers & Qt.ShiftModifier)) {
+                if (event.matches(StandardKey.Paste)) {
                   event.accepted = true
-                  if (app.attach("paste", "quiet") !== "ok") promptField.paste()
+                  if (app.attach("paste", "quiet") !== "ok") promptField.safePaste()
                 }
               }
               Keys.onReturnPressed: function (event) { promptField.returnKey(event) }

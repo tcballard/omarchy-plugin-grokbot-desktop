@@ -101,7 +101,7 @@ For desktop-wide wake-phrase routing with Superwhisper, run this from the plugin
 bin/grokbot-voice-watch --enable
 ```
 
-Wake phrases match the roster the companion shows, so sync your bots first. This is a foreground watcher, not an automatically installed startup service. Keep it running for routing; arrange session autostart separately if wanted. It routes completed dictation transcripts, not a continuously listening microphone wake word. It briefly checks the clipboard after dictation finishes, as described in the README.
+Wake phrases match the roster the companion shows, so sync your bots first. This is a foreground watcher, not an automatically installed startup service. Keep it running for routing; arrange session autostart separately if wanted. It routes completed dictation transcripts, not a continuously listening microphone wake word. Automatic routing uses backend transcript files. Generic clipboard text requires an explicit paste and submission.
 
 For Voxtype, install the post-process filter so a routed wake phrase is not also typed into the focused application:
 

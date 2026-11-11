@@ -205,7 +205,7 @@ Item {
           detail: "Use an existing design or save your character"
           onActivated: panel.avatarJsonExpanded = !panel.avatarJsonExpanded
         }
-        TextArea {
+        SafeTextArea {
           id: avatarJson
           visible: panel.avatarJsonExpanded
           width: parent.width; height: 120

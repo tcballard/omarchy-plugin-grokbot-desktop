@@ -1,0 +1,12 @@
+#!/usr/bin/python3
+import json
+import runpy
+import sys
+from pathlib import Path
+
+helper = runpy.run_path(str(Path(__file__).resolve().with_name('grokbot-attach')))
+try:
+    data = helper['bounded_capture'](['/usr/bin/wl-paste', '--no-newline', '--type', 'text'], 65536, 3)
+    print(json.dumps(data.decode('utf-8', errors='replace')))
+except (OSError, helper['subprocess'].SubprocessError):
+    sys.exit(1)

@@ -20,6 +20,7 @@ from __future__ import annotations
 import os
 import re
 import secrets
+import selectors
 import stat
 import subprocess
 import sys
@@ -116,18 +117,45 @@ def child_env():
     return env
 
 
+def bounded_capture(argv, limit, timeout):
+    deadline = time.monotonic() + timeout
+    proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                            stderr=subprocess.DEVNULL, env=child_env())
+    data = bytearray()
+    try:
+        with selectors.DefaultSelector() as selector:
+            selector.register(proc.stdout, selectors.EVENT_READ)
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or not selector.select(remaining):
+                    raise subprocess.TimeoutExpired(argv, timeout)
+                chunk = os.read(proc.stdout.fileno(), min(65536, limit + 1 - len(data)))
+                if not chunk:
+                    break
+                data.extend(chunk)
+                if len(data) > limit:
+                    raise OSError("clipboard exceeds transfer limit")
+        code = proc.wait(timeout=max(0.001, deadline - time.monotonic()))
+        return bytes(data) if code == 0 else b""
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+        proc.wait()
+        proc.stdout.close()
+
+
 def paste(directory):
     wl_paste = tool("wl-paste")
     if not wl_paste:
         print("pasting images needs wl-clipboard", file=sys.stderr)
         return 127
-    listed = subprocess.run([wl_paste, "--list-types"], capture_output=True, env=child_env(), timeout=5)
-    types = listed.stdout.decode("utf-8", errors="replace").split()
+    listed = bounded_capture([wl_paste, "--list-types"], 16384, 5)
+    types = listed.decode("utf-8", errors="replace").split()
     for wanted in ("image/png", "image/jpeg", "image/webp", "image/gif"):
         if wanted in types:
-            got = subprocess.run([wl_paste, "--no-newline", "--type", wanted], capture_output=True, env=child_env(), timeout=10)
-            if got.returncode == 0 and got.stdout:
-                return save(directory, got.stdout[: LIMIT + 1])
+            got = bounded_capture([wl_paste, "--no-newline", "--type", wanted], LIMIT, 10)
+            if got:
+                return save(directory, got)
     return EXIT_NO_IMAGE
 
 

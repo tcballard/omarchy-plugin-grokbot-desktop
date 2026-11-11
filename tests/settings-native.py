@@ -13,6 +13,8 @@ messages = []
 qInstallMessageHandler(lambda kind, context, message: messages.append(message))
 app = QGuiApplication([])
 view = QQuickView()
+# Settings rendering uses inert process types; clipboard execution is tested separately.
+view.engine().addImportPath(str(ROOT / "tests/fixtures/qml"))
 view.setResizeMode(QQuickView.SizeViewToRootObject)
 view.setSource(QUrl.fromLocalFile(str(ROOT/'tests/settings-native.qml')))
 assert not view.errors(), view.errors()

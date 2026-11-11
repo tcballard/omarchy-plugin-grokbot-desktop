@@ -308,15 +308,8 @@ def read_state(path: Path) -> str:
 
 def watch_loop(bots, memory) -> int:
     seen = {str(path): mtime for path, mtime in transcript_files()}
-    state_path = Path(os.environ.get("XDG_RUNTIME_DIR", "") or "/nonexistent") / "voxtype" / "state"
-    previous = ""
-    finished_at = None
     while True:
         now = time.time()
-        current = read_state(state_path)
-        if wake.recording_finished(previous, current):
-            finished_at = now
-        previous = current
         for path, mtime in transcript_files():
             key = str(path)
             if seen.get(key) == mtime:
@@ -333,20 +326,6 @@ def watch_loop(bots, memory) -> int:
             }, bots, memory)
             if result["deliver"]:
                 wake.deliver(text, backend)
-                finished_at = now
-        age = None if finished_at is None else now - finished_at
-        if age is not None and 0 <= age <= wake.CLIP_WINDOW:
-            clip = read_clipboard()
-            if clip:
-                result = decide({
-                    "text": clip,
-                    "source": "clipboard",
-                    "backend": active_backend(),
-                    "recordingAge": age,
-                    "now": now,
-                }, bots, memory)
-                if result["deliver"]:
-                    wake.deliver(clip, result["backend"])
         time.sleep(POLL)
 
 
