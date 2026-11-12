@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.tcballard.grokbot-desktop",
   "name": "Agent Desktop",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "author": "Tom Ballard",
   "license": "MIT",
   "description": "Personal agents on your Omarchy desktop: GrokBot, experimental Hermes support and optional Open Bot Avatar characters.",

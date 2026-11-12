@@ -1,0 +1,25 @@
+{
+  "status": "pending-live",
+  "version": "0.3.3",
+  "input_commit": "63f715a62fec7b8e852fcaaaa0ffeebecb49845c",
+  "date": "2026-11-12",
+  "platform": "GitHub Actions ubuntu-24.04 with Node 22 and Python 3.",
+  "portable": {
+    "status": "passed",
+    "ci_url": "https://github.com/tcballard/omarchy-plugin-grokbot-desktop/actions/runs/43170592724",
+    "ci_head_commit": "63f715a62fec7b8e852fcaaaa0ffeebecb49845c"
+  },
+  "live": {
+    "status": "pending",
+    "reason": "The local execution sandbox denied access to the active Hyprland command socket.",
+    "pending": [
+      "On Omarchy, verify plugin startup, screensaver hide and restore, and plugin unload and reload with a Hyprland request in flight."
+    ]
+  },
+  "commands": [
+    "./tests/run"
+  ],
+  "results": [
+    "The portable suite passed on the versioned candidate, including six Unix-socket regression tests for normal replies, shared deadlines, process teardown and reply-size limits."
+  ]
+}

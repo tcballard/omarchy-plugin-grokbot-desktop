@@ -944,18 +944,19 @@ Item {
   // which drops rules added at runtime. The rule matches only this namespace
   // and is gone at the next reload once the plugin is removed.
   readonly property string layerNamespace: "grokbot-desktop"
+  // Each operation is a direct, childless Process, including the two-request
+  // poll. Destroying the Process on unload closes any in-flight IPC socket.
+  readonly property var hyprlandCommand: ["/usr/bin/python3", "-I",
+    root.localPath(Qt.resolvedUrl("bin/agent-desktop-hyprland"))]
   property bool layerRuleTried: false
 
   Process {
     id: layerRuleProc
-    command: ["/usr/bin/hyprctl", "eval",
-      "pcall(function() grokbot_desktop_layer_rule:set_enabled(false) end); "
-      + "grokbot_desktop_layer_rule = hl.layer_rule({ match = { namespace = \"^" + root.layerNamespace + "$\" }, no_anim = true, animation = \"none\" })"]
+    command: root.hyprlandCommand.concat(["layer-rule"])
     onExited: root.layerRuleTried = true
   }
 
-  // A Hyprland without the Lua API, or no hyprctl, must not keep the
-  // companion hidden.
+  // Keep the companion visible even if the layer-rule helper cannot start.
   Timer {
     interval: 1500
     running: !root.layerRuleTried
@@ -1019,22 +1020,23 @@ Item {
 
   Process {
     id: screensaverCheck
-    command: ["/usr/bin/sh", "-c", "/usr/bin/hyprctl -j clients; echo; /usr/bin/hyprctl -j layers"]
+    command: root.hyprlandCommand.concat(["screensaver"])
     stdout: StdioCollector { id: screensaverCheckOut }
     onExited: function (code) {
       if (code !== 0) return
       var text = String(screensaverCheckOut.text)
+      var snapshot = JSON.parse(text)
       if (text.indexOf(root.screensaverName) < 0) {
         root.screensaverWindows = []
         root.screensaverLayers = 0
       }
-      root.applyGrokAppClients(text)
+      root.applyGrokAppClients(JSON.stringify(snapshot.clients))
     }
   }
 
   Process {
     id: grokAppCheck
-    command: ["/usr/bin/hyprctl", "-j", "clients"]
+    command: root.hyprlandCommand.concat(["clients"])
     stdout: StdioCollector { id: grokAppCheckOut }
     onExited: function (code) {
       if (code !== 0) return
@@ -1044,8 +1046,6 @@ Item {
 
   function applyGrokAppClients(text) {
     var blob = String(text || "")
-    var clientsEnd = blob.indexOf("\n\n")
-    if (clientsEnd >= 0) blob = blob.slice(0, clientsEnd)
     var found = []
     try {
       var clients = JSON.parse(blob)

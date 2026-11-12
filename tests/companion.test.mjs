@@ -1491,8 +1491,8 @@ test('Hyprland does not animate the window growing to the output and back', () =
   // The same rule Omarchy gives its own shell surfaces, scoped to this namespace.
   assert.match(main, /WlrLayershell\.namespace: root\.layerNamespace/)
   assert.match(main, /readonly property string layerNamespace: "grokbot-desktop"/)
-  assert.match(main, /"\/usr\/bin\/hyprctl", "eval"/)
-  assert.match(main, /hl\.layer_rule\(\{ match = \{ namespace = \\"\^" \+ root\.layerNamespace \+ "\$\\" \}, no_anim = true, animation = \\"none\\" \}\)/)
+  assert.match(main, /id: layerRuleProc\n\s*command: root\.hyprlandCommand\.concat\(\["layer-rule"\]\)/)
+  assert.match(read('bin/agent-desktop-hyprland'), /"\^grokbot-desktop\$" \}, no_anim = true, animation = "none"/)
   // Added before the window first maps, never left hiding it, and again after a reload.
   assert.match(main, /visible: root\.present && root\.targetScreen !== null && root\.layerRuleTried/)
   assert.match(main, /running: !root\.layerRuleTried\s*\n\s*onTriggered: root\.layerRuleTried = true/)
@@ -1982,7 +1982,7 @@ test('the companion steps aside while Omarchy\'s screensaver runs', () => {
   assert.match(main, /visible: root\.present && root\.targetScreen !== null && root\.layerRuleTried && !root\.screensaverUp/)
   // A missed close event is caught by a periodic check while hidden.
   assert.match(main, /running: root\.screensaverUp \|\| root\.grokAppOpen\n\s*onTriggered: if \(!screensaverCheck\.running\) screensaverCheck\.running = true/)
-  assert.match(main, /"\/usr\/bin\/hyprctl -j clients; echo; \/usr\/bin\/hyprctl -j layers"/)
+  assert.match(main, /id: screensaverCheck\n\s*command: root\.hyprlandCommand\.concat\(\["screensaver"\]\)/)
 })
 
 test('reply cues toast the active bot and peek for other bots', () => {
