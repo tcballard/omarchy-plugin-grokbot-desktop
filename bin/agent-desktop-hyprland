@@ -1,0 +1,74 @@
+#!/usr/bin/python3
+"""Run Agent Desktop's finite Hyprland requests in one childless process."""
+
+import json
+import os
+import socket
+import sys
+import time
+
+
+MAX_REPLY = 1024 * 1024
+LAYER_RULE = (
+    b"/eval pcall(function() grokbot_desktop_layer_rule:set_enabled(false) end); "
+    b"grokbot_desktop_layer_rule = hl.layer_rule({ match = { namespace ="
+    b' "^grokbot-desktop$" }, no_anim = true, animation = "none" })'
+)
+DEADLINES = {"layer-rule": 1.5, "clients": 3.0, "screensaver": 3.0}
+
+
+def remaining(deadline):
+    timeout = deadline - time.monotonic()
+    if timeout <= 0:
+        raise TimeoutError("Hyprland request deadline expired")
+    return timeout
+
+
+def request(path, command, deadline):
+    reply = bytearray()
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+        connection.settimeout(remaining(deadline))
+        connection.connect(path)
+        connection.settimeout(remaining(deadline))
+        connection.sendall(command)
+        while True:
+            connection.settimeout(remaining(deadline))
+            chunk = connection.recv(min(8192, MAX_REPLY + 1 - len(reply)))
+            if not chunk:
+                return reply
+            reply.extend(chunk)
+            if len(reply) > MAX_REPLY:
+                raise ValueError("Hyprland reply exceeded its size limit")
+
+
+def main():
+    if len(sys.argv) != 2 or sys.argv[1] not in DEADLINES:
+        return 2
+    operation = sys.argv[1]
+    deadline = time.monotonic() + DEADLINES[operation]
+    runtime_dir = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+    signature = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")
+    if not signature:
+        return 1
+    path = os.path.join(runtime_dir, "hypr", signature, ".socket.sock")
+    try:
+        if operation == "layer-rule":
+            reply = request(path, LAYER_RULE, deadline)
+            return int(not reply or reply.startswith(b"error:"))
+        clients = json.loads(request(path, b"j/clients", deadline))
+        if not isinstance(clients, list):
+            return 1
+        if operation == "clients":
+            print(json.dumps(clients, allow_nan=False))
+            return 0
+        layers = json.loads(request(path, b"j/layers", deadline))
+        if not isinstance(layers, dict):
+            return 1
+        print(json.dumps({"clients": clients, "layers": layers}, allow_nan=False))
+        return 0
+    except (OSError, ValueError, RecursionError):
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

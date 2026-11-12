@@ -38,14 +38,14 @@ test('window addresses match whether or not they carry 0x', () => {
   for (const bad of ['', '0x', 'zz', null, undefined, '0x12,3']) assert.equal(Pointer.windowAddress(bad), '');
 });
 
-test('a window listed by hyprctl closes at once from a socket event', () => {
+test('a window listed by the Hyprland client snapshot closes at once from a socket event', () => {
   const root = harness(['hyprWindowEvent', 'applyGrokAppClients'], {
     screensaverName: 'org.omarchy.screensaver', grokAppClass: 'grok-bot',
     screensaverWindows: [], screensaverLayers: 0, grokAppWindows: []
   });
   root.applyGrokAppClients(JSON.stringify([
     {address: '0x5a1', class: 'grok-bot'}, {address: '0x5a2', class: 'kitty'}, {address: '0x5A1', class: 'grok-bot'}
-  ]) + '\n\n[]');
+  ]));
   assert.deepEqual([...root.grokAppWindows], ['5a1']);
   root.hyprWindowEvent('openwindow', '5a1,1,grok-bot,Grok');
   assert.deepEqual([...root.grokAppWindows], ['5a1']);
