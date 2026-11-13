@@ -440,6 +440,17 @@ Item {
   }
   readonly property bool askingHere: root.asking && root.askBotId === root.threadBotId
   readonly property bool waitingHere: root.awaitingId !== ""
+  // The poll files the finished turn in the history a moment before the live
+  // slot is cleared. Until then the two hold the same reply; show it once.
+  readonly property bool liveTurnFiled: {
+    if (root.asking || root.awaitingId !== "" || root.bubbleBody === "") return false
+    var shown = { asked: root.askedText, body: root.bubbleBody }
+    var i
+    for (i = 0; i < root.history.length; i++) {
+      if (Thread.sameExchange(root.history[i], shown)) return true
+    }
+    return false
+  }
   // Bob works while his ask runs and while its answer is on the way.
   readonly property bool busyHere: root.askingHere || root.waitingHere
   property string pendingJson: ""

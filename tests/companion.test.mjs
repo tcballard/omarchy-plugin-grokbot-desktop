@@ -1737,11 +1737,17 @@ test('each bot keeps a scrolling history of its conversation', () => {
   assert.match(qmlFunction(main, 'launchAsk'), /root\.archiveExchange\(\)\n\s*root\.askedText = String\(prompt \|\| ""\)/)
   assert.match(qmlFunction(main, 'sayNotice'), /root\.archiveExchange\(\)/)
   assert.match(qmlFunction(main, 'loadThread'), /root\.history = thread\.history \|\| \[\]/)
+  // While the poll files the finished turn the live slot holds it too; the
+  // list copy shows and the live slot stays hidden until it is cleared.
+  assert.match(main, /readonly property bool liveTurnFiled: \{/)
+  assert.match(main, /if \(root\.asking \|\| root\.awaitingId !== "" \|\| root\.bubbleBody === ""\) return false/)
+  assert.match(main, /if \(Thread\.sameExchange\(root\.history\[i\], shown\)\) return true/)
   // One scrolling view: the history, then the latest exchange.
   const panel = read('BubblePanel.qml')
   assert.match(panel, /component Exchange: Column \{/)
   assert.match(panel, /model: app \? app\.history : \[\]\n\s*delegate: Exchange \{/)
   assert.match(panel, /Exchange \{\s*id: latest/)
+  assert.match(panel, /id: latest\n\s*(\/\/[^\n]*\n\s*)*visible: !\(app && app\.liveTurnFiled\)/)
   assert.match(panel, /var end = Math\.max\(0, contentHeight - Math\.min\(threadBox\.cap, contentHeight\)\)\n\s*var target = Math\.min\(end, Math\.max\(0, latest\.y\)\)/)
   assert.match(panel, /if \(!wasAtEnd\) return/)
   assert.match(panel, /readonly property real cap: Math\.max\(140, bubble\.maxHeight - 28 - headerGroup\.height - dividerReveal\.height/)

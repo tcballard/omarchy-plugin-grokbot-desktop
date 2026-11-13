@@ -837,6 +837,9 @@ Rectangle {
 
             Exchange {
               id: latest
+              // The history already carries this turn while the poll catches
+              // up with the live slot; the list copy is the one that stays.
+              visible: !(app && app.liveTurnFiled)
               fadeReply: true
               asked: app ? app.askedText : ""
               files: app ? app.askedFiles : []
