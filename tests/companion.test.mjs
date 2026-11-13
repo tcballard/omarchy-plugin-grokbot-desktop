@@ -1176,7 +1176,8 @@ test('dodge fades with distance and restores at once over the mark', () => {
   assert.match(dodge, /pointerGap\(\) \/ 36/)
   assert.match(dodge, /pointerInside\(\)/)
   assert.match(dodge, /root\.dodgeOpacity = 1/)
-  assert.match(main, /opacity: root\.dodgeOpacity/)
+  assert.match(main, /opacity: root\.markFade/)
+  assert.match(main, /readonly property real markFade: dodgeOpacity \* idleOpacity/)
   // Clicks stay live: ghost no longer zeroes the input mask.
   assert.match(main, /root\.menuOpen \? win\.width : \(!root\.present \? 0 : stage\.width\)/)
   assert.doesNotMatch(main, /root\.ghost \|\| !root\.present/)
@@ -1436,7 +1437,8 @@ test('the window covers the output and never resizes, so the mark never moves', 
   // Stage, cursor, and drag all use output coordinates directly.
   assert.match(main, /x: root\.stageScreenX\n\s*y: root\.stageScreenY/)
   assert.match(qmlFunction(main, 'updateGazeTarget'), /root\.cursorX - \(screen\.x \+ local\.x\)/)
-  assert.match(qmlFunction(main, 'stageRect'), /x: screen\.x \+ point\.x/)
+  assert.match(qmlFunction(main, 'itemScreenRect'), /x: screen\.x \+ point\.x/)
+  assert.match(qmlFunction(main, 'stageRect'), /itemScreenRect\(root\.hostStage\)/)
 })
 
 test('a drag past the edge lands on the next monitor and stays there', () => {
@@ -1611,6 +1613,12 @@ test('the appearance page says what Dodge does', () => {
   assert.match(page, /"Dodge is on: as the pointer comes near, " \+ app\.botLabel\(\) \+ " fades but still accepts clicks/)
   assert.match(page, /"Dodge is off: " \+ app\.botLabel\(\) \+ " stays solid and takes clicks/)
   assert.match(page, /label: "Dodge: fade nearby and restore immediately on hover"/)
+  assert.match(page, /label: "Yield: fade the open card when another window is active"/)
+  assert.match(page, /"Rest is on: " \+ app\.botLabel\(\) \+ " fades after "/)
+  assert.match(main, /function setYield\(value\)/)
+  assert.match(main, /function setIdleMinutes\(value\)/)
+  assert.match(main, /function updatePresence\(\)/)
+  assert.match(qmlFunction(main, 'noteClosedNews'), /noteInteraction\(\)/)
 })
 
 test('the desktop mark turns its face as Grok Bot moves Bob', async () => {
