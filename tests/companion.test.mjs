@@ -2104,6 +2104,10 @@ test('a provider bot opens on its recent history, and earlier pages load twenty 
   // Once per bot, only into a conversation that is still empty here, never for Grok.
   const maybe = qmlFunction(main, 'maybeLoadHistory')
   assert.match(maybe, /if \(root\.history\.length > 0 \|\| root\.askedText !== "" \|\| root\.bubbleBody !== "" \|\| root\.asking\) return/)
+  // A later read from the host gateway folds new Hermes-app rows onto that thread.
+  assert.match(qmlFunction(main, 'refreshHistory'), /root\.historyRefresh = true/)
+  assert.match(qmlFunction(main, 'applyRefresh'), /Thread\.mergeExchanges/)
+  assert.match(main, /historyRefreshTimer/)
   assert.match(qmlFunction(main, 'runHistory'), /bot\.provider === "grokbot"/)
   assert.match(qmlFunction(main, 'loadOlder'), /if \(root\.history\.length >= root\.olderCap\) return "limit"/)
   assert.match(main, /readonly property int olderCap: 100/)

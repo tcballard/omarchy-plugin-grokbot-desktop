@@ -14,6 +14,7 @@ import "qml/screens.js" as Screens
 import "qml/openbotavatar.js" as Avatar
 import "qml/pointer.js" as Pointer
 import "qml/backend.js" as Wire
+import "qml/thread.js" as Thread
 
 // Grok Bot desktop companion. A service inside omarchy-shell: a transparent
 // layer-shell window, click-through except for the mark (and the bubble or
@@ -1134,6 +1135,9 @@ Item {
   property var historyTried: ({})
   property string historyBot: ""
   property bool historyOlder: false
+  // A re-read of the latest page from the host gateway, merged into the thread
+  // already on screen. Distinct from the first fill and from "load earlier".
+  property bool historyRefresh: false
   readonly property bool olderHere: !root.daemonMode && !!(root.olderInfo[root.threadBotId] && root.olderInfo[root.threadBotId].more)
     && root.history.length < root.olderCap
   readonly property bool olderLoading: !!(root.olderInfo[root.threadBotId] && root.olderInfo[root.threadBotId].loading)
@@ -1152,7 +1156,8 @@ Item {
     for (i = 0; i < (items || []).length; i++) {
       var body = root.cleanText(items[i].body, 4000)
       if (body === "") continue
-      list.push({ asked: root.cleanText(items[i].asked, 4000), files: [], body: body, links: [], wait: "" })
+      list.push({ asked: root.cleanText(items[i].asked, 4000), files: [], body: body, links: [], wait: "",
+                  key: String(items[i].key || "") })
     }
     return list
   }
@@ -1180,13 +1185,26 @@ Item {
     var bot = root.findBot(botId)
     if (!bot || !bot.provider || bot.provider === "grokbot") return
     if (root.history.length > 0 || root.askedText !== "" || root.bubbleBody !== "" || root.asking) return
+    root.historyRefresh = false
     if (!root.runHistory(botId, "")) return
     var tried = Object.assign({}, root.historyTried)
     tried[botId] = true
     root.historyTried = tried
   }
 
-  onAskingChanged: if (!root.asking) Qt.callLater(root.maybeLoadHistory)
+  // The Hermes app writes the same Bot Chat through the one host gateway.
+  // Re-read the latest page while this bubble is open and append what it has
+  // that this thread does not. An ask in flight is left alone.
+  function refreshHistory() {
+    if (root.daemonMode || !root.bubbleOpen || root.asking || historyProc.running) return
+    var botId = root.threadBotId
+    var bot = root.findBot(botId)
+    if (!bot || !bot.provider || bot.provider === "grokbot") return
+    root.historyRefresh = true
+    if (!root.runHistory(botId, "")) root.historyRefresh = false
+  }
+
+  onAskingChanged: if (!root.asking) Qt.callLater(function () { root.maybeLoadHistory(); root.refreshHistory() })
   onDaemonModeChanged: if (!root.daemonMode) Qt.callLater(root.maybeLoadHistory)
 
   function finishHistory(code, output) {
@@ -1195,6 +1213,7 @@ Item {
       var tried = Object.assign({}, root.historyTried)
       delete tried[botId]
       root.historyTried = tried
+      root.historyRefresh = false
       root.setOlder(botId, { loading: false })
       return
     }
@@ -1206,13 +1225,24 @@ Item {
       var tried = Object.assign({}, root.historyTried)
       delete tried[botId]
       root.historyTried = tried
+      root.historyRefresh = false
       root.setOlder(botId, { loading: false })
     } else {
       var next = typeof data.nextCursor === "string" ? data.nextCursor : ""
       if (root.historyOlder) root.applyOlder(botId, data.items, next)
+      else if (root.historyRefresh) root.applyRefresh(botId, data.items)
       else root.applyHistory(botId, data.items, next)
+      root.historyRefresh = false
     }
     if (botId !== root.threadBotId) Qt.callLater(root.maybeLoadHistory)
+  }
+
+  Timer {
+    id: historyRefreshTimer
+    interval: 4000
+    repeat: true
+    running: root.bubbleOpen && !root.daemonMode && !root.asking
+    onTriggered: root.refreshHistory()
   }
 
   Process {
@@ -1246,11 +1276,34 @@ Item {
     root.threads = threads
   }
 
+  // Latest page from the host gateway, folded onto the thread. Does not move
+  // the "load earlier" cursor: paging back and a refresh must not fight.
+  function applyRefresh(botId, items) {
+    var incoming = root.historyEntries(items)
+    var live = botId === root.threadBotId ? { asked: root.askedText, body: root.bubbleBody, key: "" } : null
+    function folded(existing) {
+      return Thread.mergeExchanges(existing, incoming, live, root.historyLimit)
+    }
+    if (botId === root.threadBotId) {
+      var next = folded(root.history)
+      if (!Thread.sameThread(root.history, next)) root.history = next
+      return
+    }
+    var threads = Object.assign({}, root.threads)
+    var thread = Object.assign({}, threads[botId] || {})
+    var merged = folded(thread.history || [])
+    if (Thread.sameThread(thread.history || [], merged)) return
+    thread.history = merged
+    threads[botId] = thread
+    root.threads = threads
+  }
+
   function loadOlder() {
     var bot = root.threadBotId
     var info = root.olderInfo[bot]
     if (!info || !info.more || info.loading || !info.key) return "nothing"
     if (root.history.length >= root.olderCap) return "limit"
+    root.historyRefresh = false
     if (!root.runHistory(bot, info.key)) return "busy"
     root.setOlder(bot, { loading: true })
     return "ok"
@@ -1504,7 +1557,7 @@ Item {
     root.bubbleOpen = true
     root.replyUnread = false
     root.clearReplyCue()
-    Qt.callLater(root.maybeLoadHistory)
+    Qt.callLater(function () { root.maybeLoadHistory(); root.refreshHistory() })
     root.menuOpen = false
     root.wake()
     Qt.callLater(function () { if (root.hostBubble) root.hostBubble.focusPrompt() })

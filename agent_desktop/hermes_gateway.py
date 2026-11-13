@@ -337,6 +337,10 @@ class BotLink:
         session_id = await asyncio.to_thread(bot_chat_id, self.home)
         if not session_id:
             raise RuntimeError("no Bot Chat yet: open this bot once in Hermes Desktop or the CLI")
+        # Hermes 0.23 keeps one gateway per host for every profile. ensure resolves
+        # this profile's home to that owner (its served_profiles list) and does not
+        # start a second gateway while the host one is up. History re-reads and asks
+        # both come through this same attach.
         result = await asyncio.to_thread(ensure_gateway_runtime, self.home, idle_exit=True)
         if not attachable(result):
             raise RuntimeError(f"gateway {result.state}: {result.reason_code or 'not ready'}")

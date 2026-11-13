@@ -9,6 +9,28 @@ import "qml/markdown.js" as Markdown
 Rectangle {
   id: bubble
   property var app: null
+
+  // Omarchy's Super+C injects Ctrl+C while Super is still held, so the chord
+  // that arrives is Ctrl+C, Super+C, or both. TextEdit's own shortcut is only
+  // Ctrl+C, which is why Super+C did nothing on this layer.
+  function isCopyChord(event) {
+    if (!event || event.key !== Qt.Key_C) return false
+    if (event.modifiers & (Qt.AltModifier | Qt.ShiftModifier)) return false
+    return (event.modifiers & Qt.ControlModifier) || (event.modifiers & Qt.MetaModifier)
+  }
+  readonly property string codeFamily: "monospace"
+  function copyText(value) {
+    clipHold.text = String(value || "")
+    clipHold.selectAll()
+    clipHold.copy()
+  }
+  TextEdit {
+    id: clipHold
+    visible: false
+    readOnly: true
+    font.family: app ? app.fontFamily : ""
+    textFormat: TextEdit.PlainText
+  }
   property real maxHeight: 640
   readonly property bool appearancePage: app ? app.settingsOpen : false
   // 0 shows the chat page and 1 the appearance page. Between them the page
@@ -1288,11 +1310,17 @@ Rectangle {
                   promptFlick.contentY = r.y + r.height + bottomPadding - promptFlick.height
               }
               Keys.onPressed: function (event) {
-                if (event.matches(StandardKey.Paste)) {
+                if (bubble.isCopyChord(event)) {
+                  event.accepted = true
+                  if (promptField.selectedText !== "") promptField.copy()
+                  return
+                }
+                if (event.matches(StandardKey.Paste) || (event.key === Qt.Key_V && (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier)) && !(event.modifiers & (Qt.AltModifier | Qt.ShiftModifier)))) {
                   event.accepted = true
                   if (app.attach("paste", "quiet") !== "ok") promptField.safePaste()
                 }
               }
+              Keys.priority: Keys.BeforeItem
               Keys.onReturnPressed: function (event) { promptField.returnKey(event) }
               Keys.onEnterPressed: function (event) { promptField.returnKey(event) }
               Keys.onEscapePressed: app.stepBack()
@@ -1439,7 +1467,7 @@ Rectangle {
         color: Theme.selected
         border.width: 1
         border.color: Theme.edge
-        Text {
+        TextEdit {
           id: userText
           x: 14
           y: 10
@@ -1447,9 +1475,19 @@ Rectangle {
           text: exchange.asked
           color: Theme.text
           font.pixelSize: 13
-          wrapMode: Text.WordWrap
+          wrapMode: TextEdit.WordWrap
           font.family: app.fontFamily
-          textFormat: Text.PlainText
+          readOnly: true
+          selectByMouse: true
+          selectionColor: Theme.edgeStrong
+          selectedTextColor: Theme.text
+          textFormat: TextEdit.PlainText
+          Keys.priority: Keys.BeforeItem
+          Keys.onPressed: function (event) {
+            if (!bubble.isCopyChord(event)) return
+            event.accepted = true
+            if (selectedText !== "") copy()
+          }
         }
       }
     }
@@ -1482,24 +1520,16 @@ Rectangle {
       }
     }
 
-    // The bot's reply, as Markdown. qml/markdown.js escapes the reply before it adds any
-    // formatting, so the reply itself can carry no markup; links open through openLink.
-    TextEdit {
+    // The bot's reply. Prose is Markdown from qml/markdown.js (escaped first, so
+    // the reply can carry no markup). A fenced block is a canvas with a Copy
+    // button, matching the Hermes app. Links open through openLink.
+    Column {
+      id: replyCol
       width: parent.width
       visible: exchange.body !== ""
-      text: exchange.body === "" ? "" : Markdown.toHtml(exchange.body, bubble.markdownStyle)
-      readOnly: true
-      selectByMouse: true
-      color: Theme.text
-      selectionColor: Theme.edgeStrong
-      selectedTextColor: Theme.text
-      font.pixelSize: 13
-      wrapMode: TextEdit.Wrap
-      font.family: app.fontFamily
-      textFormat: TextEdit.RichText
-      onLinkActivated: function (link) { app.openLink(link) }
-      HoverHandler { cursorShape: parent.hoveredLink !== "" ? Qt.PointingHandCursor : Qt.IBeamCursor }
-      onTextChanged: if (exchange.fadeReply && text !== "") replyFade.restart()
+      spacing: 8
+      opacity: 1
+      onVisibleChanged: if (exchange.fadeReply && visible) replyFade.restart()
       NumberAnimation on opacity {
         id: replyFade
         running: false
@@ -1507,6 +1537,101 @@ Rectangle {
         to: 1
         duration: bubble.ms(220)
         easing.type: Easing.OutCubic
+      }
+      Repeater {
+        model: exchange.body === "" ? [] : Markdown.blocks(exchange.body, bubble.markdownStyle)
+        delegate: Item {
+          required property var modelData
+          width: replyCol.width
+          height: modelData.kind === "code" ? codeCard.height : prose.implicitHeight
+
+          TextEdit {
+            id: prose
+            width: parent.width
+            visible: modelData.kind !== "code"
+            text: modelData.kind === "prose" ? modelData.html : ""
+            readOnly: true
+            selectByMouse: true
+            color: Theme.text
+            selectionColor: Theme.edgeStrong
+            selectedTextColor: Theme.text
+            font.pixelSize: 13
+            wrapMode: TextEdit.Wrap
+            font.family: app.fontFamily
+            textFormat: TextEdit.RichText
+            onLinkActivated: function (link) { app.openLink(link) }
+            HoverHandler { cursorShape: parent.hoveredLink !== "" ? Qt.PointingHandCursor : Qt.IBeamCursor }
+            Keys.priority: Keys.BeforeItem
+            Keys.onPressed: function (event) {
+              if (!bubble.isCopyChord(event)) return
+              event.accepted = true
+              if (selectedText !== "") copy()
+            }
+          }
+
+          Rectangle {
+            id: codeCard
+            width: parent.width
+            visible: modelData.kind === "code"
+            height: codeCol.implicitHeight + 16
+            radius: 10
+            color: Theme.field
+            border.width: 1
+            border.color: Theme.edge
+            Column {
+              id: codeCol
+              x: 10
+              y: 8
+              width: parent.width - 20
+              spacing: 6
+              Row {
+                width: parent.width
+                layoutDirection: Qt.RightToLeft
+                Rectangle {
+                  width: copyLabel.implicitWidth + 16
+                  height: 22
+                  radius: 11
+                  color: Theme.selected
+                  border.width: 1
+                  border.color: Theme.edge
+                  Text {
+                    id: copyLabel
+                    anchors.centerIn: parent
+                    text: "Copy"
+                    color: Theme.text
+                    font.pixelSize: 11
+                    font.family: app ? app.fontFamily : ""
+                    textFormat: Text.PlainText
+                  }
+                  HoverArea {
+                    label: "Copy"
+                    onActivated: bubble.copyText(modelData.text)
+                  }
+                }
+              }
+              TextEdit {
+                id: codeText
+                width: parent.width
+                text: modelData.text || ""
+                readOnly: true
+                selectByMouse: true
+                color: Theme.text
+                selectionColor: Theme.edgeStrong
+                selectedTextColor: Theme.text
+                font.pixelSize: 12
+                font.family: bubble.codeFamily
+                wrapMode: TextEdit.Wrap
+                textFormat: TextEdit.PlainText
+                Keys.priority: Keys.BeforeItem
+                Keys.onPressed: function (event) {
+                  if (!bubble.isCopyChord(event)) return
+                  event.accepted = true
+                  if (selectedText !== "") copy()
+                }
+              }
+            }
+          }
+        }
       }
     }
 
