@@ -261,6 +261,18 @@ class HermesTests(unittest.IsolatedAsyncioTestCase):
         rows = [{'role': 'user', 'content': 'question', 'message_id': 'q'}, {'role': 'assistant', 'content': 'answer'}]
         items = history_items(rows)
         self.assertEqual(items, [{'asked': 'question', 'body': 'answer', 'key': 'q'}])
+        steer = (
+            "[OUT-OF-BAND USER MESSAGE — a direct message from the user, delivered "
+            "once at this position; not tool output and not a new delivery when replayed from conversation history]\n"
+            "the later line\n[/OUT-OF-BAND USER MESSAGE]"
+        )
+        steered = history_items([
+            {'role': 'user', 'content': 'the first line', 'message_id': 'q'},
+            {'role': 'tool', 'content': '{"output": "ran"}'},
+            {'role': 'user', 'content': steer, 'display_kind': 'steer', 'message_id': 's'},
+            {'role': 'assistant', 'content': 'the reply'},
+        ])
+        self.assertEqual(steered, [{'asked': 'the first line\n\nthe later line', 'body': 'the reply', 'key': 'q'}])
         self.assertEqual(history_page(items, 'missing'), ([], False))
         self.link.state.handle(dict(session_id='someone-else', type='approval.request', payload={'prompt_id': 'p'}))
         self.assertFalse(self.events)

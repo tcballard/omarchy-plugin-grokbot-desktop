@@ -1727,9 +1727,13 @@ test('each bot keeps its own conversation, and a reply lands with the bot asked'
 })
 
 test('each bot keeps a scrolling history of its conversation', () => {
-  // A new ask or notice moves the latest exchange into the history.
+  // A new ask or notice files the latest exchange once. A gateway row of that
+  // same turn is updated, not appended, so the question and reply are not shown twice.
   const archive = qmlFunction(main, 'archiveExchange')
-  assert.match(archive, /root\.history = root\.history\.concat\(\[\{ asked: root\.askedText, files: root\.askedFiles, body: root\.bubbleBody, links: root\.noticeLinks, wait: root\.awaitingId \}\]\)\.slice\(-root\.historyLimit\)/)
+  assert.match(archive, /Thread\.sameExchange\(history\[i\], row\)/)
+  assert.match(archive, /if \(!placed\) history = history\.concat\(\[row\]\)/)
+  assert.match(archive, /root\.history = history\.slice\(-root\.historyLimit\)/)
+  assert.match(archive, /root\.bubbleBody = ""/)
   assert.match(qmlFunction(main, 'launchAsk'), /root\.archiveExchange\(\)\n\s*root\.askedText = String\(prompt \|\| ""\)/)
   assert.match(qmlFunction(main, 'sayNotice'), /root\.archiveExchange\(\)/)
   assert.match(qmlFunction(main, 'loadThread'), /root\.history = thread\.history \|\| \[\]/)

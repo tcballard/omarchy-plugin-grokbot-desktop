@@ -34,6 +34,57 @@ test('the exchange still on screen is not copied in again', () => {
   assert.equal(merged.length, 0)
 })
 
+test('a steer marker row is the same turn as the question the card already shows', () => {
+  const marker = [
+    '[OUT-OF-BAND USER MESSAGE — a direct message from the user, delivered once at this position; not tool output and not a new delivery when replayed from conversation history]',
+    'the later line',
+    '[/OUT-OF-BAND USER MESSAGE]'
+  ].join('\n')
+  const incoming = [{ key: 's', asked: marker, body: 'the reply' }]
+  const live = { asked: 'the first line\n\nthe later line', body: 'the reply', key: '' }
+  assert.equal(context.mergeExchanges([], incoming, live, 200).length, 0)
+  const doubled = context.mergeExchanges(
+    [{ key: 's', asked: marker, body: 'the reply' }, live],
+    incoming,
+    null,
+    200
+  )
+  assert.equal(doubled.length, 1)
+  assert.equal(doubled[0].asked, 'the first line\n\nthe later line')
+  assert.equal(doubled[0].body, 'the reply')
+})
+
+test('a steered question still on screen is the same turn as the shorter gateway row', () => {
+  const incoming = [{ key: 'c', asked: 'the later line', body: 'the reply' }]
+  const live = { asked: 'the first line\n\nthe later line', body: 'the reply', key: '' }
+  const merged = context.mergeExchanges([], incoming, live, 200)
+  assert.equal(merged.length, 0)
+})
+
+test('a turn filed twice collapses to the copy with the longer question and its files', () => {
+  const existing = [
+    { key: 'c', asked: 'the later line', body: 'the reply', files: [] },
+    { asked: 'the first line\n\nthe later line', body: 'the reply', files: ['/tmp/shot.png'], links: [{ label: 'Open' }] }
+  ]
+  const merged = context.mergeExchanges(existing, existing, null, 200)
+  assert.equal(merged.length, 1)
+  assert.equal(merged[0].key, 'c')
+  assert.equal(merged[0].asked, 'the first line\n\nthe later line')
+  assert.deepEqual(merged[0].files, ['/tmp/shot.png'])
+  assert.equal(merged[0].links.length, 1)
+})
+
+test('two replies stay apart when the text differs', () => {
+  const existing = [
+    { key: 'a', asked: 'look', body: 'first answer' },
+    { key: 'b', asked: 'look again', body: 'second answer' }
+  ]
+  const merged = context.mergeExchanges(existing, [], null, 200)
+  assert.equal(merged.length, 2)
+  assert.equal(merged[0].body, 'first answer')
+  assert.equal(merged[1].body, 'second answer')
+})
+
 test('only a later row or a changed last reply counts as news', () => {
   const shown = [{ key: 'a', asked: 'one', body: 'first' }]
   assert.equal(context.hasNews([], [{ key: 'a', asked: 'one', body: 'first' }]), false)

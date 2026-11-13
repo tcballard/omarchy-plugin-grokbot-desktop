@@ -1329,9 +1329,36 @@ Item {
     if (botId === root.threadBotId) {
       var before = root.history
       var next = folded(before)
-      if (!Thread.sameThread(before, next)) {
+      // The finished turn is in the history now. Leave it there once, instead
+      // of also leaving it in the live slot under the list. Keep files and the
+      // longer question that only the live slot still has.
+      var retireLive = false
+      if (!root.asking && root.awaitingId === "" && root.bubbleBody !== "") {
+        var shown = { asked: root.askedText, body: root.bubbleBody }
+        var i
+        for (i = 0; i < next.length; i++) {
+          if (!Thread.sameExchange(next[i], shown)) continue
+          var kept = next[i]
+          var liveAsked = Thread.askedShown(root.askedText)
+          var keptAsked = Thread.askedShown(kept.asked)
+          var asked = liveAsked.length > keptAsked.length ? liveAsked : keptAsked
+          var files = (kept.files || []).length ? kept.files : root.askedFiles
+          var links = (kept.links || []).length ? kept.links : root.noticeLinks
+          next = next.slice()
+          next[i] = Object.assign({}, kept, { asked: asked, files: files, links: links })
+          retireLive = true
+          break
+        }
+      }
+      if (retireLive || !Thread.sameThread(before, next)) {
         root.history = next
         root.rememberTail(next)
+      }
+      if (retireLive) {
+        root.askedText = ""
+        root.askedFiles = []
+        root.bubbleBody = ""
+        root.noticeLinks = []
       }
       return
     }
@@ -1764,7 +1791,26 @@ Item {
   function archiveExchange() {
     root.clearedThread = null
     if (root.askedText === "" && root.bubbleBody === "" && root.noticeLinks.length === 0) return
-    root.history = root.history.concat([{ asked: root.askedText, files: root.askedFiles, body: root.bubbleBody, links: root.noticeLinks, wait: root.awaitingId }]).slice(-root.historyLimit)
+    var row = { asked: root.askedText, files: root.askedFiles, body: root.bubbleBody, links: root.noticeLinks, wait: root.awaitingId }
+    // The gateway poll may already have filed this turn. Appending again is
+    // what showed the question and the reply twice after the next send.
+    var history = root.history.slice()
+    var placed = false
+    var i
+    for (i = 0; i < history.length; i++) {
+      if (!Thread.sameExchange(history[i], row)) continue
+      var kept = history[i]
+      var rowAsked = Thread.askedShown(row.asked)
+      var keptAsked = Thread.askedShown(kept.asked)
+      var asked = rowAsked.length > keptAsked.length ? rowAsked : keptAsked
+      var files = (kept.files || []).length ? kept.files : row.files
+      var links = (kept.links || []).length ? kept.links : row.links
+      history[i] = Object.assign({}, kept, { asked: asked, files: files, links: links })
+      placed = true
+      break
+    }
+    if (!placed) history = history.concat([row])
+    root.history = history.slice(-root.historyLimit)
     root.askedText = ""
     root.askedFiles = []
     root.bubbleBody = ""
