@@ -1254,7 +1254,7 @@ Item {
       else root.applyHistory(botId, data.items, next)
       root.historyRefresh = false
     }
-    if (botId !== root.threadBotId) Qt.callLater(root.maybeLoadHistory)
+    if (botId !== root.threadBotId) Qt.callLater(function () { root.maybeLoadHistory(); root.refreshHistory() })
   }
 
   Timer {
@@ -1413,6 +1413,9 @@ Item {
     root.chosenBotId = id
     if (changed) {
       root.loadThread(id)
+      // The stash is what this card last showed. The Hermes app may have
+      // written newer Bot Chat rows since then, so re-read the gateway.
+      Qt.callLater(root.refreshHistory)
       if (root.expression === "work" || root.expression === "idle") root.expression = root.busyHere ? "work" : "idle"
     }
     root.recentBots = [id].concat(root.recentBots.filter(function (other) { return other !== id })).slice(0, 6)
@@ -2020,7 +2023,17 @@ Item {
     var prompt = root.plainPrompt(value, 4000)
     // Attachments can go on their own, as in a chat app.
     if (prompt === "" && root.pendingFiles.length > 0) prompt = "Have a look at this."
-    if (prompt === "" || root.asking) return
+    if (prompt === "") return
+    // Hermes sends a typed line during a live turn ("send now"): stop this
+    // bot's run and send the new line as soon as that process is gone.
+    if (root.asking && root.askBotId === root.threadBotId) {
+      root.queuedPrompt = { value: prompt, botId: root.threadBotId, since: Date.now(), sendNow: true }
+      root.promptDraft = ""
+      root.cancelAsk()
+      queuedPromptTimer.restart()
+      return
+    }
+    if (root.asking) return
     // The last ask is still exiting after Stop. Keep the draft and send it
     // once the process is gone, instead of dropping it as busy.
     if (askProc.running) {
@@ -2051,12 +2064,17 @@ Item {
   function retryQueuedPrompt() {
     var queued = root.queuedPrompt
     if (!queued) return "none"
-    if (askProc.running) {
+    if (askProc.running || (queued.sendNow && root.asking)) {
       if (Date.now() - queued.since < 5000) return "waiting"
       root.queuedPrompt = null
       return "gave up"
     }
     root.queuedPrompt = null
+    if (queued.sendNow) {
+      if (queued.botId !== root.threadBotId) return "dropped"
+      root.launchAsk(queued.value)
+      return "sent"
+    }
     if (root.asking || queued.botId !== root.threadBotId || queued.value !== root.promptDraft) return "dropped"
     root.submitPrompt(queued.value)
     return "sent"

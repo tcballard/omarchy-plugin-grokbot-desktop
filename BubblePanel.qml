@@ -314,6 +314,44 @@ Rectangle {
         }
 
         Rectangle {
+          id: refreshButton
+          width: 32
+          height: 32
+          radius: 16
+          anchors.right: minimizeButton.left
+          anchors.rightMargin: 8
+          anchors.verticalCenter: parent.verticalCenter
+          color: Theme.raised
+          border.width: 1
+          border.color: Theme.edge
+          Canvas {
+            anchors.fill: parent
+            anchors.margins: 8
+            onPaint: {
+              var ctx = getContext("2d")
+              ctx.reset()
+              ctx.strokeStyle = Theme.textMuted
+              ctx.fillStyle = Theme.textMuted
+              ctx.lineWidth = 1.5
+              ctx.lineCap = "round"
+              ctx.lineJoin = "round"
+              ctx.beginPath()
+              ctx.arc(width / 2, height / 2, width / 2 - 1.2, Math.PI * 0.75, Math.PI * 2.15)
+              ctx.stroke()
+              ctx.beginPath()
+              ctx.moveTo(width - 2.2, height * 0.42)
+              ctx.lineTo(width - 0.4, height * 0.18)
+              ctx.lineTo(width * 0.62, height * 0.22)
+              ctx.fill()
+            }
+          }
+          HoverArea {
+            label: "Refresh"
+            onActivated: app.refreshHistory()
+          }
+        }
+
+        Rectangle {
           id: minimizeButton
           width: 32
           height: 32
@@ -351,7 +389,7 @@ Rectangle {
           color: Theme.raised
           border.width: 1
           border.color: Theme.edge
-          width: Math.min(parent.width - 80, headerRow.implicitWidth + 22)
+          width: Math.min(parent.width - 128, headerRow.implicitWidth + 22)
 
           Row {
             id: headerRow
@@ -1164,7 +1202,9 @@ Rectangle {
           // While a bot waits on a question, typed text answers it instead of stopping the ask.
           readonly property bool answering: app ? app.clarifyHere && promptField.text.trim() !== "" : false
           readonly property bool asking: app ? app.askingHere && !answering : false
-          readonly property string mode: asking ? "stop" : (promptField.text.trim() !== "" || (app && app.pendingFiles.length > 0) ? "send" : "voice")
+          readonly property bool hasDraft: promptField.text.trim() !== "" || (app && app.pendingFiles.length > 0)
+          // A typed line during a live turn is Hermes "send now", not Stop.
+          readonly property string mode: (asking && !hasDraft) ? "stop" : (hasDraft ? "send" : "voice")
           width: 42
           height: 42
           radius: 21
@@ -1249,11 +1289,11 @@ Rectangle {
           onInkChanged: waveCanvas.requestPaint()
 
           HoverArea {
-            label: voiceButton.mode === "stop" ? "Stop" : (voiceButton.mode === "send" ? "Send" : "Dictate")
+            label: voiceButton.mode === "stop" ? "Stop" : (voiceButton.mode === "send" && app && app.askingHere ? "Send now" : (voiceButton.mode === "send" ? "Send" : "Dictate"))
             tint: voiceButton.mode !== "send"
             onActivated: {
               if (!app) return
-              if (app.askingHere && !voiceButton.answering) {
+              if (voiceButton.mode === "stop") {
                 app.stopAsk()
                 return
               }

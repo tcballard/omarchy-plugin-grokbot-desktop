@@ -143,6 +143,27 @@ test('a prompt sent while the stopped ask is still exiting is kept and sent afte
   assert.equal(root.retryQueuedPrompt(), 'none');
 });
 
+test('a line typed while this bot is working is sent once that turn stops', () => {
+  const launched = [];
+  let cancelled = 0;
+  const askProc = {running: true};
+  const timer = {restarts: 0, restart() { this.restarts++; }};
+  const root = harness(['submitPrompt', 'retryQueuedPrompt', 'answerFromComposer'], {
+    asking: true, askBotId: 'grok', pendingFiles: [], promptDraft: 'next',
+    threadBotId: 'grok', queuedPrompt: null, bots: [], defaultBotId: 'grok',
+    plainPrompt: (v, n) => String(v || '').trim().slice(0, n),
+    selectBot() {}, openBubble() {},
+    cancelAsk() { cancelled++; root.asking = false; askProc.running = false; },
+    launchAsk(p) { launched.push(p); return 'ok'; }
+  }, {askProc, queuedPromptTimer: timer});
+  root.submitPrompt('next');
+  assert.equal(cancelled, 1);
+  assert.equal(root.promptDraft, '');
+  assert.equal(root.queuedPrompt.sendNow, true);
+  assert.equal(root.retryQueuedPrompt(), 'sent');
+  assert.deepEqual(launched, ['next']);
+});
+
 test('a queued prompt is dropped if the draft or bot changed, and gives up eventually', () => {
   let h = submitHarness();
   h.askProc.running = true;
