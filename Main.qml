@@ -317,7 +317,11 @@ Item {
   property bool otherWindowFocused: false
   property real yieldOpacity: 1
   property real idleOpacity: 1
-  readonly property real markFade: dodgeOpacity * idleOpacity * (bubbleOpen ? yieldOpacity : 1)
+  // A lit dot is a notice the user has not read yet, so the mark stays at full
+  // visibility for as long as the dot is up, through the Dodge fade and the
+  // Rest fade alike. With no dot the mark follows the fades it is configured
+  // with, Rest included.
+  readonly property real markFade: replyUnread ? 1 : dodgeOpacity * idleOpacity * (bubbleOpen ? yieldOpacity : 1)
   property real lastInteractAt: 0
   property bool idleOn: true
   property string motionName: "calm"
@@ -2456,7 +2460,10 @@ Item {
       root.appendReply(bot, text, links)
     }
     root.flashExpression("alert", 1200)
-    if (!root.bubbleOpen) root.replyUnread = true
+    if (!root.bubbleOpen) {
+      root.replyUnread = true
+      root.noteInteraction()
+    }
   }
 
   function dropPromptLinks(promptId, note) {
@@ -2948,7 +2955,13 @@ Item {
       else if (step === "flashHappy") root.flashExpression("happy", 1600)
       else if (step === "syllables") syllableAnim.restart()
       else if (step === "replyLanded") root.replyLanded()
-      else if (step === "unread") { if (!root.bubbleOpen) root.replyUnread = true; root.hop() }
+      else if (step === "unread") {
+        if (!root.bubbleOpen) {
+          root.replyUnread = true
+          root.noteInteraction()
+        }
+        root.hop()
+      }
       else if (step === "activeCue") { if (text !== "" && root.canShowReplyCue(botId)) root.showActiveCue(text) }
       else if (step === "peekCue") { if (text !== "" && root.canShowReplyCue(botId)) root.showPeekCue(botId, text) }
       else if (step === "summon") root.summon()
@@ -3034,7 +3047,10 @@ Item {
     root.noticeLinks = []
     root.bubbleBody = root.daemonTellLater
     root.daemonTellLater = ""
-    if (!root.bubbleOpen) root.replyUnread = true
+    if (!root.bubbleOpen) {
+      root.replyUnread = true
+      root.noteInteraction()
+    }
     root.hop()
   }
 

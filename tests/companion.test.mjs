@@ -1038,6 +1038,14 @@ test('closing the bubble keeps an ask running and a busy prompt is kept', () => 
   assert.match(qmlFunction(main, 'stopAsk'), /cancelAsk\(\)/)
   assert.match(qmlFunction(main, 'replyLanded'), /replyUnread = true/)
   assert.match(qmlFunction(main, 'openBubble'), /replyUnread = false/)
+  // A lit dot is an unread notice, so every path that lights it also stamps
+  // the interaction clock. That is what brings a Rest- or Dodge-faded mark
+  // back to full visibility the moment the dot appears.
+  for (const path of ['markUnread', 'noteClosedNews', 'replyLanded', 'showPrompt', 'daemonEffect', 'daemonTell']) {
+    const body = qmlFunction(main, path)
+    assert.match(body, /root\.replyUnread = true/, path)
+    assert.match(body, /root\.noteInteraction\(\)/, path)
+  }
   const submit = qmlFunction(main, 'submitPrompt')
   assert.ok(submit.indexOf('root.asking') < submit.indexOf('promptDraft = ""'))
   const dictate = qmlFunction(main, 'dictateText')
@@ -1177,7 +1185,10 @@ test('dodge fades with distance and restores at once over the mark', () => {
   assert.match(dodge, /pointerInside\(\)/)
   assert.match(dodge, /root\.dodgeOpacity = 1/)
   assert.match(main, /opacity: root\.markFade/)
-  assert.match(main, /readonly property real markFade: dodgeOpacity \* idleOpacity/)
+  // A lit dot pins the mark at full visibility for as long as it is up, past
+  // the Rest window included. Only a mark with no dot follows the fades it is
+  // configured with, so the Rest product stays in the same expression.
+  assert.match(main, /readonly property real markFade: replyUnread \? 1 : dodgeOpacity \* idleOpacity/)
   // Clicks stay live: ghost no longer zeroes the input mask.
   assert.match(main, /root\.menuOpen \? win\.width : \(!root\.present \? 0 : stage\.width\)/)
   assert.doesNotMatch(main, /root\.ghost \|\| !root\.present/)
@@ -1853,8 +1864,11 @@ test('a webhook answer waits under its question and lands there, whichever bot i
   assert.match(answer, /root\.indexWaiting\(root\.history, askId\)/)
   assert.match(answer, /if \(thread\.wait === askId\) \{/)
   assert.match(answer, /root\.markUnread\(botId\)/)
-  // With the bubble closed, the mark shows the dot too, not just a hop.
-  assert.match(qmlFunction(main, 'markUnread'), /if \(!root\.bubbleOpen\) root\.replyUnread = true/)
+  // With the bubble closed, the mark shows the dot too, not just a hop, and
+  // the closed-card news brings a faded Rest mark back to full.
+  const unreadBranch = qmlFunction(main, 'markUnread').match(/if \(!root\.bubbleOpen\) \{([\s\S]*?)\}/)[1]
+  assert.match(unreadBranch, /root\.replyUnread = true/)
+  assert.match(unreadBranch, /root\.noteInteraction\(\)/)
   assert.match(qmlFunction(main, 'deliver'), /root\.markUnread\(id\)/)
   // reply takes an ask id or a bot; say from a waiting bot counts too.
   assert.match(ipc, /function reply\(target: string, text: string\): string \{ return host\.receiveReply\(target, text\) \}/)
