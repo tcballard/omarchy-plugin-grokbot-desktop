@@ -35,6 +35,16 @@ function mergeExchanges(existing, incoming, live, limit) {
   return out.slice(Math.max(0, out.length - cap))
 }
 
+// True when the latest row is new or its text changed. The first fill of an
+// empty thread is not news: that is history the reader has not missed.
+function hasNews(before, after) {
+  if (!after || after.length === 0 || !before || before.length === 0) return false
+  if (after.length > before.length) return true
+  var last = after[after.length - 1]
+  var prev = before[before.length - 1]
+  return String(last.asked || "") !== String(prev.asked || "") || String(last.body || "") !== String(prev.body || "")
+}
+
 function sameThread(a, b) {
   if (!a || !b || a.length !== b.length) return false
   var i

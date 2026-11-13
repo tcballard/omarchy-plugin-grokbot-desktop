@@ -290,6 +290,9 @@ Item {
   // backend reports its state here, so every exit path clears it.
   property bool dictating: false
   property bool replyUnread: false
+  // Last Bot Chat row the reader has already been shown. A later row while
+  // the card is closed lights the dot on the mark.
+  property string seenTail: ""
   // Floating reply cues: a toast for the active bot, or a peeking avatar for
   // another bot. Shown only while the companion bubble is closed and the
   // Grok Bot desktop app is not open.
@@ -1196,12 +1199,29 @@ Item {
   // Re-read the latest page while this bubble is open and append what it has
   // that this thread does not. An ask in flight is left alone.
   function refreshHistory() {
-    if (root.daemonMode || !root.bubbleOpen || root.asking || historyProc.running) return
+    // Poll while the mark is on screen, including while the card is closed,
+    // so a reply that lands in the Hermes app can light the dot.
+    if (root.daemonMode || !root.present || historyProc.running) return
     var botId = root.threadBotId
     var bot = root.findBot(botId)
     if (!bot || !bot.provider || bot.provider === "grokbot") return
     root.historyRefresh = true
     if (!root.runHistory(botId, "")) root.historyRefresh = false
+  }
+
+  // Super+C/V land here only while a text field in the card has focus.
+  // The card does not keep the keyboard while it is merely open.
+  function copyFocusedText() {
+    var panel = root.hostWin
+    var item = panel && panel.activeFocusItem
+    if (!item || String(item.selectedText || "") === "" || !item.copy) return "nothing"
+    item.copy()
+    return "ok"
+  }
+  function pasteFocusedText() {
+    if (!root.hostBubble) return "nothing"
+    root.hostBubble.pasteIntoPrompt()
+    return "ok"
   }
 
   onAskingChanged: if (!root.asking) Qt.callLater(function () { root.maybeLoadHistory(); root.refreshHistory() })
@@ -1239,9 +1259,10 @@ Item {
 
   Timer {
     id: historyRefreshTimer
-    interval: 4000
+    interval: 2000
     repeat: true
-    running: root.bubbleOpen && !root.daemonMode && !root.asking
+    triggeredOnStart: true
+    running: root.present && !root.daemonMode
     onTriggered: root.refreshHistory()
   }
 
@@ -1285,8 +1306,12 @@ Item {
       return Thread.mergeExchanges(existing, incoming, live, root.historyLimit)
     }
     if (botId === root.threadBotId) {
-      var next = folded(root.history)
-      if (!Thread.sameThread(root.history, next)) root.history = next
+      var before = root.history
+      var next = folded(before)
+      if (!Thread.sameThread(before, next)) {
+        root.history = next
+        root.rememberTail(next)
+      }
       return
     }
     var threads = Object.assign({}, root.threads)
@@ -1556,6 +1581,7 @@ Item {
     root.cardPage = "chat"
     root.bubbleOpen = true
     root.replyUnread = false
+    root.unreadBots = root.unreadBots.filter(function (other) { return other !== root.threadBotId })
     root.clearReplyCue()
     Qt.callLater(function () { root.maybeLoadHistory(); root.refreshHistory() })
     root.menuOpen = false
@@ -1564,6 +1590,7 @@ Item {
   }
 
   function closeBubble() {
+    root.seenTail = root.tailOf(root.history)
     root.bubbleOpen = false
     root.dictating = false
     root.switcherOpen = false
@@ -1783,6 +1810,35 @@ Item {
   function markUnread(botId) {
     if (root.unreadBots.indexOf(botId) < 0) root.unreadBots = root.unreadBots.concat([botId])
     if (!root.bubbleOpen) root.replyUnread = true
+    root.hop()
+  }
+
+  function tailOf(list) {
+    if (!list || list.length === 0) return ""
+    var last = list[list.length - 1]
+    return String(last.asked || "") + "\n" + String(last.body || "")
+  }
+
+  // The card is closed. A tail we have not seen lights the dot once.
+  function rememberTail(list) {
+    var tail = root.tailOf(list)
+    if (root.bubbleOpen) {
+      root.seenTail = tail
+      return
+    }
+    if (root.seenTail === "") {
+      root.seenTail = tail
+      return
+    }
+    if (tail !== root.seenTail) root.noteClosedNews(root.threadBotId)
+  }
+
+  // A Bot Chat turn arrived while the card was closed. Light the dot once.
+  function noteClosedNews(botId) {
+    if (root.bubbleOpen) return
+    if (root.unreadBots.indexOf(botId) < 0) root.unreadBots = root.unreadBots.concat([botId])
+    if (root.replyUnread) return
+    root.replyUnread = true
     root.hop()
   }
 
@@ -3535,6 +3591,10 @@ Item {
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.namespace: root.layerNamespace
     WlrLayershell.layer: WlrLayer.Top
+    // OnDemand: the card takes the keyboard only while one of its text
+    // fields has focus. Exclusive kept the keyboard even after a hover or
+    // click on the window beside the card, so that window could not be used
+    // until the card was closed.
     WlrLayershell.keyboardFocus: root.surfacesOpen && activeHere ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
 
@@ -3968,8 +4028,8 @@ Item {
           width: Math.max(12, root.shownSize * 0.11)
           height: width
           radius: width / 2
-          x: mark.width * 0.7
-          y: mark.height * 0.14
+          x: mark.width * 0.68
+          y: -height * 0.35
           color: Theme.text
           border.width: 2
           border.color: Theme.surface

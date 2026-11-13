@@ -10,13 +10,20 @@ Rectangle {
   id: bubble
   property var app: null
 
-  // Omarchy's Super+C injects Ctrl+C while Super is still held, so the chord
-  // that arrives is Ctrl+C, Super+C, or both. TextEdit's own shortcut is only
-  // Ctrl+C, which is why Super+C did nothing on this layer.
-  function isCopyChord(event) {
-    if (!event || event.key !== Qt.Key_C) return false
-    if (event.modifiers & (Qt.AltModifier | Qt.ShiftModifier)) return false
+  // Super+C / Super+V. Hyprland consumes Super and injects Ctrl+C, or
+  // Ctrl+Shift+C while a terminal is the active window. The card accepts
+  // either, plus a bare Super chord, and rejects Alt. It does not take the
+  // keyboard unless a text field in the card has focus.
+  function chord(event, key) {
+    if (!event || event.key !== key) return false
+    if (event.modifiers & Qt.AltModifier) return false
     return (event.modifiers & Qt.ControlModifier) || (event.modifiers & Qt.MetaModifier)
+  }
+  function isCopyChord(event) { return bubble.chord(event, Qt.Key_C) }
+  function isPasteChord(event) { return bubble.chord(event, Qt.Key_V) }
+  function pasteIntoPrompt() {
+    promptField.forceActiveFocus()
+    if (app.attach("paste", "quiet") !== "ok") promptField.safePaste()
   }
   readonly property string codeFamily: "monospace"
   function copyText(value) {
@@ -652,6 +659,7 @@ Rectangle {
         Flickable {
           id: threadFlick
           anchors.fill: parent
+          contentWidth: width
           contentHeight: threadColumn.implicitHeight
           clip: true
           boundsBehavior: Flickable.StopAtBounds
@@ -817,14 +825,24 @@ Rectangle {
               threadFlick.olderFromBottom = app.prependingOlder ? threadFlick.contentHeight - threadFlick.contentY : -1
             }
           }
+          property real laidHeight: 0
           onContentHeightChanged: {
             if (app && app.prependingOlder && olderFromBottom >= 0) {
               scrollAnim.stop()
               contentY = Math.max(0, contentHeight - olderFromBottom)
+              laidHeight = contentHeight
               return
             }
+            // A 2s refresh rebuilds the column. Follow the newest line only
+            // when the reader was already at the end, so reading older rows
+            // is not yanked down on every poll.
+            var previous = laidHeight
+            var wasAtEnd = previous <= height + 4 || contentY + height >= previous - 24
+            laidHeight = contentHeight
+            if (!wasAtEnd) return
             var end = Math.max(0, contentHeight - Math.min(threadBox.cap, contentHeight))
             var target = Math.min(end, Math.max(0, latest.y))
+            if (app && app.bubbleBody === "" && app.askedText === "") target = end
             scrollAnim.stop()
             if (bubble.ms(1) === 0 || !threadBox.visible || Math.abs(target - contentY) < 1) {
               contentY = target
@@ -1315,9 +1333,9 @@ Rectangle {
                   if (promptField.selectedText !== "") promptField.copy()
                   return
                 }
-                if (event.matches(StandardKey.Paste) || (event.key === Qt.Key_V && (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier)) && !(event.modifiers & (Qt.AltModifier | Qt.ShiftModifier)))) {
+                if (bubble.isPasteChord(event)) {
                   event.accepted = true
-                  if (app.attach("paste", "quiet") !== "ok") promptField.safePaste()
+                  bubble.pasteIntoPrompt()
                 }
               }
               Keys.priority: Keys.BeforeItem
@@ -1432,6 +1450,26 @@ Rectangle {
     property string status: ""
     // The latest reply fades in where the typing dots were.
     property bool fadeReply: false
+    // Blocks are rebuilt here, not taken straight from the pragma-library
+    // script. A history row is itself a repeater delegate, and objects that
+    // come back from that shared script do not keep their fields once they
+    // are nested, so an older canvas never saw kind/text and grew no Copy
+    // chip. The latest reply is not nested, which is why only that one did.
+    function replyParts() {
+      var src = exchange.body === "" ? [] : Markdown.blocks(exchange.body, bubble.markdownStyle)
+      var out = []
+      var i
+      for (i = 0; i < src.length; i++) {
+        var part = src[i] || {}
+        out.push({
+          kind: part.kind === "code" ? "code" : "prose",
+          html: String(part.html || ""),
+          text: String(part.text || "")
+        })
+      }
+      return out
+    }
+    readonly property var parts: exchange.replyParts()
     width: parent ? parent.width : 0
     spacing: 10
 
@@ -1484,9 +1522,15 @@ Rectangle {
           textFormat: TextEdit.PlainText
           Keys.priority: Keys.BeforeItem
           Keys.onPressed: function (event) {
-            if (!bubble.isCopyChord(event)) return
-            event.accepted = true
-            if (selectedText !== "") copy()
+            if (bubble.isCopyChord(event)) {
+              event.accepted = true
+              if (selectedText !== "") copy()
+              return
+            }
+            if (bubble.isPasteChord(event)) {
+              event.accepted = true
+              bubble.pasteIntoPrompt()
+            }
           }
         }
       }
@@ -1539,17 +1583,21 @@ Rectangle {
         easing.type: Easing.OutCubic
       }
       Repeater {
-        model: exchange.body === "" ? [] : Markdown.blocks(exchange.body, bubble.markdownStyle)
+        id: blockRepeater
+        model: exchange.parts.length
         delegate: Item {
-          required property var modelData
+          required property int index
+          // Index into this exchange's own parts. Reading modelData here
+          // would see the history row (asked/body), not the block.
+          readonly property var block: exchange.parts[index]
           width: replyCol.width
-          height: modelData.kind === "code" ? codeCard.height : prose.implicitHeight
+          height: block.kind === "code" ? codeCard.height : prose.implicitHeight
 
           TextEdit {
             id: prose
             width: parent.width
-            visible: modelData.kind !== "code"
-            text: modelData.kind === "prose" ? modelData.html : ""
+            visible: block.kind !== "code"
+            text: block.kind === "prose" ? block.html : ""
             readOnly: true
             selectByMouse: true
             color: Theme.text
@@ -1563,56 +1611,72 @@ Rectangle {
             HoverHandler { cursorShape: parent.hoveredLink !== "" ? Qt.PointingHandCursor : Qt.IBeamCursor }
             Keys.priority: Keys.BeforeItem
             Keys.onPressed: function (event) {
-              if (!bubble.isCopyChord(event)) return
-              event.accepted = true
-              if (selectedText !== "") copy()
+              if (bubble.isCopyChord(event)) {
+                event.accepted = true
+                if (selectedText !== "") copy()
+                return
+              }
+              if (bubble.isPasteChord(event)) {
+                event.accepted = true
+                bubble.pasteIntoPrompt()
+              }
             }
           }
 
           Rectangle {
             id: codeCard
             width: parent.width
-            visible: modelData.kind === "code"
+            visible: block.kind === "code"
             height: codeCol.implicitHeight + 16
             radius: 10
             color: Theme.field
             border.width: 1
             border.color: Theme.edge
+            // The chip stays at the left of the card. Anchoring it to the right
+            // put it past the card edge: the layer is fullscreen and the thread
+            // does not scroll sideways, so the button was clipped off screen.
+            clip: true
             Column {
               id: codeCol
               x: 10
               y: 8
-              width: parent.width - 20
+              width: Math.max(0, parent.width - 20)
               spacing: 6
-              Row {
-                width: parent.width
-                layoutDirection: Qt.RightToLeft
-                Rectangle {
-                  width: copyLabel.implicitWidth + 16
-                  height: 22
-                  radius: 11
-                  color: Theme.selected
-                  border.width: 1
-                  border.color: Theme.edge
-                  Text {
-                    id: copyLabel
-                    anchors.centerIn: parent
-                    text: "Copy"
-                    color: Theme.text
-                    font.pixelSize: 11
-                    font.family: app ? app.fontFamily : ""
-                    textFormat: Text.PlainText
+              Rectangle {
+                id: copyChip
+                width: 28
+                height: 24
+                radius: 8
+                color: Theme.selected
+                border.width: 1
+                border.color: Theme.edge
+                Canvas {
+                  id: copyMark
+                  anchors.centerIn: parent
+                  width: 14
+                  height: 14
+                  onPaint: {
+                    var ctx = getContext("2d")
+                    ctx.reset()
+                    ctx.strokeStyle = Theme.text
+                    ctx.lineWidth = 1.3
+                    ctx.lineJoin = "miter"
+                    // Two stacked sheets: the copy symbol.
+                    ctx.strokeRect(4.2, 1.2, 8.2, 8.2)
+                    ctx.fillStyle = Theme.selected
+                    ctx.fillRect(1.2, 4.2, 8.2, 8.2)
+                    ctx.strokeRect(1.2, 4.2, 8.2, 8.2)
                   }
-                  HoverArea {
-                    label: "Copy"
-                    onActivated: bubble.copyText(modelData.text)
-                  }
+                }
+                HoverArea {
+                  label: "Copy"
+                  onActivated: bubble.copyText(block.text)
                 }
               }
               TextEdit {
                 id: codeText
                 width: parent.width
-                text: modelData.text || ""
+                text: block.text || ""
                 readOnly: true
                 selectByMouse: true
                 color: Theme.text
@@ -1624,9 +1688,15 @@ Rectangle {
                 textFormat: TextEdit.PlainText
                 Keys.priority: Keys.BeforeItem
                 Keys.onPressed: function (event) {
-                  if (!bubble.isCopyChord(event)) return
-                  event.accepted = true
-                  if (selectedText !== "") copy()
+                  if (bubble.isCopyChord(event)) {
+                    event.accepted = true
+                    if (selectedText !== "") copy()
+                    return
+                  }
+                  if (bubble.isPasteChord(event)) {
+                    event.accepted = true
+                    bubble.pasteIntoPrompt()
+                  }
                 }
               }
             }

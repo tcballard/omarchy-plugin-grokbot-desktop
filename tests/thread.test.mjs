@@ -34,6 +34,14 @@ test('the exchange still on screen is not copied in again', () => {
   assert.equal(merged.length, 0)
 })
 
+test('only a later row or a changed last reply counts as news', () => {
+  const shown = [{ key: 'a', asked: 'one', body: 'first' }]
+  assert.equal(context.hasNews([], [{ key: 'a', asked: 'one', body: 'first' }]), false)
+  assert.equal(context.hasNews(shown, shown), false)
+  assert.equal(context.hasNews(shown, shown.concat([{ key: 'b', asked: 'two', body: 'next' }])), true)
+  assert.equal(context.hasNews(shown, [{ key: 'a', asked: 'one', body: 'first, and more' }]), true)
+})
+
 test('an unchanged page does not look like a new thread', () => {
   const rows = [{ key: 'a', asked: 'one', body: 'first' }]
   assert.equal(context.sameThread(rows, context.mergeExchanges(rows, rows, null, 200)), true)

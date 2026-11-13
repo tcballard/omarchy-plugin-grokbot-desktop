@@ -1720,6 +1720,7 @@ test('each bot keeps a scrolling history of its conversation', () => {
   assert.match(panel, /model: app \? app\.history : \[\]\n\s*delegate: Exchange \{/)
   assert.match(panel, /Exchange \{\s*id: latest/)
   assert.match(panel, /var end = Math\.max\(0, contentHeight - Math\.min\(threadBox\.cap, contentHeight\)\)\n\s*var target = Math\.min\(end, Math\.max\(0, latest\.y\)\)/)
+  assert.match(panel, /if \(!wasAtEnd\) return/)
   assert.match(panel, /readonly property real cap: Math\.max\(140, bubble\.maxHeight - 28 - headerGroup\.height - dividerReveal\.height/)
 })
 

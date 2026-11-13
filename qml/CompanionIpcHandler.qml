@@ -52,6 +52,8 @@ Item {
       return host.sayNotice(title, text, [first, second])
     }
     function dismiss(): string { return host.dismissSurfaces() ? "dismissed" : "nothing" }
+    function copySelection(): string { return host.copyFocusedText() }
+    function pasteClipboard(): string { return host.pasteFocusedText() }
     function ping(): string { return "ok" }
   }
 }
