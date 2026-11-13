@@ -221,9 +221,28 @@ class Hermes:
                 self.deliver("message.finished", {"agentId": agent, "requestId": request,
                     "sessionId": link.state.session_id, "status": "cancelled", "text": ""})
             return {"requestId": request, "status": "confirmed", "scope": "session"}
-        if method not in {"message.send", "history.list", "prompt.answer", "session.compact"}:
+        if method not in {"message.send", "message.steer", "history.list", "prompt.answer", "session.compact"}:
             raise Fault("unsupported", "Unsupported Hermes operation.")
         agent = identifier(params.get("agentId"), "agentId")
+        # Hermes /steer: inject the line into the live turn. The original request stays running.
+        if method == "message.steer":
+            prompt = text(params.get("text"), MAX_PROMPT)
+            if agent not in self.active.values():
+                raise Fault("unavailable", "This Hermes profile has no active request to steer.")
+            link = self.links.get(agent)
+            if not link or not link.client or not link.state.session_id:
+                raise Fault("unavailable", "No live Hermes session to steer.")
+            kwargs = {"session_id": link.state.session_id, "text": prompt}
+            if link.state.generation:
+                kwargs["execution_generation"] = link.state.generation
+            try:
+                receipt = await asyncio.wait_for(link.client.rpc("session.steer", **kwargs), 10)
+            except Exception:
+                raise Fault("delivery_unknown", "Steer was not confirmed; the running turn was left alone.") from None
+            status = str((receipt or {}).get("status") or "")
+            if status not in ("queued", "rejected"):
+                raise Fault("delivery_unknown", "Hermes did not accept the steer; the running turn was left alone.")
+            return {"status": status, "text": prompt}
         if method == "message.send":
             request = identifier(params.get("requestId"), "requestId")
             prompt = text(params.get("text"), MAX_PROMPT)

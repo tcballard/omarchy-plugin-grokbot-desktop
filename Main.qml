@@ -2066,16 +2066,26 @@ Item {
     // Attachments can go on their own, as in a chat app.
     if (prompt === "" && root.pendingFiles.length > 0) prompt = "Have a look at this."
     if (prompt === "") return
-    // Hermes sends a typed line during a live turn ("send now"): stop this
-    // bot's run and send the new line as soon as that process is gone.
+    // Hermes /steer: a line typed while this bot is working goes into the live
+    // turn immediately. The first request keeps running.
     if (root.asking && root.askBotId === root.threadBotId) {
-      root.queuedPrompt = { value: prompt, botId: root.threadBotId, since: Date.now(), sendNow: true }
-      root.promptDraft = ""
-      root.cancelAsk()
+      if (askProc.running && root.askStreaming) {
+        askProc.write(JSON.stringify({ op: "steer", text: prompt }) + "\n")
+        root.promptDraft = ""
+        root.pendingSteer = prompt
+        return
+      }
+      root.queuedPrompt = { value: prompt, botId: root.threadBotId, since: Date.now(), holdOther: true }
       queuedPromptTimer.restart()
       return
     }
-    if (root.asking) return
+    // Another bot holds the one ask slot. Keep the line where the user can see
+    // it and run it the moment that process ends, on the card it was typed in.
+    if (root.asking) {
+      root.queuedPrompt = { value: prompt, botId: root.threadBotId, since: Date.now(), holdOther: true }
+      queuedPromptTimer.restart()
+      return
+    }
     // The last ask is still exiting after Stop. Keep the draft and send it
     // once the process is gone, instead of dropping it as busy.
     if (askProc.running) {
@@ -2100,20 +2110,30 @@ Item {
 
   property var queuedPrompt: null
 
-  // Sends a prompt queued behind an exiting ask, unless the user moved to
-  // another bot or changed the draft meanwhile. Gives up after 5 seconds and
-  // leaves the draft where it is.
+  // Sends a queued prompt. A line queued behind a stopping ask goes with the
+  // draft it was typed in and gives up after 5 seconds. A line held for another
+  // bot keeps itself, waits out that whole run, and moves the card to the bot
+  // it was addressed to when it fires.
   function retryQueuedPrompt() {
     var queued = root.queuedPrompt
     if (!queued) return "none"
-    if (askProc.running || (queued.sendNow && root.asking)) {
-      if (Date.now() - queued.since < 5000) return "waiting"
-      root.queuedPrompt = null
-      return "gave up"
+    if (askProc.running || ((queued.sendNow || queued.holdOther) && root.asking)) {
+      if (!queued.holdOther) {
+        if (Date.now() - queued.since < 5000) return "waiting"
+        root.queuedPrompt = null
+        return "gave up"
+      }
+      return "waiting"
     }
     root.queuedPrompt = null
     if (queued.sendNow) {
       if (queued.botId !== root.threadBotId) return "dropped"
+      root.launchAsk(queued.value)
+      return "sent"
+    }
+    if (queued.holdOther) {
+      if (queued.botId !== root.threadBotId) root.selectBot(queued.botId)
+      if (root.promptDraft === queued.value) root.promptDraft = ""
       root.launchAsk(queued.value)
       return "sent"
     }
@@ -2124,7 +2144,9 @@ Item {
 
   Timer {
     id: queuedPromptTimer
-    interval: 50
+    // A line held for another bot waits out that whole run, so it polls twice
+    // a second. The short cases keep their 50 ms retry.
+    interval: root.queuedPrompt && root.queuedPrompt.holdOther ? 500 : 50
     repeat: true
     running: false
     onTriggered: if (root.retryQueuedPrompt() !== "waiting") stop()
@@ -2527,6 +2549,8 @@ Item {
 
   // A streaming ask: the reply so far, what the agent is doing, and the final reply.
   property bool askStreaming: false
+  // The line just written into the live turn, until Hermes confirms the steer.
+  property string pendingSteer: ""
   property var askLines: []
   property string askFinal: ""
   property bool askFinalReceived: false
@@ -2549,6 +2573,16 @@ Item {
         } else if (ev.ev === "final") {
           root.askFinal = value
           root.askFinalReceived = true
+        } else if (ev.ev === "steered") {
+          var steered = value !== "" ? value : root.pendingSteer
+          root.pendingSteer = ""
+          if (ev.ok === true && steered !== "") {
+            root.askedText = root.askedText === "" ? steered : (root.askedText + "\n\n" + steered)
+          } else if (steered !== "") {
+            // The turn would not take it. Keep it and send it when this run ends.
+            root.queuedPrompt = { value: steered, botId: root.askBotId, since: Date.now(), holdOther: true }
+            queuedPromptTimer.restart()
+          }
         } else if (ev.ev === "prompt") {
           root.showPrompt(Object.assign({}, ev, { bot: root.askBotId }), true)
         } else if (ev.ev === "settled") {

@@ -180,6 +180,22 @@ class HermesTests(unittest.IsolatedAsyncioTestCase):
             await self.send()
         self.assertEqual(caught.exception.code, 'duplicate_id')
         self.assertEqual(self.client.rpc.await_count, 1)
+    async def test_steer_injects_into_the_live_turn(self):
+        await self.send()
+        self.client.rpc.return_value = {'status': 'queued', 'text': 'also this'}
+        result = await self.adapter.call('message.steer', dict(agentId='default', text='also this'))
+        self.assertEqual(result['status'], 'queued')
+        steers = [call for call in self.client.rpc.call_args_list if call.args and call.args[0] == 'session.steer']
+        self.assertEqual(len(steers), 1)
+        self.assertEqual(steers[0].kwargs['session_id'], 'session-1')
+        self.assertEqual(steers[0].kwargs['text'], 'also this')
+        self.assertEqual(steers[0].kwargs['execution_generation'], 3)
+        self.assertIn('turn', self.adapter.active)
+        with self.assertRaises(Fault) as caught:
+            await self.adapter.call('message.steer', dict(agentId='default', text='   '))
+        self.assertEqual(caught.exception.code, 'invalid_request')
+        self.assertIn('turn', self.adapter.active)
+
     async def test_session_cancel_and_no_duplicate_terminal(self):
         await self.send()
         reply = await self.adapter.call('request.cancel', {'requestId': 'turn'})

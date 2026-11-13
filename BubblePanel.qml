@@ -1289,7 +1289,7 @@ Rectangle {
           onInkChanged: waveCanvas.requestPaint()
 
           HoverArea {
-            label: voiceButton.mode === "stop" ? "Stop" : (voiceButton.mode === "send" && app && app.askingHere ? "Send now" : (voiceButton.mode === "send" ? "Send" : "Dictate"))
+            label: voiceButton.mode === "stop" ? "Stop" : (voiceButton.mode === "send" && app && app.askingHere ? "Steer" : (voiceButton.mode === "send" ? "Send" : "Dictate"))
             tint: voiceButton.mode !== "send"
             onActivated: {
               if (!app) return

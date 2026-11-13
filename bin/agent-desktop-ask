@@ -64,6 +64,7 @@ async def streamed(client, params, reader, on_event, out):
     loop = asyncio.get_running_loop()
     await client.send('send', 'message.send', params)
     accepted, result, session, asked, answers = False, None, None, 0, {}
+    steers = {}
     prompts = set()
     frame_task = asyncio.ensure_future(client.read())
     input_task = asyncio.ensure_future(reader.readline())
@@ -77,7 +78,12 @@ async def streamed(client, params, reader, on_event, out):
                     answer = json.loads(raw) if raw else None
                 except ValueError:
                     answer = None
-                if isinstance(answer, dict) and answer.get('op') == 'answer' and session:
+                if isinstance(answer, dict) and answer.get('op') == 'steer' and accepted and session:
+                    asked += 1
+                    op = 'steer-%d' % asked
+                    steers[op] = text(answer.get('text'), MAX_PROMPT)
+                    await client.send(op, 'message.steer', {'agentId': params['agentId'], 'text': steers[op]})
+                elif isinstance(answer, dict) and answer.get('op') == 'answer' and session:
                     asked += 1
                     op = 'answer-%d' % asked
                     prompt_id = text(answer.get('promptId'), 128)
@@ -93,6 +99,14 @@ async def streamed(client, params, reader, on_event, out):
                 continue
             frame = frame_task.result()
             frame_task = asyncio.ensure_future(client.read())
+            if frame.get('id') in steers:
+                steered = steers.pop(frame['id'])
+                if 'error' in frame:
+                    out({'ev': 'steered', 'ok': False, 'text': steered,
+                         'status': text(frame['error'].get('message', 'Steer was not taken.'), 400)})
+                else:
+                    status = str((frame.get('result') or {}).get('status') or '')
+                    out({'ev': 'steered', 'ok': status == 'queued', 'text': steered, 'status': status})
             if frame.get('id') == 'send':
                 if frame.get('result', {}).get('accepted') is not True:
                     error = frame.get('error', {})
