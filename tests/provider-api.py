@@ -2,6 +2,7 @@
 """Portable contract tests: no Hermes install, network, or desktop required."""
 import asyncio
 import json
+import importlib.machinery
 import importlib.util
 from pathlib import Path
 import sys
@@ -276,6 +277,93 @@ class HermesTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(history_page(items, 'missing'), ([], False))
         self.link.state.handle(dict(session_id='someone-else', type='approval.request', payload={'prompt_id': 'p'}))
         self.assertFalse(self.events)
+
+
+class EarlySteerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_a_steer_typed_before_accept_is_sent_once_the_ask_is_accepted(self):
+        loader = importlib.machinery.SourceFileLoader('agent_desktop_ask', str(ROOT / 'bin' / 'agent-desktop-ask'))
+        spec = importlib.util.spec_from_loader('agent_desktop_ask', loader)
+        ask = importlib.util.module_from_spec(spec)
+        loader.exec_module(ask)
+
+        class Client:
+            def __init__(self):
+                self.sent = []
+                self.frames = asyncio.Queue()
+            async def send(self, op, method, payload):
+                self.sent.append((op, method, payload))
+            async def read(self):
+                return await self.frames.get()
+
+        client = Client()
+        reader = asyncio.StreamReader()
+        params = {'agentId': 'mr-x', 'requestId': 'abcdef123456', 'text': 'first'}
+        task = asyncio.create_task(ask.streamed(client, params, reader, lambda frame: None, lambda event: None))
+        for _ in range(20):
+            await asyncio.sleep(0)
+            if any(call[1] == 'message.send' for call in client.sent):
+                break
+        self.assertTrue(any(call[1] == 'message.send' for call in client.sent))
+        reader.feed_data(b'{"op":"steer","text":"also this"}\n')
+        for _ in range(20):
+            await asyncio.sleep(0)
+        self.assertFalse(any(call[1] == 'message.steer' for call in client.sent))
+        await client.frames.put({'id': 'send', 'result': {'accepted': True, 'sessionId': 'session-1'}})
+        for _ in range(20):
+            await asyncio.sleep(0)
+            if any(call[1] == 'message.steer' for call in client.sent):
+                break
+        steers = [call for call in client.sent if call[1] == 'message.steer']
+        self.assertEqual(len(steers), 1)
+        self.assertEqual(steers[0][2]['text'], 'also this')
+        await client.frames.put({'id': 'steer-1', 'result': {'status': 'queued'}})
+        await client.frames.put({'event': 'message.finished', 'params': {
+            'agentId': 'mr-x', 'requestId': 'abcdef123456', 'status': 'completed', 'text': 'done'}})
+        event, payload = await asyncio.wait_for(task, 2)
+        self.assertEqual(event, 'message.finished')
+        self.assertEqual(payload['text'], 'done')
+
+    async def test_an_unsent_steer_is_reported_when_the_ask_ends_without_accept(self):
+        loader = importlib.machinery.SourceFileLoader('agent_desktop_ask_unsent', str(ROOT / 'bin' / 'agent-desktop-ask'))
+        spec = importlib.util.spec_from_loader('agent_desktop_ask_unsent', loader)
+        ask = importlib.util.module_from_spec(spec)
+        loader.exec_module(ask)
+
+        class Client:
+            def __init__(self):
+                self.sent = []
+                self.frames = asyncio.Queue()
+                self.reads = 0
+            async def send(self, op, method, payload):
+                self.sent.append((op, method, payload))
+            async def read(self):
+                self.reads += 1
+                if self.reads > 1:
+                    raise RuntimeError('ask ended')
+                return await self.frames.get()
+
+        client = Client()
+        reader = asyncio.StreamReader()
+        events = []
+        params = {'agentId': 'mr-x', 'requestId': 'abcdef123456', 'text': 'first'}
+        task = asyncio.create_task(ask.streamed(client, params, reader, lambda frame: None, events.append))
+        for _ in range(20):
+            await asyncio.sleep(0)
+            if any(call[1] == 'message.send' for call in client.sent):
+                break
+        self.assertTrue(any(call[1] == 'message.send' for call in client.sent))
+        reader.feed_data(b'{"op":"steer","text":"also this"}\n')
+        for _ in range(20):
+            await asyncio.sleep(0)
+        self.assertFalse(any(call[1] == 'message.steer' for call in client.sent))
+        await client.frames.put({'event': 'message.finished', 'params': {
+            'agentId': 'mr-x', 'requestId': 'abcdef123456', 'status': 'completed', 'text': 'done'}})
+        with self.assertRaises(RuntimeError):
+            await asyncio.wait_for(task, 2)
+        self.assertFalse(any(call[1] == 'message.steer' for call in client.sent))
+        steered = [event for event in events if event.get('ev') == 'steered']
+        self.assertEqual(steered, [{
+            'ev': 'steered', 'ok': False, 'text': 'also this', 'status': 'Steer was not sent.'}])
 
 
 if __name__ == '__main__':
