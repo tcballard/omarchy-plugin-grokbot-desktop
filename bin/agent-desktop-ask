@@ -64,7 +64,23 @@ async def streamed(client, params, reader, on_event, out):
     loop = asyncio.get_running_loop()
     await client.send('send', 'message.send', params)
     accepted, result, session, asked, answers = False, None, None, 0, {}
+    steers = {}
+    # A steer can arrive before message.send is accepted. Dropping it there
+    # cleared the card draft and never told the card, so the line vanished.
+    pending = []
     prompts = set()
+
+    async def send_steer(line):
+        nonlocal asked
+        asked += 1
+        op = 'steer-%d' % asked
+        steers[op] = line
+        await client.send(op, 'message.steer', {'agentId': params['agentId'], 'text': line})
+
+    async def flush_pending():
+        while pending and accepted and session:
+            await send_steer(pending.pop(0))
+
     frame_task = asyncio.ensure_future(client.read())
     input_task = asyncio.ensure_future(reader.readline())
     try:
@@ -77,7 +93,17 @@ async def streamed(client, params, reader, on_event, out):
                     answer = json.loads(raw) if raw else None
                 except ValueError:
                     answer = None
-                if isinstance(answer, dict) and answer.get('op') == 'answer' and session:
+                if isinstance(answer, dict) and answer.get('op') == 'steer':
+                    try:
+                        line = text(answer.get('text'), MAX_PROMPT)
+                    except Fault:
+                        line = ''
+                    if line:
+                        if accepted and session:
+                            await send_steer(line)
+                        else:
+                            pending.append(line)
+                elif isinstance(answer, dict) and answer.get('op') == 'answer' and session:
                     asked += 1
                     op = 'answer-%d' % asked
                     prompt_id = text(answer.get('promptId'), 128)
@@ -93,6 +119,14 @@ async def streamed(client, params, reader, on_event, out):
                 continue
             frame = frame_task.result()
             frame_task = asyncio.ensure_future(client.read())
+            if frame.get('id') in steers:
+                steered = steers.pop(frame['id'])
+                if 'error' in frame:
+                    out({'ev': 'steered', 'ok': False, 'text': steered,
+                         'status': text(frame['error'].get('message', 'Steer was not taken.'), 400)})
+                else:
+                    status = str((frame.get('result') or {}).get('status') or '')
+                    out({'ev': 'steered', 'ok': status == 'queued', 'text': steered, 'status': status})
             if frame.get('id') == 'send':
                 if frame.get('result', {}).get('accepted') is not True:
                     error = frame.get('error', {})
@@ -100,6 +134,7 @@ async def streamed(client, params, reader, on_event, out):
                                 str(error.get('message', 'Provider refused the request.'))[:400])
                 accepted = True
                 session = frame['result'].get('sessionId') or session
+                await flush_pending()
             elif frame.get('id') in answers:
                 prompt_id = answers.pop(frame['id'])
                 if 'error' in frame:
@@ -133,6 +168,9 @@ async def streamed(client, params, reader, on_event, out):
                 return result
         raise Fault('limit_exceeded', 'Provider event limit reached.')
     finally:
+        for line in pending:
+            out({'ev': 'steered', 'ok': False, 'text': line, 'status': 'Steer was not sent.'})
+        pending.clear()
         for task in (frame_task, input_task):
             task.cancel()
         await asyncio.gather(frame_task, input_task, return_exceptions=True)

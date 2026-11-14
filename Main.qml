@@ -14,6 +14,7 @@ import "qml/screens.js" as Screens
 import "qml/openbotavatar.js" as Avatar
 import "qml/pointer.js" as Pointer
 import "qml/backend.js" as Wire
+import "qml/thread.js" as Thread
 
 // Grok Bot desktop companion. A service inside omarchy-shell: a transparent
 // layer-shell window, click-through except for the mark (and the bubble or
@@ -289,6 +290,9 @@ Item {
   // backend reports its state here, so every exit path clears it.
   property bool dictating: false
   property bool replyUnread: false
+  // Last Bot Chat row the reader has already been shown. A later row while
+  // the card is closed lights the dot on the mark.
+  property string seenTail: ""
   // Floating reply cues: a toast for the active bot, or a peeking avatar for
   // another bot. Shown only while the companion bubble is closed and the
   // Grok Bot desktop app is not open.
@@ -306,6 +310,19 @@ Item {
   property bool claimed: false
   property bool pointerNear: false
   property bool dodgeOn: true
+  // Fade the open card when another window is focused, so that window can be read.
+  property bool yieldOn: true
+  // Minutes of no click or hover before the mark fades. 0 leaves it solid.
+  property int idleMinutes: 5
+  property bool otherWindowFocused: false
+  property real yieldOpacity: 1
+  property real idleOpacity: 1
+  // A lit dot is a notice the user has not read yet, so the mark stays at full
+  // visibility for as long as the dot is up, through the Dodge fade and the
+  // Rest fade alike. With no dot the mark follows the fades it is configured
+  // with, Rest included.
+  readonly property real markFade: replyUnread ? 1 : dodgeOpacity * idleOpacity * (bubbleOpen ? yieldOpacity : 1)
+  property real lastInteractAt: 0
   property bool idleOn: true
   property string motionName: "calm"
   property string anchorName: "br"
@@ -423,6 +440,17 @@ Item {
   }
   readonly property bool askingHere: root.asking && root.askBotId === root.threadBotId
   readonly property bool waitingHere: root.awaitingId !== ""
+  // The poll files the finished turn in the history a moment before the live
+  // slot is cleared. Until then the two hold the same reply; show it once.
+  readonly property bool liveTurnFiled: {
+    if (root.asking || root.awaitingId !== "" || root.bubbleBody === "") return false
+    var shown = { asked: root.askedText, body: root.bubbleBody }
+    var i
+    for (i = 0; i < root.history.length; i++) {
+      if (Thread.sameExchange(root.history[i], shown)) return true
+    }
+    return false
+  }
   // Bob works while his ask runs and while its answer is on the way.
   readonly property bool busyHere: root.askingHere || root.waitingHere
   property string pendingJson: ""
@@ -906,6 +934,9 @@ Item {
     root.customShape = String(root.setting("shape", "teardrop"))
     root.customColor = String(root.setting("color", "orange"))
     root.dodgeOn = root.setting("dodge", true) !== false
+    root.yieldOn = root.setting("yield", true) !== false
+    root.idleMinutes = root.settingInt("idleMinutes", 5, 0, 60)
+    root.lastInteractAt = Date.now()
     var motion = String(root.setting("motion", ""))
     if (motion !== "calm" && motion !== "playful" && motion !== "hyper")
       motion = root.setting("idleMotion", false) === true ? "playful" : "calm"
@@ -1005,6 +1036,9 @@ Item {
       root.screensaverLayers++
     } else if (name === "closelayer" && data === root.screensaverName) {
       root.screensaverLayers = Math.max(0, root.screensaverLayers - 1)
+    } else if (name === "activewindow") {
+      root.otherWindowFocused = data.split(",")[0] !== ""
+      root.updatePresence()
     }
   }
 
@@ -1086,6 +1120,8 @@ Item {
     settings.size = root.sizeName
     settings.sizePx = root.sizePx
     settings.dodge = root.dodgeOn
+    settings.yield = root.yieldOn
+    settings.idleMinutes = root.idleMinutes
     settings.motion = root.motionName
     settings.anchor = root.anchorName
     settings.idleMotion = root.motionName !== "calm"
@@ -1134,6 +1170,9 @@ Item {
   property var historyTried: ({})
   property string historyBot: ""
   property bool historyOlder: false
+  // A re-read of the latest page from the host gateway, merged into the thread
+  // already on screen. Distinct from the first fill and from "load earlier".
+  property bool historyRefresh: false
   readonly property bool olderHere: !root.daemonMode && !!(root.olderInfo[root.threadBotId] && root.olderInfo[root.threadBotId].more)
     && root.history.length < root.olderCap
   readonly property bool olderLoading: !!(root.olderInfo[root.threadBotId] && root.olderInfo[root.threadBotId].loading)
@@ -1152,7 +1191,8 @@ Item {
     for (i = 0; i < (items || []).length; i++) {
       var body = root.cleanText(items[i].body, 4000)
       if (body === "") continue
-      list.push({ asked: root.cleanText(items[i].asked, 4000), files: [], body: body, links: [], wait: "" })
+      list.push({ asked: root.cleanText(items[i].asked, 4000), files: [], body: body, links: [], wait: "",
+                  key: String(items[i].key || "") })
     }
     return list
   }
@@ -1180,13 +1220,43 @@ Item {
     var bot = root.findBot(botId)
     if (!bot || !bot.provider || bot.provider === "grokbot") return
     if (root.history.length > 0 || root.askedText !== "" || root.bubbleBody !== "" || root.asking) return
+    root.historyRefresh = false
     if (!root.runHistory(botId, "")) return
     var tried = Object.assign({}, root.historyTried)
     tried[botId] = true
     root.historyTried = tried
   }
 
-  onAskingChanged: if (!root.asking) Qt.callLater(root.maybeLoadHistory)
+  // The Hermes app writes the same Bot Chat through the one host gateway.
+  // Re-read the latest page while this bubble is open and append what it has
+  // that this thread does not. An ask in flight is left alone.
+  function refreshHistory() {
+    // Poll while the mark is on screen, including while the card is closed,
+    // so a reply that lands in the Hermes app can light the dot.
+    if (root.daemonMode || !root.present || historyProc.running) return
+    var botId = root.threadBotId
+    var bot = root.findBot(botId)
+    if (!bot || !bot.provider || bot.provider === "grokbot") return
+    root.historyRefresh = true
+    if (!root.runHistory(botId, "")) root.historyRefresh = false
+  }
+
+  // Super+C/V land here only while a text field in the card has focus.
+  // The card does not keep the keyboard while it is merely open.
+  function copyFocusedText() {
+    var panel = root.hostWin
+    var item = panel && panel.activeFocusItem
+    if (!item || String(item.selectedText || "") === "" || !item.copy) return "nothing"
+    item.copy()
+    return "ok"
+  }
+  function pasteFocusedText() {
+    if (!root.hostBubble) return "nothing"
+    root.hostBubble.pasteIntoPrompt()
+    return "ok"
+  }
+
+  onAskingChanged: if (!root.asking) Qt.callLater(function () { root.maybeLoadHistory(); root.refreshHistory() })
   onDaemonModeChanged: if (!root.daemonMode) Qt.callLater(root.maybeLoadHistory)
 
   function finishHistory(code, output) {
@@ -1195,6 +1265,7 @@ Item {
       var tried = Object.assign({}, root.historyTried)
       delete tried[botId]
       root.historyTried = tried
+      root.historyRefresh = false
       root.setOlder(botId, { loading: false })
       return
     }
@@ -1206,13 +1277,25 @@ Item {
       var tried = Object.assign({}, root.historyTried)
       delete tried[botId]
       root.historyTried = tried
+      root.historyRefresh = false
       root.setOlder(botId, { loading: false })
     } else {
       var next = typeof data.nextCursor === "string" ? data.nextCursor : ""
       if (root.historyOlder) root.applyOlder(botId, data.items, next)
+      else if (root.historyRefresh) root.applyRefresh(botId, data.items)
       else root.applyHistory(botId, data.items, next)
+      root.historyRefresh = false
     }
-    if (botId !== root.threadBotId) Qt.callLater(root.maybeLoadHistory)
+    if (botId !== root.threadBotId) Qt.callLater(function () { root.maybeLoadHistory(); root.refreshHistory() })
+  }
+
+  Timer {
+    id: historyRefreshTimer
+    interval: 2000
+    repeat: true
+    triggeredOnStart: true
+    running: root.present && !root.daemonMode
+    onTriggered: root.refreshHistory()
   }
 
   Process {
@@ -1246,11 +1329,65 @@ Item {
     root.threads = threads
   }
 
+  // Latest page from the host gateway, folded onto the thread. Does not move
+  // the "load earlier" cursor: paging back and a refresh must not fight.
+  function applyRefresh(botId, items) {
+    var incoming = root.historyEntries(items)
+    var live = botId === root.threadBotId ? { asked: root.askedText, body: root.bubbleBody, key: "" } : null
+    function folded(existing) {
+      return Thread.mergeExchanges(existing, incoming, live, root.historyLimit)
+    }
+    if (botId === root.threadBotId) {
+      var before = root.history
+      var next = folded(before)
+      // The finished turn is in the history now. Leave it there once, instead
+      // of also leaving it in the live slot under the list. Keep files and the
+      // longer question that only the live slot still has.
+      var retireLive = false
+      if (!root.asking && root.awaitingId === "" && root.bubbleBody !== "") {
+        var shown = { asked: root.askedText, body: root.bubbleBody }
+        var i
+        for (i = 0; i < next.length; i++) {
+          if (!Thread.sameExchange(next[i], shown)) continue
+          var kept = next[i]
+          var liveAsked = Thread.askedShown(root.askedText)
+          var keptAsked = Thread.askedShown(kept.asked)
+          var asked = liveAsked.length > keptAsked.length ? liveAsked : keptAsked
+          var files = (kept.files || []).length ? kept.files : root.askedFiles
+          var links = (kept.links || []).length ? kept.links : root.noticeLinks
+          next = next.slice()
+          next[i] = Object.assign({}, kept, { asked: asked, files: files, links: links })
+          retireLive = true
+          break
+        }
+      }
+      if (retireLive || !Thread.sameThread(before, next)) {
+        root.history = next
+        root.rememberTail(next)
+      }
+      if (retireLive) {
+        root.askedText = ""
+        root.askedFiles = []
+        root.bubbleBody = ""
+        root.noticeLinks = []
+      }
+      return
+    }
+    var threads = Object.assign({}, root.threads)
+    var thread = Object.assign({}, threads[botId] || {})
+    var merged = folded(thread.history || [])
+    if (Thread.sameThread(thread.history || [], merged)) return
+    thread.history = merged
+    threads[botId] = thread
+    root.threads = threads
+  }
+
   function loadOlder() {
     var bot = root.threadBotId
     var info = root.olderInfo[bot]
     if (!info || !info.more || info.loading || !info.key) return "nothing"
     if (root.history.length >= root.olderCap) return "limit"
+    root.historyRefresh = false
     if (!root.runHistory(bot, info.key)) return "busy"
     root.setOlder(bot, { loading: true })
     return "ok"
@@ -1335,6 +1472,9 @@ Item {
     root.chosenBotId = id
     if (changed) {
       root.loadThread(id)
+      // The stash is what this card last showed. The Hermes app may have
+      // written newer Bot Chat rows since then, so re-read the gateway.
+      Qt.callLater(root.refreshHistory)
       if (root.expression === "work" || root.expression === "idle") root.expression = root.busyHere ? "work" : "idle"
     }
     root.recentBots = [id].concat(root.recentBots.filter(function (other) { return other !== id })).slice(0, 6)
@@ -1411,6 +1551,21 @@ Item {
   function setDodge(value) {
     root.dodgeOn = value === true
     if (!root.dodgeOn) root.ghost = false
+    root.scheduleSave()
+  }
+
+  function setYield(value) {
+    root.yieldOn = value === true
+    root.updatePresence()
+    root.scheduleSave()
+  }
+
+  function setIdleMinutes(value) {
+    var minutes = Math.round(Number(value) || 0)
+    if (minutes !== 0 && minutes !== 1 && minutes !== 3 && minutes !== 5 && minutes !== 10) return
+    root.idleMinutes = minutes
+    root.lastInteractAt = Date.now()
+    root.idleOpacity = 1
     root.scheduleSave()
   }
 
@@ -1502,15 +1657,18 @@ Item {
     root.present = true
     root.cardPage = "chat"
     root.bubbleOpen = true
+    root.noteInteraction()
     root.replyUnread = false
+    root.unreadBots = root.unreadBots.filter(function (other) { return other !== root.threadBotId })
     root.clearReplyCue()
-    Qt.callLater(root.maybeLoadHistory)
+    Qt.callLater(function () { root.maybeLoadHistory(); root.refreshHistory() })
     root.menuOpen = false
     root.wake()
     Qt.callLater(function () { if (root.hostBubble) root.hostBubble.focusPrompt() })
   }
 
   function closeBubble() {
+    root.seenTail = root.tailOf(root.history)
     root.bubbleOpen = false
     root.dictating = false
     root.switcherOpen = false
@@ -1644,7 +1802,26 @@ Item {
   function archiveExchange() {
     root.clearedThread = null
     if (root.askedText === "" && root.bubbleBody === "" && root.noticeLinks.length === 0) return
-    root.history = root.history.concat([{ asked: root.askedText, files: root.askedFiles, body: root.bubbleBody, links: root.noticeLinks, wait: root.awaitingId }]).slice(-root.historyLimit)
+    var row = { asked: root.askedText, files: root.askedFiles, body: root.bubbleBody, links: root.noticeLinks, wait: root.awaitingId }
+    // The gateway poll may already have filed this turn. Appending again is
+    // what showed the question and the reply twice after the next send.
+    var history = root.history.slice()
+    var placed = false
+    var i
+    for (i = 0; i < history.length; i++) {
+      if (!Thread.sameExchange(history[i], row)) continue
+      var kept = history[i]
+      var rowAsked = Thread.askedShown(row.asked)
+      var keptAsked = Thread.askedShown(kept.asked)
+      var asked = rowAsked.length > keptAsked.length ? rowAsked : keptAsked
+      var files = (kept.files || []).length ? kept.files : row.files
+      var links = (kept.links || []).length ? kept.links : row.links
+      history[i] = Object.assign({}, kept, { asked: asked, files: files, links: links })
+      placed = true
+      break
+    }
+    if (!placed) history = history.concat([row])
+    root.history = history.slice(-root.historyLimit)
     root.askedText = ""
     root.askedFiles = []
     root.bubbleBody = ""
@@ -1729,7 +1906,41 @@ Item {
   // while the bubble is closed, or the hop would be the only sign.
   function markUnread(botId) {
     if (root.unreadBots.indexOf(botId) < 0) root.unreadBots = root.unreadBots.concat([botId])
-    if (!root.bubbleOpen) root.replyUnread = true
+    if (!root.bubbleOpen) {
+      root.replyUnread = true
+      root.noteInteraction()
+    }
+    root.hop()
+  }
+
+  function tailOf(list) {
+    if (!list || list.length === 0) return ""
+    var last = list[list.length - 1]
+    return String(last.asked || "") + "\n" + String(last.body || "")
+  }
+
+  // The card is closed. A tail we have not seen lights the dot once.
+  function rememberTail(list) {
+    var tail = root.tailOf(list)
+    if (root.bubbleOpen) {
+      root.seenTail = tail
+      return
+    }
+    if (root.seenTail === "") {
+      root.seenTail = tail
+      return
+    }
+    if (tail !== root.seenTail) root.noteClosedNews(root.threadBotId)
+  }
+
+  // A Bot Chat turn arrived while the card was closed. Light the dot once.
+  function noteClosedNews(botId) {
+    if (root.bubbleOpen) return
+    // A faded Rest mark comes back to full, the same as a pointer on it.
+    root.noteInteraction()
+    if (root.unreadBots.indexOf(botId) < 0) root.unreadBots = root.unreadBots.concat([botId])
+    if (root.replyUnread) return
+    root.replyUnread = true
     root.hop()
   }
 
@@ -1911,7 +2122,27 @@ Item {
     var prompt = root.plainPrompt(value, 4000)
     // Attachments can go on their own, as in a chat app.
     if (prompt === "" && root.pendingFiles.length > 0) prompt = "Have a look at this."
-    if (prompt === "" || root.asking) return
+    if (prompt === "") return
+    // Hermes /steer: a line typed while this bot is working goes into the live
+    // turn immediately. The first request keeps running.
+    if (root.asking && root.askBotId === root.threadBotId) {
+      if (askProc.running && root.askStreaming) {
+        askProc.write(JSON.stringify({ op: "steer", text: prompt }) + "\n")
+        root.promptDraft = ""
+        root.pendingSteer = prompt
+        return
+      }
+      root.queuedPrompt = { value: prompt, botId: root.threadBotId, since: Date.now(), holdOther: true }
+      queuedPromptTimer.restart()
+      return
+    }
+    // Another bot holds the one ask slot. Keep the line where the user can see
+    // it and run it the moment that process ends, on the card it was typed in.
+    if (root.asking) {
+      root.queuedPrompt = { value: prompt, botId: root.threadBotId, since: Date.now(), holdOther: true }
+      queuedPromptTimer.restart()
+      return
+    }
     // The last ask is still exiting after Stop. Keep the draft and send it
     // once the process is gone, instead of dropping it as busy.
     if (askProc.running) {
@@ -1936,18 +2167,33 @@ Item {
 
   property var queuedPrompt: null
 
-  // Sends a prompt queued behind an exiting ask, unless the user moved to
-  // another bot or changed the draft meanwhile. Gives up after 5 seconds and
-  // leaves the draft where it is.
+  // Sends a queued prompt. A line queued behind a stopping ask goes with the
+  // draft it was typed in and gives up after 5 seconds. A line held for another
+  // bot keeps itself, waits out that whole run, and moves the card to the bot
+  // it was addressed to when it fires.
   function retryQueuedPrompt() {
     var queued = root.queuedPrompt
     if (!queued) return "none"
-    if (askProc.running) {
-      if (Date.now() - queued.since < 5000) return "waiting"
-      root.queuedPrompt = null
-      return "gave up"
+    if (askProc.running || ((queued.sendNow || queued.holdOther) && root.asking)) {
+      if (!queued.holdOther) {
+        if (Date.now() - queued.since < 5000) return "waiting"
+        root.queuedPrompt = null
+        return "gave up"
+      }
+      return "waiting"
     }
     root.queuedPrompt = null
+    if (queued.sendNow) {
+      if (queued.botId !== root.threadBotId) return "dropped"
+      root.launchAsk(queued.value)
+      return "sent"
+    }
+    if (queued.holdOther) {
+      if (queued.botId !== root.threadBotId) root.selectBot(queued.botId)
+      if (root.promptDraft === queued.value) root.promptDraft = ""
+      root.launchAsk(queued.value)
+      return "sent"
+    }
     if (root.asking || queued.botId !== root.threadBotId || queued.value !== root.promptDraft) return "dropped"
     root.submitPrompt(queued.value)
     return "sent"
@@ -1955,7 +2201,9 @@ Item {
 
   Timer {
     id: queuedPromptTimer
-    interval: 50
+    // A line held for another bot waits out that whole run, so it polls twice
+    // a second. The short cases keep their 50 ms retry.
+    interval: root.queuedPrompt && root.queuedPrompt.holdOther ? 500 : 50
     repeat: true
     running: false
     onTriggered: if (root.retryQueuedPrompt() !== "waiting") stop()
@@ -2291,7 +2539,10 @@ Item {
       root.appendReply(bot, text, links)
     }
     root.flashExpression("alert", 1200)
-    if (!root.bubbleOpen) root.replyUnread = true
+    if (!root.bubbleOpen) {
+      root.replyUnread = true
+      root.noteInteraction()
+    }
   }
 
   function dropPromptLinks(promptId, note) {
@@ -2355,6 +2606,8 @@ Item {
 
   // A streaming ask: the reply so far, what the agent is doing, and the final reply.
   property bool askStreaming: false
+  // The line just written into the live turn, until Hermes confirms the steer.
+  property string pendingSteer: ""
   property var askLines: []
   property string askFinal: ""
   property bool askFinalReceived: false
@@ -2377,6 +2630,16 @@ Item {
         } else if (ev.ev === "final") {
           root.askFinal = value
           root.askFinalReceived = true
+        } else if (ev.ev === "steered") {
+          var steered = value !== "" ? value : root.pendingSteer
+          root.pendingSteer = ""
+          if (ev.ok === true && steered !== "") {
+            root.askedText = root.askedText === "" ? steered : (root.askedText + "\n\n" + steered)
+          } else if (steered !== "") {
+            // The turn would not take it. Keep it and send it when this run ends.
+            root.queuedPrompt = { value: steered, botId: root.askBotId, since: Date.now(), holdOther: true }
+            queuedPromptTimer.restart()
+          }
         } else if (ev.ev === "prompt") {
           root.showPrompt(Object.assign({}, ev, { bot: root.askBotId }), true)
         } else if (ev.ev === "settled") {
@@ -2411,6 +2674,7 @@ Item {
   function replyLanded() {
     if (root.bubbleOpen) return
     root.replyUnread = true
+    root.noteInteraction()
     root.hop()
   }
 
@@ -2782,7 +3046,13 @@ Item {
       else if (step === "flashHappy") root.flashExpression("happy", 1600)
       else if (step === "syllables") syllableAnim.restart()
       else if (step === "replyLanded") root.replyLanded()
-      else if (step === "unread") { if (!root.bubbleOpen) root.replyUnread = true; root.hop() }
+      else if (step === "unread") {
+        if (!root.bubbleOpen) {
+          root.replyUnread = true
+          root.noteInteraction()
+        }
+        root.hop()
+      }
       else if (step === "activeCue") { if (text !== "" && root.canShowReplyCue(botId)) root.showActiveCue(text) }
       else if (step === "peekCue") { if (text !== "" && root.canShowReplyCue(botId)) root.showPeekCue(botId, text) }
       else if (step === "summon") root.summon()
@@ -2868,7 +3138,10 @@ Item {
     root.noticeLinks = []
     root.bubbleBody = root.daemonTellLater
     root.daemonTellLater = ""
-    if (!root.bubbleOpen) root.replyUnread = true
+    if (!root.bubbleOpen) {
+      root.replyUnread = true
+      root.noteInteraction()
+    }
     root.hop()
   }
 
@@ -2914,6 +3187,7 @@ Item {
     gazeFrames.running = true
     root.pointerNear = root.pointerIsNear()
     root.updateDodge()
+    root.updatePresence()
   }
 
   function updateGazeTarget() {
@@ -2992,18 +3266,42 @@ Item {
     if (askProc.running) askProc.running = false
   }
 
-  function stageRect() {
+  function itemScreenRect(item) {
     var screen = root.activeScreen
     var host = root.hostWin
-    var item = root.hostStage
     if (!screen || !host || !host.screen || host.screen.name !== screen.name || !item) return null
     var point = item.mapToItem(host.contentItem, 0, 0)
-    return {
-      x: screen.x + point.x,
-      y: screen.y + point.y,
-      w: item.width,
-      h: item.height
+    return { x: screen.x + point.x, y: screen.y + point.y, w: item.width, h: item.height }
+  }
+
+  function stageRect() { return root.itemScreenRect(root.hostStage) }
+
+  function pointerOverCard() {
+    if (!root.bubbleOpen || !root.cursorKnown) return false
+    var rect = root.itemScreenRect(root.hostBubble)
+    if (!rect) return false
+    return root.cursorX >= rect.x && root.cursorX <= rect.x + rect.w
+      && root.cursorY >= rect.y && root.cursorY <= rect.y + rect.h
+  }
+
+  function pointerOverCompanion() { return root.pointerInside() || root.pointerOverCard() }
+
+  function noteInteraction() {
+    root.lastInteractAt = Date.now()
+    if (root.idleOpacity < 1) root.idleOpacity = 1
+  }
+
+  // Yield fades the open card when another window has focus and the pointer
+  // is not on the card or the mark. Rest fades the mark after it is left alone.
+  function updatePresence() {
+    if (root.pointerOverCompanion()) root.noteInteraction()
+    var aside = root.yieldOn && root.bubbleOpen && root.otherWindowFocused && !root.pointerOverCompanion() && !root.dragging && !root.menuOpen
+    root.yieldOpacity = aside ? 0.16 : 1
+    if (!root.present || root.idleMinutes <= 0 || root.bubbleOpen || root.pointerInside() || root.dragging) {
+      root.idleOpacity = 1
+      return
     }
+    root.idleOpacity = Date.now() - root.lastInteractAt >= root.idleMinutes * 60000 ? 0.22 : 1
   }
 
   function pointerIsNear() {
@@ -3062,6 +3360,13 @@ Item {
   FrameAnimation {
     running: root.dodgeOn && root.present && !root.surfacesOpen && root.pointerNear
     onTriggered: root.updateDodge()
+  }
+
+  Timer {
+    interval: 15000
+    repeat: true
+    running: root.present && root.idleMinutes > 0
+    onTriggered: root.updatePresence()
   }
 
   Timer {
@@ -3482,6 +3787,10 @@ Item {
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.namespace: root.layerNamespace
     WlrLayershell.layer: WlrLayer.Top
+    // OnDemand: the card takes the keyboard only while one of its text
+    // fields has focus. Exclusive kept the keyboard even after a hover or
+    // click on the window beside the card, so that window could not be used
+    // until the card was closed.
     WlrLayershell.keyboardFocus: root.surfacesOpen && activeHere ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
 
@@ -3500,8 +3809,8 @@ Item {
       Region {
         x: bubblePanel.x
         y: bubblePanel.y
-        width: win.activeHere && root.bubbleOpen ? bubblePanel.width : 0
-        height: win.activeHere && root.bubbleOpen ? bubblePanel.height : 0
+        width: win.activeHere && root.bubbleOpen && root.yieldOpacity > 0.5 ? bubblePanel.width : 0
+        height: win.activeHere && root.bubbleOpen && root.yieldOpacity > 0.5 ? bubblePanel.height : 0
       }
     }
 
@@ -3522,7 +3831,7 @@ Item {
       readonly property bool shown: root.bubbleOpen && !root.choosingFiles && win.activeHere
       growsUp: y < stage.y
       visible: opacity > 0.01
-      opacity: shown ? 1 : 0
+      opacity: shown ? root.yieldOpacity : 0
       // A short settle from slightly smaller, with no overshoot, so the card
       // lands where it stays instead of bouncing past it.
       scale: shown ? 1 : 0.96
@@ -3839,7 +4148,7 @@ Item {
         border.color: Theme.lifted
         x: Math.max(-stage.x, Math.min(root.screenW - stage.x - width, (parent.width - width) / 2))
         y: parent.height - height
-        opacity: root.dodgeOpacity
+        opacity: root.markFade
         Text {
           id: nameText
           anchors.centerIn: parent
@@ -3889,7 +4198,7 @@ Item {
           if (!root.syncOn || !bot || !bot.avatarImage) return ""
           return "file://" + bot.avatarImage
         }
-        opacity: root.dodgeOpacity
+        opacity: root.markFade
         scale: root.breathe * root.talkScale * root.morphPop * root.hoverScale * root.cornerScale * (1 + 0.06 * root.dragLift)
         // Hovering lifts the mark a little; the eyes keep their size.
         attention: 1
@@ -3915,8 +4224,8 @@ Item {
           width: Math.max(12, root.shownSize * 0.11)
           height: width
           radius: width / 2
-          x: mark.width * 0.7
-          y: mark.height * 0.14
+          x: mark.width * 0.68
+          y: -height * 0.35
           color: Theme.text
           border.width: 2
           border.color: Theme.surface
@@ -3947,6 +4256,7 @@ Item {
           root.claimed = true
           root.ghost = false
           root.dodgeOpacity = 1
+          root.noteInteraction()
           if (mouse.button === Qt.RightButton) {
             root.menuOpen = !root.menuOpen
             mouse.accepted = true

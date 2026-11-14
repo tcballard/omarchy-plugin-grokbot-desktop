@@ -1038,6 +1038,14 @@ test('closing the bubble keeps an ask running and a busy prompt is kept', () => 
   assert.match(qmlFunction(main, 'stopAsk'), /cancelAsk\(\)/)
   assert.match(qmlFunction(main, 'replyLanded'), /replyUnread = true/)
   assert.match(qmlFunction(main, 'openBubble'), /replyUnread = false/)
+  // A lit dot is an unread notice, so every path that lights it also stamps
+  // the interaction clock. That is what brings a Rest- or Dodge-faded mark
+  // back to full visibility the moment the dot appears.
+  for (const path of ['markUnread', 'noteClosedNews', 'replyLanded', 'showPrompt', 'daemonEffect', 'daemonTell']) {
+    const body = qmlFunction(main, path)
+    assert.match(body, /root\.replyUnread = true/, path)
+    assert.match(body, /root\.noteInteraction\(\)/, path)
+  }
   const submit = qmlFunction(main, 'submitPrompt')
   assert.ok(submit.indexOf('root.asking') < submit.indexOf('promptDraft = ""'))
   const dictate = qmlFunction(main, 'dictateText')
@@ -1176,7 +1184,11 @@ test('dodge fades with distance and restores at once over the mark', () => {
   assert.match(dodge, /pointerGap\(\) \/ 36/)
   assert.match(dodge, /pointerInside\(\)/)
   assert.match(dodge, /root\.dodgeOpacity = 1/)
-  assert.match(main, /opacity: root\.dodgeOpacity/)
+  assert.match(main, /opacity: root\.markFade/)
+  // A lit dot pins the mark at full visibility for as long as it is up, past
+  // the Rest window included. Only a mark with no dot follows the fades it is
+  // configured with, so the Rest product stays in the same expression.
+  assert.match(main, /readonly property real markFade: replyUnread \? 1 : dodgeOpacity \* idleOpacity/)
   // Clicks stay live: ghost no longer zeroes the input mask.
   assert.match(main, /root\.menuOpen \? win\.width : \(!root\.present \? 0 : stage\.width\)/)
   assert.doesNotMatch(main, /root\.ghost \|\| !root\.present/)
@@ -1436,7 +1448,8 @@ test('the window covers the output and never resizes, so the mark never moves', 
   // Stage, cursor, and drag all use output coordinates directly.
   assert.match(main, /x: root\.stageScreenX\n\s*y: root\.stageScreenY/)
   assert.match(qmlFunction(main, 'updateGazeTarget'), /root\.cursorX - \(screen\.x \+ local\.x\)/)
-  assert.match(qmlFunction(main, 'stageRect'), /x: screen\.x \+ point\.x/)
+  assert.match(qmlFunction(main, 'itemScreenRect'), /x: screen\.x \+ point\.x/)
+  assert.match(qmlFunction(main, 'stageRect'), /itemScreenRect\(root\.hostStage\)/)
 })
 
 test('a drag past the edge lands on the next monitor and stays there', () => {
@@ -1611,6 +1624,12 @@ test('the appearance page says what Dodge does', () => {
   assert.match(page, /"Dodge is on: as the pointer comes near, " \+ app\.botLabel\(\) \+ " fades but still accepts clicks/)
   assert.match(page, /"Dodge is off: " \+ app\.botLabel\(\) \+ " stays solid and takes clicks/)
   assert.match(page, /label: "Dodge: fade nearby and restore immediately on hover"/)
+  assert.match(page, /label: "Yield: fade the open card when another window is active"/)
+  assert.match(page, /"Rest is on: " \+ app\.botLabel\(\) \+ " fades after "/)
+  assert.match(main, /function setYield\(value\)/)
+  assert.match(main, /function setIdleMinutes\(value\)/)
+  assert.match(main, /function updatePresence\(\)/)
+  assert.match(qmlFunction(main, 'noteClosedNews'), /noteInteraction\(\)/)
 })
 
 test('the desktop mark turns its face as Grok Bot moves Bob', async () => {
@@ -1708,18 +1727,29 @@ test('each bot keeps its own conversation, and a reply lands with the bot asked'
 })
 
 test('each bot keeps a scrolling history of its conversation', () => {
-  // A new ask or notice moves the latest exchange into the history.
+  // A new ask or notice files the latest exchange once. A gateway row of that
+  // same turn is updated, not appended, so the question and reply are not shown twice.
   const archive = qmlFunction(main, 'archiveExchange')
-  assert.match(archive, /root\.history = root\.history\.concat\(\[\{ asked: root\.askedText, files: root\.askedFiles, body: root\.bubbleBody, links: root\.noticeLinks, wait: root\.awaitingId \}\]\)\.slice\(-root\.historyLimit\)/)
+  assert.match(archive, /Thread\.sameExchange\(history\[i\], row\)/)
+  assert.match(archive, /if \(!placed\) history = history\.concat\(\[row\]\)/)
+  assert.match(archive, /root\.history = history\.slice\(-root\.historyLimit\)/)
+  assert.match(archive, /root\.bubbleBody = ""/)
   assert.match(qmlFunction(main, 'launchAsk'), /root\.archiveExchange\(\)\n\s*root\.askedText = String\(prompt \|\| ""\)/)
   assert.match(qmlFunction(main, 'sayNotice'), /root\.archiveExchange\(\)/)
   assert.match(qmlFunction(main, 'loadThread'), /root\.history = thread\.history \|\| \[\]/)
+  // While the poll files the finished turn the live slot holds it too; the
+  // list copy shows and the live slot stays hidden until it is cleared.
+  assert.match(main, /readonly property bool liveTurnFiled: \{/)
+  assert.match(main, /if \(root\.asking \|\| root\.awaitingId !== "" \|\| root\.bubbleBody === ""\) return false/)
+  assert.match(main, /if \(Thread\.sameExchange\(root\.history\[i\], shown\)\) return true/)
   // One scrolling view: the history, then the latest exchange.
   const panel = read('BubblePanel.qml')
   assert.match(panel, /component Exchange: Column \{/)
   assert.match(panel, /model: app \? app\.history : \[\]\n\s*delegate: Exchange \{/)
   assert.match(panel, /Exchange \{\s*id: latest/)
+  assert.match(panel, /id: latest\n\s*(\/\/[^\n]*\n\s*)*visible: !\(app && app\.liveTurnFiled\)/)
   assert.match(panel, /var end = Math\.max\(0, contentHeight - Math\.min\(threadBox\.cap, contentHeight\)\)\n\s*var target = Math\.min\(end, Math\.max\(0, latest\.y\)\)/)
+  assert.match(panel, /if \(!wasAtEnd\) return/)
   assert.match(panel, /readonly property real cap: Math\.max\(140, bubble\.maxHeight - 28 - headerGroup\.height - dividerReveal\.height/)
 })
 
@@ -1844,8 +1874,11 @@ test('a webhook answer waits under its question and lands there, whichever bot i
   assert.match(answer, /root\.indexWaiting\(root\.history, askId\)/)
   assert.match(answer, /if \(thread\.wait === askId\) \{/)
   assert.match(answer, /root\.markUnread\(botId\)/)
-  // With the bubble closed, the mark shows the dot too, not just a hop.
-  assert.match(qmlFunction(main, 'markUnread'), /if \(!root\.bubbleOpen\) root\.replyUnread = true/)
+  // With the bubble closed, the mark shows the dot too, not just a hop, and
+  // the closed-card news brings a faded Rest mark back to full.
+  const unreadBranch = qmlFunction(main, 'markUnread').match(/if \(!root\.bubbleOpen\) \{([\s\S]*?)\}/)[1]
+  assert.match(unreadBranch, /root\.replyUnread = true/)
+  assert.match(unreadBranch, /root\.noteInteraction\(\)/)
   assert.match(qmlFunction(main, 'deliver'), /root\.markUnread\(id\)/)
   // reply takes an ask id or a bot; say from a waiting bot counts too.
   assert.match(ipc, /function reply\(target: string, text: string\): string \{ return host\.receiveReply\(target, text\) \}/)
@@ -2104,6 +2137,13 @@ test('a provider bot opens on its recent history, and earlier pages load twenty 
   // Once per bot, only into a conversation that is still empty here, never for Grok.
   const maybe = qmlFunction(main, 'maybeLoadHistory')
   assert.match(maybe, /if \(root\.history\.length > 0 \|\| root\.askedText !== "" \|\| root\.bubbleBody !== "" \|\| root\.asking\) return/)
+  // A later read from the host gateway folds new Hermes-app rows onto that thread.
+  assert.match(qmlFunction(main, 'refreshHistory'), /root\.historyRefresh = true/)
+  assert.match(qmlFunction(main, 'selectBot'), /Qt\.callLater\(root\.refreshHistory\)/)
+  assert.match(panel, /id: refreshButton/)
+  assert.match(panel, /label: "Refresh"/)
+  assert.match(qmlFunction(main, 'applyRefresh'), /Thread\.mergeExchanges/)
+  assert.match(main, /historyRefreshTimer/)
   assert.match(qmlFunction(main, 'runHistory'), /bot\.provider === "grokbot"/)
   assert.match(qmlFunction(main, 'loadOlder'), /if \(root\.history\.length >= root\.olderCap\) return "limit"/)
   assert.match(main, /readonly property int olderCap: 100/)

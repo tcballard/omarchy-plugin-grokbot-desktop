@@ -522,6 +522,99 @@ Item {
         wrapMode: Text.WordWrap
         textFormat: Text.PlainText
       }
+
+      Row {
+        width: parent.width
+        spacing: 8
+        Rectangle {
+          width: yieldLabel.implicitWidth + 40
+          height: 32
+          radius: 10
+          color: app.yieldOn ? Theme.selected : Theme.field
+          border.width: app.yieldOn ? 1.5 : 1
+          border.color: app.yieldOn ? drawer.tone : Theme.edgeSoft
+          Rectangle {
+            x: 10
+            anchors.verticalCenter: parent.verticalCenter
+            width: 8
+            height: 8
+            radius: 4
+            color: app.yieldOn ? drawer.tone : Theme.dim
+          }
+          Text {
+            id: yieldLabel
+            x: 26
+            anchors.verticalCenter: parent.verticalCenter
+            text: "Yield"
+            color: app.yieldOn ? Theme.text : Theme.textMuted
+            font.pixelSize: 11
+            font.family: app.fontFamily
+            font.weight: app.yieldOn ? Font.DemiBold : Font.Normal
+            textFormat: Text.PlainText
+          }
+          HoverArea { label: "Yield: fade the open card when another window is active"; onActivated: app.setYield(!app.yieldOn) }
+        }
+      }
+      Text {
+        width: parent.width
+        text: app.yieldOn
+          ? "Yield is on: while the message card is open and another window is active, the card and " + app.botLabel() + " fade so that window can be read. Move the pointer onto them to restore immediately."
+          : "Yield is off: the open message card stays solid over the window beside it."
+        color: Theme.textFaint
+        font.pixelSize: 11
+        font.family: app.fontFamily
+        wrapMode: Text.WordWrap
+        textFormat: Text.PlainText
+      }
+
+      Text {
+        text: "REST"
+        color: Theme.textFaint
+        font.pixelSize: 10
+        font.weight: Font.DemiBold
+        font.family: app.fontFamily
+        textFormat: Text.PlainText
+      }
+      Row {
+        spacing: 6
+        Repeater {
+          model: [0, 1, 3, 5, 10]
+          delegate: Rectangle {
+            required property int modelData
+            readonly property bool active: app.idleMinutes === modelData
+            width: modelData === 0 ? 52 : 40
+            height: 32
+            radius: 10
+            color: active ? Theme.selected : Theme.field
+            border.width: active ? 1.5 : 1
+            border.color: active ? drawer.tone : Theme.edgeSoft
+            Text {
+              anchors.centerIn: parent
+              text: modelData === 0 ? "Off" : String(modelData) + "m"
+              color: active ? Theme.text : Theme.textMuted
+              font.pixelSize: 11
+              font.family: app.fontFamily
+              font.weight: active ? Font.DemiBold : Font.Normal
+              textFormat: Text.PlainText
+            }
+            HoverArea {
+              label: modelData === 0 ? "Rest off: the bubble stays solid" : ("Rest: fade the bubble after " + modelData + " minutes alone")
+              onActivated: app.setIdleMinutes(modelData)
+            }
+          }
+        }
+      }
+      Text {
+        width: parent.width
+        text: app.idleMinutes === 0
+          ? "Rest is off: " + app.botLabel() + " stays solid until you hide it."
+          : "Rest is on: " + app.botLabel() + " fades after " + app.idleMinutes + " minutes with no click or hover. Move the pointer onto it to restore immediately."
+        color: Theme.textFaint
+        font.pixelSize: 11
+        font.family: app.fontFamily
+        wrapMode: Text.WordWrap
+        textFormat: Text.PlainText
+      }
       }
     }
   }

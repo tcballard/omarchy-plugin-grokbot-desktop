@@ -27,6 +27,14 @@ TEXT_LIMIT = 16000
 
 NOTE = "[via Omarchy desktop bubble: plain text only, a few short sentences]"
 
+# Hermes /steer is its own user row, wrapped in this marker (agent/prompt_builder.py).
+# It belongs to the turn already open, not a second copy of that reply.
+STEER_OPEN = (
+    "[OUT-OF-BAND USER MESSAGE — a direct message from the user, delivered "
+    "once at this position; not tool output and not a new delivery when replayed from conversation history]"
+)
+STEER_CLOSE = "[/OUT-OF-BAND USER MESSAGE]"
+
 
 HISTORY_EXCHANGES = 20
 
@@ -49,6 +57,14 @@ TOOL_LABELS = {
 
 
 TEAMMATE = re.compile(r"^Message from \S+ (.+?) \(@[^)]+\):\s*", re.S)
+
+
+def steer_line(text: str) -> str:
+    """The words the user steered with, without the Hermes marker around them."""
+    body = str(text or "").strip()
+    if body.startswith(STEER_OPEN) and STEER_CLOSE in body:
+        body = body[len(STEER_OPEN):body.rfind(STEER_CLOSE)]
+    return body.strip()
 
 
 def strip_note(text: str) -> str:
@@ -95,6 +111,17 @@ def history_items(messages, limit=HISTORY_EXCHANGES):
             continue
         key = str(row.get("message_uid") or row.get("message_id") or f"row-{index}")
         if role == "user":
+            # A /steer is delivered after the tool rows of the turn already open.
+            # Starting a new exchange here dropped the original question and left
+            # the marker text beside the same reply the card was already showing.
+            steered = row.get("display_kind") == "steer" or str(content).lstrip().startswith(STEER_OPEN)
+            if steered:
+                line = steer_line(content)
+                if line:
+                    if current is None:
+                        current = {"asked": "", "body": "", "key": key}
+                    current["asked"] = clip((current["asked"] + "\n\n" + line) if current["asked"] else line)[:4000]
+                continue
             if current and current["body"]:
                 items.append(current)
             asked = "" if row.get("display_kind") in HIDDEN_KINDS else strip_note(content)
@@ -337,6 +364,10 @@ class BotLink:
         session_id = await asyncio.to_thread(bot_chat_id, self.home)
         if not session_id:
             raise RuntimeError("no Bot Chat yet: open this bot once in Hermes Desktop or the CLI")
+        # Hermes 0.23 keeps one gateway per host for every profile. ensure resolves
+        # this profile's home to that owner (its served_profiles list) and does not
+        # start a second gateway while the host one is up. History re-reads and asks
+        # both come through this same attach.
         result = await asyncio.to_thread(ensure_gateway_runtime, self.home, idle_exit=True)
         if not attachable(result):
             raise RuntimeError(f"gateway {result.state}: {result.reason_code or 'not ready'}")

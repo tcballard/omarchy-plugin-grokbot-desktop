@@ -143,6 +143,87 @@ test('a prompt sent while the stopped ask is still exiting is kept and sent afte
   assert.equal(root.retryQueuedPrompt(), 'none');
 });
 
+test('a line typed while this bot is working is steered into that turn', () => {
+  const launched = [];
+  const written = [];
+  let cancelled = 0;
+  const askProc = {running: true, write(line) { written.push(line); }};
+  const timer = {restarts: 0, restart() { this.restarts++; }};
+  const root = harness(['submitPrompt', 'retryQueuedPrompt', 'answerFromComposer'], {
+    asking: true, askBotId: 'grok', askStreaming: true, pendingSteer: '', pendingFiles: [], promptDraft: 'next',
+    threadBotId: 'grok', queuedPrompt: null, bots: [], defaultBotId: 'grok',
+    plainPrompt: (v, n) => String(v || '').trim().slice(0, n),
+    selectBot() {}, openBubble() {},
+    cancelAsk() { cancelled++; },
+    launchAsk(p) { launched.push(p); return 'ok'; }
+  }, {askProc, queuedPromptTimer: timer});
+  root.submitPrompt('next');
+  assert.equal(cancelled, 0, 'the running turn is not stopped');
+  assert.equal(written.length, 1);
+  assert.deepEqual(JSON.parse(written[0]), {op: 'steer', text: 'next'});
+  assert.equal(root.promptDraft, '');
+  assert.equal(root.pendingSteer, 'next');
+  assert.equal(root.queuedPrompt, null);
+  assert.deepEqual(launched, []);
+  assert.equal(timer.restarts, 0);
+});
+
+test('a line typed for another bot waits out that run and then goes to that bot', () => {
+  const launched = [];
+  const selected = [];
+  const askProc = {running: true};
+  const timer = {restarts: 0, restart() { this.restarts++; }};
+  const root = harness(['submitPrompt', 'retryQueuedPrompt', 'answerFromComposer'], {
+    asking: true, askBotId: 'mr-x', chosenBotId: 'mr-git', pendingFiles: [], promptDraft: 'note to git',
+    threadBotId: 'mr-git', queuedPrompt: null, bots: [], defaultBotId: 'mr-x',
+    plainPrompt: (v, n) => String(v || '').trim().slice(0, n),
+    selectBot(id) { selected.push(id); root.chosenBotId = id; root.threadBotId = id; },
+    openBubble() {},
+    cancelAsk() { throw new Error("another bot's run must not be interrupted"); },
+    launchAsk(p) { launched.push({text: p, bot: root.chosenBotId}); return 'ok'; }
+  }, {askProc, queuedPromptTimer: timer});
+  root.submitPrompt('note to git');
+  assert.equal(timer.restarts, 1);
+  assert.equal(root.queuedPrompt.holdOther, true);
+  assert.equal(root.queuedPrompt.botId, 'mr-git');
+  assert.equal(root.promptDraft, 'note to git', 'the line stays visible while it waits');
+  assert.deepEqual(launched, []);
+  // A run can take minutes, so a held line never gives up on a timer.
+  root.queuedPrompt.since -= 60000;
+  assert.equal(root.retryQueuedPrompt(), 'waiting');
+  root.asking = false;
+  askProc.running = false;
+  assert.equal(root.retryQueuedPrompt(), 'sent');
+  assert.deepEqual(selected, [], 'the card is already on that bot');
+  assert.deepEqual(launched, [{text: 'note to git', bot: 'mr-git'}]);
+  assert.equal(root.promptDraft, '');
+  assert.equal(root.queuedPrompt, null);
+});
+
+test('a held line moves the card to the bot it was addressed to', () => {
+  const launched = [];
+  const selected = [];
+  const askProc = {running: true};
+  const timer = {restarts: 0, restart() { this.restarts++; }};
+  const root = harness(['submitPrompt', 'retryQueuedPrompt', 'answerFromComposer'], {
+    asking: true, askBotId: 'mr-x', chosenBotId: 'mr-git', pendingFiles: [], promptDraft: 'ping',
+    threadBotId: 'mr-git', queuedPrompt: null, bots: [], defaultBotId: 'mr-x',
+    plainPrompt: (v, n) => String(v || '').trim().slice(0, n),
+    selectBot(id) { selected.push(id); root.chosenBotId = id; root.threadBotId = id; },
+    openBubble() {},
+    launchAsk(p) { launched.push({text: p, bot: root.chosenBotId}); return 'ok'; }
+  }, {askProc, queuedPromptTimer: timer});
+  root.submitPrompt('ping');
+  // The user wandered back to the working bot while the line waited.
+  root.chosenBotId = 'mr-x';
+  root.threadBotId = 'mr-x';
+  root.asking = false;
+  askProc.running = false;
+  assert.equal(root.retryQueuedPrompt(), 'sent');
+  assert.deepEqual(selected, ['mr-git']);
+  assert.deepEqual(launched, [{text: 'ping', bot: 'mr-git'}]);
+});
+
 test('a queued prompt is dropped if the draft or bot changed, and gives up eventually', () => {
   let h = submitHarness();
   h.askProc.running = true;

@@ -9,6 +9,35 @@ import "qml/markdown.js" as Markdown
 Rectangle {
   id: bubble
   property var app: null
+
+  // Super+C / Super+V. Hyprland consumes Super and injects Ctrl+C, or
+  // Ctrl+Shift+C while a terminal is the active window. The card accepts
+  // either, plus a bare Super chord, and rejects Alt. It does not take the
+  // keyboard unless a text field in the card has focus.
+  function chord(event, key) {
+    if (!event || event.key !== key) return false
+    if (event.modifiers & Qt.AltModifier) return false
+    return (event.modifiers & Qt.ControlModifier) || (event.modifiers & Qt.MetaModifier)
+  }
+  function isCopyChord(event) { return bubble.chord(event, Qt.Key_C) }
+  function isPasteChord(event) { return bubble.chord(event, Qt.Key_V) }
+  function pasteIntoPrompt() {
+    promptField.forceActiveFocus()
+    if (app.attach("paste", "quiet") !== "ok") promptField.safePaste()
+  }
+  readonly property string codeFamily: "monospace"
+  function copyText(value) {
+    clipHold.text = String(value || "")
+    clipHold.selectAll()
+    clipHold.copy()
+  }
+  TextEdit {
+    id: clipHold
+    visible: false
+    readOnly: true
+    font.family: app ? app.fontFamily : ""
+    textFormat: TextEdit.PlainText
+  }
   property real maxHeight: 640
   readonly property bool appearancePage: app ? app.settingsOpen : false
   // 0 shows the chat page and 1 the appearance page. Between them the page
@@ -285,6 +314,44 @@ Rectangle {
         }
 
         Rectangle {
+          id: refreshButton
+          width: 32
+          height: 32
+          radius: 16
+          anchors.right: minimizeButton.left
+          anchors.rightMargin: 8
+          anchors.verticalCenter: parent.verticalCenter
+          color: Theme.raised
+          border.width: 1
+          border.color: Theme.edge
+          Canvas {
+            anchors.fill: parent
+            anchors.margins: 8
+            onPaint: {
+              var ctx = getContext("2d")
+              ctx.reset()
+              ctx.strokeStyle = Theme.textMuted
+              ctx.fillStyle = Theme.textMuted
+              ctx.lineWidth = 1.5
+              ctx.lineCap = "round"
+              ctx.lineJoin = "round"
+              ctx.beginPath()
+              ctx.arc(width / 2, height / 2, width / 2 - 1.2, Math.PI * 0.75, Math.PI * 2.15)
+              ctx.stroke()
+              ctx.beginPath()
+              ctx.moveTo(width - 2.2, height * 0.42)
+              ctx.lineTo(width - 0.4, height * 0.18)
+              ctx.lineTo(width * 0.62, height * 0.22)
+              ctx.fill()
+            }
+          }
+          HoverArea {
+            label: "Refresh"
+            onActivated: app.refreshHistory()
+          }
+        }
+
+        Rectangle {
           id: minimizeButton
           width: 32
           height: 32
@@ -322,7 +389,7 @@ Rectangle {
           color: Theme.raised
           border.width: 1
           border.color: Theme.edge
-          width: Math.min(parent.width - 80, headerRow.implicitWidth + 22)
+          width: Math.min(parent.width - 128, headerRow.implicitWidth + 22)
 
           Row {
             id: headerRow
@@ -630,6 +697,7 @@ Rectangle {
         Flickable {
           id: threadFlick
           anchors.fill: parent
+          contentWidth: width
           contentHeight: threadColumn.implicitHeight
           clip: true
           boundsBehavior: Flickable.StopAtBounds
@@ -769,6 +837,9 @@ Rectangle {
 
             Exchange {
               id: latest
+              // The history already carries this turn while the poll catches
+              // up with the live slot; the list copy is the one that stays.
+              visible: !(app && app.liveTurnFiled)
               fadeReply: true
               asked: app ? app.askedText : ""
               files: app ? app.askedFiles : []
@@ -795,14 +866,24 @@ Rectangle {
               threadFlick.olderFromBottom = app.prependingOlder ? threadFlick.contentHeight - threadFlick.contentY : -1
             }
           }
+          property real laidHeight: 0
           onContentHeightChanged: {
             if (app && app.prependingOlder && olderFromBottom >= 0) {
               scrollAnim.stop()
               contentY = Math.max(0, contentHeight - olderFromBottom)
+              laidHeight = contentHeight
               return
             }
+            // A 2s refresh rebuilds the column. Follow the newest line only
+            // when the reader was already at the end, so reading older rows
+            // is not yanked down on every poll.
+            var previous = laidHeight
+            var wasAtEnd = previous <= height + 4 || contentY + height >= previous - 24
+            laidHeight = contentHeight
+            if (!wasAtEnd) return
             var end = Math.max(0, contentHeight - Math.min(threadBox.cap, contentHeight))
             var target = Math.min(end, Math.max(0, latest.y))
+            if (app && app.bubbleBody === "" && app.askedText === "") target = end
             scrollAnim.stop()
             if (bubble.ms(1) === 0 || !threadBox.visible || Math.abs(target - contentY) < 1) {
               contentY = target
@@ -1124,7 +1205,9 @@ Rectangle {
           // While a bot waits on a question, typed text answers it instead of stopping the ask.
           readonly property bool answering: app ? app.clarifyHere && promptField.text.trim() !== "" : false
           readonly property bool asking: app ? app.askingHere && !answering : false
-          readonly property string mode: asking ? "stop" : (promptField.text.trim() !== "" || (app && app.pendingFiles.length > 0) ? "send" : "voice")
+          readonly property bool hasDraft: promptField.text.trim() !== "" || (app && app.pendingFiles.length > 0)
+          // A typed line during a live turn is Hermes "send now", not Stop.
+          readonly property string mode: (asking && !hasDraft) ? "stop" : (hasDraft ? "send" : "voice")
           width: 42
           height: 42
           radius: 21
@@ -1209,11 +1292,11 @@ Rectangle {
           onInkChanged: waveCanvas.requestPaint()
 
           HoverArea {
-            label: voiceButton.mode === "stop" ? "Stop" : (voiceButton.mode === "send" ? "Send" : "Dictate")
+            label: voiceButton.mode === "stop" ? "Stop" : (voiceButton.mode === "send" && app && app.askingHere ? "Steer" : (voiceButton.mode === "send" ? "Send" : "Dictate"))
             tint: voiceButton.mode !== "send"
             onActivated: {
               if (!app) return
-              if (app.askingHere && !voiceButton.answering) {
+              if (voiceButton.mode === "stop") {
                 app.stopAsk()
                 return
               }
@@ -1288,11 +1371,17 @@ Rectangle {
                   promptFlick.contentY = r.y + r.height + bottomPadding - promptFlick.height
               }
               Keys.onPressed: function (event) {
-                if (event.matches(StandardKey.Paste)) {
+                if (bubble.isCopyChord(event)) {
                   event.accepted = true
-                  if (app.attach("paste", "quiet") !== "ok") promptField.safePaste()
+                  if (promptField.selectedText !== "") promptField.copy()
+                  return
+                }
+                if (bubble.isPasteChord(event)) {
+                  event.accepted = true
+                  bubble.pasteIntoPrompt()
                 }
               }
+              Keys.priority: Keys.BeforeItem
               Keys.onReturnPressed: function (event) { promptField.returnKey(event) }
               Keys.onEnterPressed: function (event) { promptField.returnKey(event) }
               Keys.onEscapePressed: app.stepBack()
@@ -1404,6 +1493,26 @@ Rectangle {
     property string status: ""
     // The latest reply fades in where the typing dots were.
     property bool fadeReply: false
+    // Blocks are rebuilt here, not taken straight from the pragma-library
+    // script. A history row is itself a repeater delegate, and objects that
+    // come back from that shared script do not keep their fields once they
+    // are nested, so an older canvas never saw kind/text and grew no Copy
+    // chip. The latest reply is not nested, which is why only that one did.
+    function replyParts() {
+      var src = exchange.body === "" ? [] : Markdown.blocks(exchange.body, bubble.markdownStyle)
+      var out = []
+      var i
+      for (i = 0; i < src.length; i++) {
+        var part = src[i] || {}
+        out.push({
+          kind: part.kind === "code" ? "code" : "prose",
+          html: String(part.html || ""),
+          text: String(part.text || "")
+        })
+      }
+      return out
+    }
+    readonly property var parts: exchange.replyParts()
     width: parent ? parent.width : 0
     spacing: 10
 
@@ -1439,7 +1548,7 @@ Rectangle {
         color: Theme.selected
         border.width: 1
         border.color: Theme.edge
-        Text {
+        TextEdit {
           id: userText
           x: 14
           y: 10
@@ -1447,9 +1556,25 @@ Rectangle {
           text: exchange.asked
           color: Theme.text
           font.pixelSize: 13
-          wrapMode: Text.WordWrap
+          wrapMode: TextEdit.WordWrap
           font.family: app.fontFamily
-          textFormat: Text.PlainText
+          readOnly: true
+          selectByMouse: true
+          selectionColor: Theme.edgeStrong
+          selectedTextColor: Theme.text
+          textFormat: TextEdit.PlainText
+          Keys.priority: Keys.BeforeItem
+          Keys.onPressed: function (event) {
+            if (bubble.isCopyChord(event)) {
+              event.accepted = true
+              if (selectedText !== "") copy()
+              return
+            }
+            if (bubble.isPasteChord(event)) {
+              event.accepted = true
+              bubble.pasteIntoPrompt()
+            }
+          }
         }
       }
     }
@@ -1482,24 +1607,16 @@ Rectangle {
       }
     }
 
-    // The bot's reply, as Markdown. qml/markdown.js escapes the reply before it adds any
-    // formatting, so the reply itself can carry no markup; links open through openLink.
-    TextEdit {
+    // The bot's reply. Prose is Markdown from qml/markdown.js (escaped first, so
+    // the reply can carry no markup). A fenced block is a canvas with a Copy
+    // button, matching the Hermes app. Links open through openLink.
+    Column {
+      id: replyCol
       width: parent.width
       visible: exchange.body !== ""
-      text: exchange.body === "" ? "" : Markdown.toHtml(exchange.body, bubble.markdownStyle)
-      readOnly: true
-      selectByMouse: true
-      color: Theme.text
-      selectionColor: Theme.edgeStrong
-      selectedTextColor: Theme.text
-      font.pixelSize: 13
-      wrapMode: TextEdit.Wrap
-      font.family: app.fontFamily
-      textFormat: TextEdit.RichText
-      onLinkActivated: function (link) { app.openLink(link) }
-      HoverHandler { cursorShape: parent.hoveredLink !== "" ? Qt.PointingHandCursor : Qt.IBeamCursor }
-      onTextChanged: if (exchange.fadeReply && text !== "") replyFade.restart()
+      spacing: 8
+      opacity: 1
+      onVisibleChanged: if (exchange.fadeReply && visible) replyFade.restart()
       NumberAnimation on opacity {
         id: replyFade
         running: false
@@ -1507,6 +1624,127 @@ Rectangle {
         to: 1
         duration: bubble.ms(220)
         easing.type: Easing.OutCubic
+      }
+      Repeater {
+        id: blockRepeater
+        model: exchange.parts.length
+        delegate: Item {
+          required property int index
+          // Index into this exchange's own parts. Reading modelData here
+          // would see the history row (asked/body), not the block.
+          readonly property var block: exchange.parts[index]
+          width: replyCol.width
+          height: block.kind === "code" ? codeCard.height : prose.implicitHeight
+
+          TextEdit {
+            id: prose
+            width: parent.width
+            visible: block.kind !== "code"
+            text: block.kind === "prose" ? block.html : ""
+            readOnly: true
+            selectByMouse: true
+            color: Theme.text
+            selectionColor: Theme.edgeStrong
+            selectedTextColor: Theme.text
+            font.pixelSize: 13
+            wrapMode: TextEdit.Wrap
+            font.family: app.fontFamily
+            textFormat: TextEdit.RichText
+            onLinkActivated: function (link) { app.openLink(link) }
+            HoverHandler { cursorShape: parent.hoveredLink !== "" ? Qt.PointingHandCursor : Qt.IBeamCursor }
+            Keys.priority: Keys.BeforeItem
+            Keys.onPressed: function (event) {
+              if (bubble.isCopyChord(event)) {
+                event.accepted = true
+                if (selectedText !== "") copy()
+                return
+              }
+              if (bubble.isPasteChord(event)) {
+                event.accepted = true
+                bubble.pasteIntoPrompt()
+              }
+            }
+          }
+
+          Rectangle {
+            id: codeCard
+            width: parent.width
+            visible: block.kind === "code"
+            height: codeCol.implicitHeight + 16
+            radius: 10
+            color: Theme.field
+            border.width: 1
+            border.color: Theme.edge
+            // The chip stays at the left of the card. Anchoring it to the right
+            // put it past the card edge: the layer is fullscreen and the thread
+            // does not scroll sideways, so the button was clipped off screen.
+            clip: true
+            Column {
+              id: codeCol
+              x: 10
+              y: 8
+              width: Math.max(0, parent.width - 20)
+              spacing: 6
+              Rectangle {
+                id: copyChip
+                width: 28
+                height: 24
+                radius: 8
+                color: Theme.selected
+                border.width: 1
+                border.color: Theme.edge
+                Canvas {
+                  id: copyMark
+                  anchors.centerIn: parent
+                  width: 14
+                  height: 14
+                  onPaint: {
+                    var ctx = getContext("2d")
+                    ctx.reset()
+                    ctx.strokeStyle = Theme.text
+                    ctx.lineWidth = 1.3
+                    ctx.lineJoin = "miter"
+                    // Two stacked sheets: the copy symbol.
+                    ctx.strokeRect(4.2, 1.2, 8.2, 8.2)
+                    ctx.fillStyle = Theme.selected
+                    ctx.fillRect(1.2, 4.2, 8.2, 8.2)
+                    ctx.strokeRect(1.2, 4.2, 8.2, 8.2)
+                  }
+                }
+                HoverArea {
+                  label: "Copy"
+                  onActivated: bubble.copyText(block.text)
+                }
+              }
+              TextEdit {
+                id: codeText
+                width: parent.width
+                text: block.text || ""
+                readOnly: true
+                selectByMouse: true
+                color: Theme.text
+                selectionColor: Theme.edgeStrong
+                selectedTextColor: Theme.text
+                font.pixelSize: 12
+                font.family: bubble.codeFamily
+                wrapMode: TextEdit.Wrap
+                textFormat: TextEdit.PlainText
+                Keys.priority: Keys.BeforeItem
+                Keys.onPressed: function (event) {
+                  if (bubble.isCopyChord(event)) {
+                    event.accepted = true
+                    if (selectedText !== "") copy()
+                    return
+                  }
+                  if (bubble.isPasteChord(event)) {
+                    event.accepted = true
+                    bubble.pasteIntoPrompt()
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     }
 
