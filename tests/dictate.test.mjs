@@ -71,3 +71,31 @@ test('a transcript handed back by the helper goes in at the field\'s cursor', ()
   assert.doesNotMatch(main, /bubblePanel\.insertText/)
   assert.match(panel, /function insertText\(value\) \{[\s\S]*?promptField\.insert\(at, text\)/)
 })
+
+test('Omarchy forwarding to a stopped Voxtype does not keep Hex from taking the toggle', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blob-dictate-omarchy-'))
+  const bin = path.join(dir, 'bin')
+  const tools = path.join(dir, 'tools')
+  fs.mkdirSync(bin)
+  fs.mkdirSync(tools)
+  for (const name of ['touch', 'rm']) fs.symlinkSync(`/usr/bin/${name}`, path.join(tools, name))
+  const log = path.join(dir, 'log')
+  const write = (name, body) => fs.writeFileSync(path.join(bin, name), body, { mode: 0o755 })
+  // Omarchy 4.5 has `omarchy dictation`, and its default backend is Voxtype, whose daemon is stopped.
+  write('omarchy', '#!/bin/sh\necho "omarchy $*" >> "$DICTATION_LOG"\necho "Error: Voxtype daemon is not running." >&2\necho "Start it with: voxtype daemon" >&2\nexit 1\n')
+  write('voxtype', '#!/bin/sh\necho "voxtype $*" >> "$DICTATION_LOG"\necho "Error: Voxtype daemon is not running" >&2\nexit 1\n')
+  write('hex', '#!/bin/sh\necho "hex $*" >> "$DICTATION_LOG"\ncase "$*" in\n  "status --json") printf \'{"capture":{"state":"idle"}}\'; exit 0 ;;\n  "dictation start") exit 0 ;;\nesac\nexit 2\n')
+  const env = { PATH: bin + ':' + tools, HOME: dir, XDG_CONFIG_HOME: path.join(dir, 'config'), DICTATION_LOG: log }
+  const result = spawnSync('/usr/bin/python3', [path.join(root, 'bin/grokbot-dictate')], { encoding: 'utf8', env })
+  assert.equal(result.status, 0, result.stderr)
+  const calls = fs.readFileSync(log, 'utf8').trim().split('\n')
+  assert.equal(calls[0], 'omarchy dictation toggle')
+  assert.equal(calls[calls.length - 1], 'hex dictation start')
+
+  // Any other Omarchy failure still stops there, so two recordings never start.
+  write('omarchy', '#!/bin/sh\necho "omarchy $*" >> "$DICTATION_LOG"\necho "Superwhisper failed to start recording" >&2\nexit 1\n')
+  fs.rmSync(log)
+  const stopped = spawnSync('/usr/bin/python3', [path.join(root, 'bin/grokbot-dictate')], { encoding: 'utf8', env })
+  assert.equal(stopped.status, 1)
+  assert.deepEqual(fs.readFileSync(log, 'utf8').trim().split('\n'), ['omarchy dictation toggle'])
+})

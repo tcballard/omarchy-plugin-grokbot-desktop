@@ -168,7 +168,17 @@ def try_omarchy() -> str:
         return FAILED
     if result.ok:
         return TOOK
-    return SKIP if unknown_command(result) else FAILED
+    return SKIP if unknown_command(result) or idle_backend(result) else FAILED
+
+
+def idle_backend(result: Result) -> bool:
+    """Omarchy's backend refused before recording: its Voxtype daemon is not running.
+
+    Omarchy 4.5 forwards `omarchy dictation toggle` to its default backend, Voxtype on a
+    fresh install, which fails while its daemon is stopped. Nothing was toggled, the same
+    as when `voxtype record toggle` fails directly, so the next backend may be tried."""
+    said = (result.stdout + "\n" + result.stderr).lower()
+    return "daemon is not running" in said and "voxtype" in said
 
 
 def hex_recording():
