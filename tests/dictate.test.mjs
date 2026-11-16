@@ -26,7 +26,12 @@ test('dictation falls through to Hex, and Hex hands the transcript back for the 
     'esac',
     'exit 2'
   ].join('\n') + '\n')
-  const env = { PATH: bin + ':/usr/bin:/bin', HOME: dir, XDG_CONFIG_HOME: path.join(dir, 'config'), DICTATION_LOG: log, D: dir }
+  // Only the fakes and the two tools they use: a real omarchy, voxtype or hex on this machine
+  // must not answer for them.
+  const tools = path.join(dir, 'tools')
+  fs.mkdirSync(tools)
+  for (const name of ['touch', 'rm']) fs.symlinkSync(`/usr/bin/${name}`, path.join(tools, name))
+  const env = { PATH: bin + ':' + tools, HOME: dir, XDG_CONFIG_HOME: path.join(dir, 'config'), DICTATION_LOG: log, D: dir }
   const dictate = () => spawnSync('/usr/bin/python3', [path.join(root, 'bin/grokbot-dictate')], { encoding: 'utf8', env })
   const calls = () => fs.readFileSync(log, 'utf8').trim().split('\n').filter((l) => l.startsWith('hex'))
 
@@ -61,6 +66,8 @@ test('a transcript handed back by the helper goes in at the field\'s cursor', ()
   const main = fs.readFileSync(path.join(root, 'Main.qml'), 'utf8')
   const panel = fs.readFileSync(path.join(root, 'BubblePanel.qml'), 'utf8')
   assert.match(main, /id: dictateProc\n\s*command: \["\/usr\/bin\/python3", "-I", root\.dictateHelper\]\n\s*stdout: StdioCollector/)
-  assert.match(main, /if \(bubblePanel\) bubblePanel\.insertText\(text\)/)
+  // The card lives in each output's window: the transcript goes to the one on screen.
+  assert.match(main, /if \(root\.hostBubble\) root\.hostBubble\.insertText\(text\)/)
+  assert.doesNotMatch(main, /bubblePanel\.insertText/)
   assert.match(panel, /function insertText\(value\) \{[\s\S]*?promptField\.insert\(at, text\)/)
 })
