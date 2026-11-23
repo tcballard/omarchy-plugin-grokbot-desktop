@@ -1041,7 +1041,7 @@ test('closing the bubble keeps an ask running and a busy prompt is kept', () => 
   // A lit dot is an unread notice, so every path that lights it also stamps
   // the interaction clock. That is what brings a Rest- or Dodge-faded mark
   // back to full visibility the moment the dot appears.
-  for (const path of ['markUnread', 'noteClosedNews', 'replyLanded', 'showPrompt', 'daemonEffect', 'daemonTell']) {
+  for (const path of ['markUnread', 'replyLanded', 'showPrompt', 'daemonEffect', 'daemonTell']) {
     const body = qmlFunction(main, path)
     assert.match(body, /root\.replyUnread = true/, path)
     assert.match(body, /root\.noteInteraction\(\)/, path)
@@ -1629,7 +1629,7 @@ test('the appearance page says what Dodge does', () => {
   assert.match(main, /function setYield\(value\)/)
   assert.match(main, /function setIdleMinutes\(value\)/)
   assert.match(main, /function updatePresence\(\)/)
-  assert.match(qmlFunction(main, 'noteClosedNews'), /noteInteraction\(\)/)
+  assert.match(qmlFunction(main, 'markUnread'), /noteInteraction\(\)/)
 })
 
 test('the desktop mark turns its face as Grok Bot moves Bob', async () => {
