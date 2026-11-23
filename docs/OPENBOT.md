@@ -118,6 +118,21 @@ with `sudo` or `command` in front of an `ssh` binary of any path, that script is
 a single quoted remote argument. A hop that is not SSH receives the script as its
 own argument, which is what `bash -lc` expects.
 
+The script needs bash (it uses `read -n`, `$'\r'` and process substitution), so
+the hop must end in `bash -c` or `bash -lc`. Ending an SSH hop at the host
+(`ssh user@openbot-host`) runs the script in the remote login shell, which fails
+when that shell is not bash. Wrappers other than `sudo` or `command` in front of
+`ssh` (for example `env` or `timeout`) are not recognised as SSH, so put them
+after the host instead.
+
+While a reply is pending, the adapter reads the delivery about once a second and
+the pending list about every five seconds. Each read is one hop. Over SSH, use
+connection sharing so these reads reuse one connection:
+
+```text
+ssh -o BatchMode=yes -o ConnectTimeout=8 -o ControlMaster=auto -o ControlPath=~/.ssh/cm-%C -o ControlPersist=60 user@openbot-host docker exec -i openbot bash -lc
+```
+
 ```json
 {
   "providers": {

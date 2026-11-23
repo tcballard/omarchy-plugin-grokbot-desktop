@@ -400,6 +400,10 @@ class OpenBot:
         self.fallback = timeout
         self.entry = {}
         self.poll_interval = poll_interval
+        # Each pending read is another hop (an SSH connection for a remote host).
+        # Delivery status is polled every poll_interval; pending is read on the
+        # first busy poll and then at most this often.
+        self.pending_interval = 5
         self.emit = None
         self.tasks = {}
         self.active = {}
@@ -685,6 +689,7 @@ class OpenBot:
         last = None
         failures = 0
         pending_failures = 0
+        pending_at = None
         seen = set()
         try:
             while True:
@@ -717,7 +722,9 @@ class OpenBot:
                                 {"code": "internal_error", "message": "OpenBot polling failed.",
                                  "retryable": False}, remote=True)
                     return
-                if status in ACTIVE and pending_failures < 3:
+                if (status in ACTIVE and pending_failures < 3
+                        and (pending_at is None or loop.time() - pending_at >= self.pending_interval)):
+                    pending_at = loop.time()
                     pending_failures = await self._pending(
                         request, agent, seen, pending_failures, max(1, min(remaining, 45)))
                 if status in TERMINAL:

@@ -160,6 +160,39 @@ class HelperTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertTrue(called.exists())
 
+    def test_body_is_read_only_after_the_capped_copy_is_complete(self):
+        # curl may exit before the process substitution that caps the body has
+        # finished writing it. The script must wait for that copy, not read early.
+        auto = self.root/"automation"
+        auto.mkdir()
+        (auto/"headers").write_text("Authorization: Bearer %s\n" % SECRET)
+        (auto/"url").write_text("http://127.0.0.1:9\n")
+        bindir = self.root/"bin"
+        bindir.mkdir()
+        curl = bindir/"curl"
+        curl.write_text(textwrap.dedent("""\
+            #!/usr/bin/env python3
+            import os, sys, time
+            args = sys.argv[1:]
+            output = args[args.index("--output") + 1]
+            fd = os.open(output, os.O_WRONLY)
+            if os.fork() == 0:
+                # The body lands after curl has already exited.
+                os.close(1)
+                os.close(2)
+                time.sleep(0.3)
+                os.write(fd, b'[{"id":"agent-1","name":"Late"}]')
+                os._exit(0)
+            os.close(fd)
+            sys.stdout.write("200")
+        """))
+        curl.chmod(0o755)
+        script = self.helper.remote_script("GET", "/v1/agents", directory=str(auto), timeout=5)
+        proc = subprocess.run(["bash", "-c", script], capture_output=True, timeout=10,
+                              env={**os.environ, "PATH": "%s:%s" % (bindir, os.environ.get("PATH", ""))})
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertEqual(proc.stdout.strip(), b'[{"id":"agent-1","name":"Late"}]')
+
     def test_raw_hop_stderr_is_not_forwarded(self):
         bad = self.root/"bad.py"
         bad.write_text(textwrap.dedent("""\
@@ -444,6 +477,38 @@ class AdapterHelperTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('provider === "openbot" ? "OpenBot" : "Hermes"', qml)
         self.assertNotIn("Open Hermes to review and answer this one.", qml)
 
+
+
+class PendingCadenceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_pending_is_read_on_the_first_busy_poll_and_then_throttled(self):
+        calls = []
+        polls = {"n": 0}
+
+        async def fake(args, payload=None, timeout=45):
+            calls.append(args[0])
+            if args[0] == "send":
+                return json.dumps({"deliveries": [{"id": "delivery-1", "recipientAgentId": "agent-1"}]}).encode()
+            if args[0] == "pending":
+                return b'{"prompts": [], "approvals": [], "browserTakeovers": []}'
+            polls["n"] += 1
+            status = "running" if polls["n"] < 20 else "completed"
+            return json.dumps({"id": "delivery-1", "recipientAgentId": "agent-1", "status": status,
+                               "answer": "done" if status == "completed" else None}).encode()
+
+        adapter = OpenBot(hop="bash -c", poll_interval=0, timeout=30)
+        adapter.configured = True
+        adapter.entry = {}
+        adapter.fallback = 30
+        adapter._run = fake
+        finished = asyncio.get_running_loop().create_future()
+        adapter.emit = lambda name, params: (name == "message.finished" and not finished.done()
+                                             and finished.set_result(params))
+        await adapter.call("message.send", {"agentId": "agent-1", "requestId": "turn-1", "text": "hi"})
+        result = await asyncio.wait_for(finished, 5)
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(calls.count("delivery"), 20)
+        # Nineteen busy polls in well under the interval: one pending read, not nineteen.
+        self.assertEqual(calls.count("pending"), 1)
 
 if __name__ == "__main__":
     unittest.main()
