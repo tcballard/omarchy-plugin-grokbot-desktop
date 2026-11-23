@@ -121,11 +121,17 @@ class Output:
         self.task = asyncio.create_task(self.run())
 
     def put(self, value):
+        # Once a frame has been refused, later ones must not follow it. A
+        # higher sequence after a hole is the "gap or duplicate" the card shows.
+        if self.failure.done():
+            return False
         try:
             self.queue.put_nowait(encode(value))
+            return True
         except asyncio.QueueFull:
             if not self.failure.done():
                 self.failure.set_result(Fault("limit_exceeded", "Protocol consumer is too slow."))
+            return False
 
     async def run(self):
         while True:
@@ -157,9 +163,15 @@ class Server:
         backend.emit = self.event
 
     def event(self, name, params):
-        self.sequence += 1
-        self.output.put({"v": VERSION, "epoch": self.epoch, "seq": self.sequence,
-                         "event": name, "params": params})
+        failed = getattr(self.output, "failure", None)
+        if failed is not None and failed.done():
+            return
+        nxt = self.sequence + 1
+        sent = self.output.put({"v": VERSION, "epoch": self.epoch, "seq": nxt,
+                                "event": name, "params": params})
+        # False means the frame was refused. Older outputs return None.
+        if sent is not False:
+            self.sequence = nxt
 
     def reply(self, op, result=None, fault=None):
         frame = {"v": VERSION, "epoch": self.epoch, "id": op}

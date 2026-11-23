@@ -97,6 +97,11 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
             output.put({'n': i})
         self.assertEqual(output.failure.result().code, 'limit_exceeded')
         self.assertEqual(output.queue.qsize(), 32)
+        # A slot opening after the refusal must not carry a later frame.
+        # That hole was the sequence gap on the card.
+        output.queue.get_nowait()
+        self.assertFalse(output.put({'n': 33}))
+        self.assertEqual(output.queue.qsize(), 31)
         await output.close()
     async def test_partial_lines(self):
         reader = asyncio.StreamReader()
