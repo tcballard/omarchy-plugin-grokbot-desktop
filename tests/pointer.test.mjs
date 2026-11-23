@@ -209,3 +209,31 @@ test('the appearance IPC picks like the appearance page does', () => {
   for (const file of ['qml/CompanionShellIpc.qml', 'qml/CompanionIpcHandler.qml'])
     assert.match(read(file), /function appearance\(shape: string, color: string\): string \{\s*return host\.setAppearance\(shape, color\)/);
 });
+
+test('"load earlier" waits for a refresh in flight instead of misfiling its page', () => {
+  const runs = [];
+  const historyProc = {running: true};
+  const info = {};
+  const root = harness(['loadOlder', 'setOlder'], {
+    threadBotId: 'h', history: [], olderCap: 100, historyRefresh: true, olderWanted: false,
+    olderInfo: {h: {more: true, loading: false, key: 'cur1'}},
+    runHistory(bot, cursor) { if (historyProc.running) return false; runs.push(cursor); historyProc.running = true; return true; }
+  }, {historyProc, info});
+  assert.equal(root.loadOlder(), 'ok');
+  assert.equal(root.historyRefresh, true, 'the refresh in flight keeps its flag');
+  assert.equal(root.olderWanted, true);
+  assert.equal(root.olderInfo.h.loading, true);
+  assert.deepEqual(runs, []);
+  root.olderWanted = false;
+  root.historyRefresh = false;
+  root.olderInfo = {h: {more: true, loading: false, key: 'cur1'}};
+  assert.equal(root.loadOlder(), 'busy');
+  historyProc.running = false;
+  assert.equal(root.loadOlder(), 'ok');
+  assert.deepEqual(runs, ['cur1']);
+});
+
+test('the history poll leaves an ask in flight alone and slows while the card is closed', () => {
+  assert.match(method('refreshHistory'), /root\.daemonMode \|\| !root\.present \|\| root\.asking \|\| historyProc\.running/);
+  assert.match(main, /id: historyRefreshTimer\n(\s*\/\/.*\n)*\s*interval: root\.bubbleOpen \? 2000 : 30000/);
+});

@@ -46,3 +46,16 @@ test('an unchanged page does not look like a new thread', () => {
   const rows = [{ key: 'a', asked: 'one', body: 'first' }]
   assert.equal(context.sameThread(rows, context.mergeExchanges(rows, rows, null, 200)), true)
 })
+
+test('two keyed turns with the same reply stay apart', () => {
+  const existing = [
+    { key: 'a', asked: 'ok', body: 'Done.' },
+    { key: 'b', asked: 'ok thanks', body: 'Done.' },
+    { key: 'c', asked: '', body: 'Done.' }
+  ]
+  const merged = context.mergeExchanges(existing, existing, null, 200)
+  assert.equal(merged.map((row) => row.key).join(','), 'a,b,c')
+  const fresh = context.mergeExchanges([{ key: 'a', asked: 'ok', body: 'Done.' }],
+    [{ key: 'd', asked: 'ok', body: 'Done.' }], null, 200)
+  assert.equal(fresh.length, 2)
+})

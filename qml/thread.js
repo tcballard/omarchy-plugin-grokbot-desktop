@@ -7,7 +7,9 @@
 
 function sameExchange(a, b) {
   if (!a || !b) return false
-  if (a.key && b.key && String(a.key) === String(b.key)) return true
+  // Both rows carry a gateway key: the key alone decides. Two turns can share
+  // a reply and must stay apart.
+  if (a.key && b.key) return String(a.key) === String(b.key)
   return String(a.asked || "") === String(b.asked || "") && String(a.body || "") === String(b.body || "") && String(b.body || "") !== ""
 }
 

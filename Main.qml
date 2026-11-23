@@ -1188,20 +1188,21 @@ Item {
     var bot = root.findBot(botId)
     if (!bot || !bot.provider || bot.provider === "grokbot") return
     if (root.history.length > 0 || root.askedText !== "" || root.bubbleBody !== "" || root.asking) return
-    root.historyRefresh = false
+    // A refresh still in flight keeps its flag: clearing it here would file that
+    // page as a first fill and reset the "load earlier" cursor.
     if (!root.runHistory(botId, "")) return
+    root.historyRefresh = false
     var tried = Object.assign({}, root.historyTried)
     tried[botId] = true
     root.historyTried = tried
   }
 
   // The Hermes app writes the same Bot Chat through the one host gateway.
-  // Re-read the latest page while this bubble is open and append what it has
-  // that this thread does not. An ask in flight is left alone.
+  // Re-read the latest page while the mark is on screen and append what it has
+  // that this thread does not. An ask in flight is left alone: its own reply
+  // lands through the live slot, and the refresh after it ends files the turn.
   function refreshHistory() {
-    // Poll while the mark is on screen, including while the card is closed,
-    // so a reply that lands in the Hermes app can light the dot.
-    if (root.daemonMode || !root.present || historyProc.running) return
+    if (root.daemonMode || !root.present || root.asking || historyProc.running) return
     var botId = root.threadBotId
     var bot = root.findBot(botId)
     if (!bot || !bot.provider || bot.provider === "grokbot") return
@@ -1254,12 +1255,21 @@ Item {
       else root.applyHistory(botId, data.items, next)
       root.historyRefresh = false
     }
+    if (root.olderWanted) {
+      root.olderWanted = false
+      var wanted = root.threadBotId
+      root.setOlder(wanted, { loading: false })
+      Qt.callLater(function () { if (root.loadOlder() !== "ok") root.setOlder(wanted, { loading: false }) })
+      return
+    }
     if (botId !== root.threadBotId) Qt.callLater(function () { root.maybeLoadHistory(); root.refreshHistory() })
   }
 
   Timer {
     id: historyRefreshTimer
-    interval: 2000
+    // Every read is a new helper process and a gateway call. Poll briskly only
+    // while the card is open; with it closed, a slow poll still lights the dot.
+    interval: root.bubbleOpen ? 2000 : 30000
     repeat: true
     triggeredOnStart: true
     running: root.present && !root.daemonMode
@@ -1323,13 +1333,24 @@ Item {
     root.threads = threads
   }
 
+  // "Load earlier" asked for while a refresh held the history process.
+  property bool olderWanted: false
+
   function loadOlder() {
     var bot = root.threadBotId
     var info = root.olderInfo[bot]
     if (!info || !info.more || info.loading || !info.key) return "nothing"
     if (root.history.length >= root.olderCap) return "limit"
-    root.historyRefresh = false
+    // A background refresh may hold the one history process. Wait for it
+    // instead of reporting busy, and keep its flag so its page files correctly.
+    if (historyProc.running) {
+      if (!root.historyRefresh) return "busy"
+      root.olderWanted = true
+      root.setOlder(bot, { loading: true })
+      return "ok"
+    }
     if (!root.runHistory(bot, info.key)) return "busy"
+    root.historyRefresh = false
     root.setOlder(bot, { loading: true })
     return "ok"
   }
