@@ -26,7 +26,7 @@ def configuration():
 
 def client_for(provider):
     from .client import Client
-    if provider not in ('grokbot', 'hermes', 'example'):
+    if provider not in ('grokbot', 'hermes', 'example', 'openbot'):
         raise Fault('unsupported', 'Unknown provider.')
     config = configuration()
     providers = config.get('providers', {})

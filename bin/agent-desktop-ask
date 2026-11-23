@@ -106,7 +106,7 @@ async def streamed(client, params, reader, on_event, out):
 
 async def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--provider', choices=['grokbot', 'hermes', 'example'], default='grokbot')
+    parser.add_argument('--provider', choices=['grokbot', 'hermes', 'example', 'openbot'], default='grokbot')
     args = parser.parse_args()
     loop = asyncio.get_running_loop()
     reader = asyncio.StreamReader(limit=MAX_FRAME + 1)
@@ -114,9 +114,19 @@ async def main():
     payload = decode(await reader.readline())
     params = dict(agentId=identifier(payload.get('botId')), requestId=identifier(payload.get('askId')),
                   text=text(payload.get('prompt'), MAX_PROMPT), attachments=payload.get('attachments', []))
-    seconds = timeout_seconds()
-    params['timeoutSeconds'] = seconds
     provider = payload.get('provider', args.provider)
+    if not isinstance(provider, str) or not provider:
+        provider = args.provider
+    # OpenBot's own timeoutSeconds wins over the shared desktop ask timeout.
+    # Passing the shared value on every request hid the provider setting.
+    from agent_desktop.openbot import ask_timeout, openbot_entry
+    entry = openbot_entry() if provider == 'openbot' else {}
+    own = isinstance(entry, dict) and entry.get('timeoutSeconds') is not None
+    explicit = isinstance(payload, dict) and 'timeoutSeconds' in payload
+    shared = timeout_seconds() if provider != 'openbot' or not (own or explicit) else 180
+    seconds, pass_timeout = ask_timeout(provider, payload, shared, entry)
+    if pass_timeout:
+        params['timeoutSeconds'] = seconds
     stream = payload.get('stream') is True
 
     def out(event):
@@ -133,6 +143,9 @@ async def main():
             await client.start()
             def on_event(frame):
                 if frame.get('event') == 'prompt.required' and not stream:
+                    if provider == 'openbot':
+                        # Keep waiting. Pending questions are a handoff, not a stopped turn.
+                        return
                     raise Fault('approval_required', 'Hermes needs input or approval. Open Hermes to review it; this desktop request has stopped.')
                 if not stream:
                     return

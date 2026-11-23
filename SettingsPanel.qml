@@ -337,6 +337,82 @@ Item {
 
       SettingsGroup {
         width: parent.width
+        visible: !drawer.behaviourOnly
+        title: "Workspaces"
+        fontFamily: app.fontFamily
+        Text {
+          text: "SHOW ON"
+          color: Theme.textFaint
+          font.pixelSize: 10
+          font.weight: Font.DemiBold
+          font.family: app.fontFamily
+          textFormat: Text.PlainText
+        }
+        SettingsAction {
+          width: parent.width
+          fontFamily: app.fontFamily
+          title: "All workspaces"
+          detail: "Every workspace on this monitor"
+          selected: app.workspaceMode !== "selected"
+          chevron: false
+          onActivated: app.setWorkspaceMode("all")
+        }
+        SettingsAction {
+          width: parent.width
+          fontFamily: app.fontFamily
+          title: "Selected workspace"
+          detail: "Only one workspace"
+          selected: app.workspaceMode === "selected"
+          chevron: false
+          onActivated: app.setWorkspaceMode("selected")
+        }
+        Flow {
+          visible: app.workspaceMode === "selected"
+          width: parent.width
+          spacing: 6
+          Repeater {
+            model: 10
+            delegate: Rectangle {
+              required property int index
+              readonly property int number: index + 1
+              readonly property bool active: app.workspaceNumber === number
+              width: 36
+              height: 32
+              radius: 10
+              color: active ? Theme.selected : Theme.raised
+              border.width: active ? 1.5 : 1
+              border.color: active ? drawer.tone : Theme.edgeSoft
+              Text {
+                anchors.centerIn: parent
+                text: parent.number
+                color: parent.active ? Theme.text : Theme.textMuted
+                font.pixelSize: 12
+                font.family: app.fontFamily
+                font.weight: parent.active ? Font.DemiBold : Font.Normal
+                textFormat: Text.PlainText
+              }
+              HoverArea {
+                label: "Workspace " + parent.number
+                onActivated: app.setWorkspace(parent.number)
+              }
+            }
+          }
+        }
+        Text {
+          width: parent.width
+          text: app.workspaceMode === "selected"
+            ? "Shows only on workspace " + app.workspaceNumber + "."
+            : "Shows on every workspace."
+          color: Theme.textFaint
+          font.pixelSize: 11
+          font.family: app.fontFamily
+          wrapMode: Text.WordWrap
+          textFormat: Text.PlainText
+        }
+      }
+
+      SettingsGroup {
+        width: parent.width
         visible: !drawer.embedded || drawer.behaviourOnly
         title: "Motion & placement"
         fontFamily: app.fontFamily

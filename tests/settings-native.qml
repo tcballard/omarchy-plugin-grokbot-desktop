@@ -12,7 +12,7 @@ Rectangle {
   property string cardPage: "appearance"
   property string settingsProvider: "grokbot"
   property string fontFamily: "Sans Serif"
-  property var bots: [{id:"bob",name:"Bob the Bot",provider:"grokbot"}, {id:"hermes:default",name:"Personal assistant",provider:"hermes"}]
+  property var bots: [{id:"bob",name:"Bob the Bot",provider:"grokbot"}, {id:"hermes:default",name:"Personal assistant",provider:"hermes"}, {id:"openbot:grok",name:"Grok Bridge",provider:"openbot"}]
   property string chosenBotId: "bob"
   property string shownColor: "orange"
   property string canonicalShape: "teardrop"
@@ -25,6 +25,8 @@ Rectangle {
   property string anchorName: "br"
   property string motionName: "calm"
   property string sizeName: "medium"
+  property string workspaceMode: "all"
+  property int workspaceNumber: 1
   property bool discoveringProviders: false
   property bool syncingRoster: false
   property string syncStatus: ""
@@ -59,6 +61,8 @@ Rectangle {
   function selectColor(name) { shownColor = name }
   function setMotion(value) { motionName = value }
   function setSync(value) { syncOn = value }
+  function setWorkspaceMode(mode) { workspaceMode = mode === "selected" ? "selected" : "all" }
+  function setWorkspace(number) { workspaceNumber = number }
   function loadHermesSettings() {}
   PreferencesPanel { id: panel; x:16; y:16; width:mock.width-32; height:mock.height-32; app:mock }
 }

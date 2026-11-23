@@ -27,11 +27,26 @@ def descendants(item):
     for child in item.childItems():
         yield from descendants(child)
 
+def reveal(item):
+    # Appearance content is taller than the settings card. Scroll each
+    # Flickable ancestor so the control sits in the viewport before the click.
+    parent = item.parentItem()
+    while parent is not None:
+        height = parent.property('contentHeight')
+        offset = parent.property('contentY')
+        if height is not None and offset is not None and parent.height() > 0 and height > parent.height():
+            centre = item.mapToItem(parent, QPointF(0, item.height() / 2)).y()
+            limit = max(0, height - parent.height())
+            parent.setProperty('contentY', min(max(centre - parent.height() / 2, 0), limit))
+        parent = parent.parentItem()
+
 def click(label):
     settle()
     candidates = [item for item in descendants(root) if item.property('label') == label and item.isVisible() and item.isEnabled()]
     assert len(candidates) == 1, (label, len(candidates), root.property('settingsSection'), messages)
     item = candidates[0]
+    reveal(item)
+    settle()
     point = item.mapToScene(QPointF(item.width()/2, item.height()/2)).toPoint()
     QTest.mouseClick(view, Qt.LeftButton, Qt.NoModifier, point)
     settle()
@@ -48,6 +63,13 @@ capture('settings')
 click('Appearance')
 assert root.property('settingsSection') == 'appearance'
 capture('appearance')
+click('Selected workspace')
+assert root.property('workspaceMode') == 'selected'
+click('Workspace 2')
+assert root.property('workspaceNumber') == 2
+capture('workspace')
+click('All workspaces')
+assert root.property('workspaceMode') == 'all'
 click('Behaviour')
 click('Hyper')
 assert root.property('motionName') == 'hyper'

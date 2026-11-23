@@ -11,6 +11,7 @@ import "qml/palette.js" as Palette
 import "qml/dictation.js" as Dictation
 import "qml/theme.js" as Theme
 import "qml/screens.js" as Screens
+import "qml/workspace.js" as Workspace
 import "qml/openbotavatar.js" as Avatar
 
 // Grok Bot desktop companion. A service inside omarchy-shell: a transparent
@@ -307,6 +308,12 @@ Item {
   property bool idleOn: true
   property string motionName: "calm"
   property string anchorName: "br"
+  // "all" keeps the layer mapped on every workspace of its monitor, which is
+  // how Hyprland shows a layer surface. "selected" unmaps it unless that
+  // monitor's active workspace id is workspaceNumber (1–10).
+  property string workspaceMode: "all"
+  property int workspaceNumber: 1
+  property int workspaceRevision: 0
   property bool rosterExpanded: false
   property string askedText: ""
   property bool syncOn: true
@@ -655,7 +662,7 @@ Item {
       out.push({
         id: String(item.id),
         agentId: String(item.agentId || item.id),
-        provider: item.provider === "hermes" || item.provider === "example" ? item.provider : "grokbot",
+        provider: item.provider === "hermes" || item.provider === "example" || item.provider === "openbot" ? item.provider : "grokbot",
         name: String(item.name),
         shortName: String(item.shortName || ""),
         description: String(item.description || ""),
@@ -723,7 +730,7 @@ Item {
   // bot, then the first, as Grok Bot itself falls back.
   function settleChosenBot() {
     if (root.findBot(root.chosenBotId)) return
-    if (/^(hermes|example):/.test(root.chosenBotId)) return
+    if (/^(hermes|example|openbot):/.test(root.chosenBotId)) return
     var primary = root.primaryBot()
     root.chosenBotId = primary ? primary.id : root.defaultBotId
   }
@@ -744,7 +751,7 @@ Item {
 
   function currentBot() {
     var found = root.findBot(root.chosenBotId)
-    if (!found && /^(hermes|example):/.test(root.chosenBotId)) {
+    if (!found && /^(hermes|example|openbot):/.test(root.chosenBotId)) {
       return { id: root.chosenBotId, provider: root.chosenBotId.split(":")[0],
         name: "Unavailable agent", shortName: "Unavailable agent", description: "Refresh providers to reconnect" }
     }
@@ -908,6 +915,8 @@ Item {
     if (/^[A-Za-z0-9._-]{1,64}$/.test(monitor)) root.homeMonitor = monitor
     root.posRight = root.settingInt("marginX", 24, 0, 4000)
     root.posBottom = root.settingInt("marginY", 24, 0, 4000)
+    root.workspaceMode = Workspace.normalizeMode(root.setting("workspaceMode", "all"))
+    root.workspaceNumber = root.settingInt("workspace", 1, Workspace.MIN_WORKSPACE, Workspace.MAX_WORKSPACE)
     if (root.bots.length === 0) root.applyBots("")
     if (root.rosterRead) root.settleChosenBot()
     root.ready = true
@@ -922,6 +931,7 @@ Item {
     cursorProc.running = root.cursorHelper !== ""
     layerRuleProc.running = true
     grokAppCheck.running = true
+    root.noteWorkspace("workspace")
   }
 
   // Hyprland animates layer surfaces as they map, which would pop the
@@ -957,7 +967,47 @@ Item {
       var name = String(event.name)
       if (name === "configreloaded" && !layerRuleProc.running) layerRuleProc.running = true
       else root.hyprWindowEvent(name, String(event.data || ""))
+      root.noteWorkspace(name)
     }
+  }
+
+  // Workspace events refresh the monitor list Quickshell keeps from the
+  // Hyprland socket, then bump a revision so each output re-reads the
+  // workspace it is showing. Moving a workspace between monitors is the
+  // case Quickshell has missed without an explicit refresh.
+  function noteWorkspace(name) {
+    if (name !== "workspace" && name !== "workspacev2" && name !== "focusedmon"
+        && name !== "moveworkspace" && name !== "moveworkspacev2"
+        && name !== "activespecial" && name !== "configreloaded") return
+    try {
+      if (typeof Hyprland.refreshMonitors === "function") Hyprland.refreshMonitors()
+    } catch (e) {}
+    root.workspaceRevision = root.workspaceRevision + 1
+  }
+
+  function hyprMonitorSnapshots() {
+    var model = Hyprland.monitors
+    if (!model) return []
+    var raw = model.values ? model.values : model
+    var out = []
+    var n = raw.length !== undefined ? raw.length : (raw.count || 0)
+    var i
+    for (i = 0; i < n; i++) {
+      var mon = raw[i]
+      if (!mon && raw.objectAt) mon = raw.objectAt(i)
+      if (!mon) continue
+      var ws = mon.activeWorkspace
+      out.push({ name: String(mon.name || ""), activeWorkspace: ws ? { id: Number(ws.id) } : null })
+    }
+    return out
+  }
+
+  function workspaceIdForMonitor(name) {
+    if (root.workspaceRevision < 0) return 0
+    var focused = null
+    if (Hyprland.focusedMonitor && Hyprland.focusedWorkspace)
+      focused = { name: String(Hyprland.focusedMonitor.name || ""), id: Number(Hyprland.focusedWorkspace.id) }
+    return Workspace.workspaceIdOn(root.hyprMonitorSnapshots(), name, focused)
   }
 
   // The companion steps aside while Omarchy's screensaver runs. It is named
@@ -1074,6 +1124,8 @@ Item {
     settings.anchor = root.anchorName
     settings.idleMotion = root.motionName !== "calm"
     if (/^[A-Za-z0-9._-]{1,64}$/.test(root.homeMonitor)) settings.monitor = root.homeMonitor
+    settings.workspaceMode = root.workspaceMode
+    settings.workspace = root.workspaceNumber
     root.shell.updateEntryInline(root.pluginId, settings)
   }
 
@@ -1390,6 +1442,20 @@ Item {
 
   // Changing corners pops the mark out where it is and back in at the new
   // corner, rather than sliding it across whatever is on the desktop.
+  function setWorkspaceMode(mode) {
+    var next = Workspace.normalizeMode(mode)
+    if (next === root.workspaceMode) return
+    root.workspaceMode = next
+    root.scheduleSave()
+  }
+
+  function setWorkspace(number) {
+    var next = Workspace.normalizeWorkspace(number)
+    if (next === root.workspaceNumber) return
+    root.workspaceNumber = next
+    root.scheduleSave()
+  }
+
   function setAnchor(name) {
     if (name !== "br" && name !== "bl" && name !== "tr" && name !== "tl") return
     if (name === root.anchorName) return
@@ -2123,6 +2189,12 @@ Item {
   readonly property bool clarifyHere: root.clarifyWaiting[root.threadBotId] !== undefined
   readonly property var approvalLabels: ({ once: "Allow once", session: "Allow this session", always: "Always allow", deny: "Deny" })
 
+  function reviewIn(botId) {
+    var bot = root.findBot(botId)
+    var provider = bot && bot.provider ? bot.provider : String(botId || "").split(":")[0]
+    return provider === "openbot" ? "OpenBot" : "Hermes"
+  }
+
   // The ask ended with prompts still showing: nothing here can answer them now.
   function retirePrompts() {
     var ids = {}
@@ -2136,7 +2208,9 @@ Item {
     })
     Object.keys(root.clarifyWaiting).forEach(function (bot) { ids[root.clarifyWaiting[bot]] = true })
     Object.keys(root.activePrompts).forEach(function (id) { ids[id] = true })
-    Object.keys(ids).forEach(function (id) { root.dropPromptLinks(id, "(No longer answerable here; open Hermes.)") })
+    Object.keys(ids).forEach(function (id) {
+      root.dropPromptLinks(id, "(No longer answerable here; open " + root.reviewIn(root.activePrompts[id] || "") + ".)")
+    })
     root.pendingAnswers = ({})
   }
 
@@ -2180,7 +2254,7 @@ Item {
       root.activePrompts = active
     }
     if (!ev.answerable) {
-      text = (ev.kind === "approval" ? "Needs your approval: " : "") + (text || "a request") + "\n\nOpen Hermes to review and answer this one."
+      text = (ev.kind === "approval" ? "Needs your approval: " : "") + (text || "a request") + "\n\nOpen " + root.reviewIn(bot) + " to review and answer this one."
     } else if (ev.kind === "approval") {
       var command = root.cleanText(ev.command, 4000)
       var fence = "```"
@@ -3055,7 +3129,12 @@ Item {
     property var stageItem: stage
     property var bubbleItem: bubblePanel
     screen: modelData
-    visible: root.present && root.targetScreen !== null && root.layerRuleTried && !root.screensaverUp && (activeHere || holdingDrag)
+    // Layers have no workspace of their own. In selected mode this output's
+    // window stays unmapped unless that monitor is showing workspaceNumber.
+    // A drag keeps both ends mapped so the drop can finish.
+    readonly property int monitorWorkspaceId: root.workspaceIdForMonitor(String(modelData.name || ""))
+    readonly property bool workspaceMapped: Workspace.layerMapped(root.workspaceMode, root.workspaceNumber, monitorWorkspaceId, root.dragging && (activeHere || holdingDrag))
+    visible: root.present && root.targetScreen !== null && root.layerRuleTried && !root.screensaverUp && (activeHere || holdingDrag) && workspaceMapped
     onActiveHereChanged: if (activeHere) root.claimHost(win, markItem, stageItem, bubbleItem)
     Component.onCompleted: if (activeHere) root.claimHost(win, markItem, stageItem, bubbleItem)
     Component.onDestruction: {
