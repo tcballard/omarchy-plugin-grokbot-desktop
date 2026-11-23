@@ -46,7 +46,7 @@ function promptHarness() {
     threadBotId: 'hermes:a', askBotId: 'hermes:a', asking: true, askStreaming: true,
     history: [], threads: {}, noticeLinks: [], clarifyWaiting: {}, activePrompts: {}, pendingAnswers: {},
     pendingFiles: [], promptDraft: '', approvalLabels: { once: 'Allow once', deny: 'Deny' },
-    findBot: (id) => ({ id }), cleanText: plain, plainLine: plain, flashExpression() {},
+    findBot: (id) => ({ id }), cleanText: plain, plainLine: plain, flashExpression() {}, noteInteraction() {},
     appendReply() { throw new Error('Answer failure must retain the prompt') },
   }, { askProc, askTimeout: { stop() {} } })
   Object.defineProperty(root, 'clarifyHere', { get: () => root.clarifyWaiting[root.threadBotId] !== undefined })
@@ -155,7 +155,7 @@ test('finishing a background history fetch starts the newly selected bot', () =>
     historyBot: 'hermes:a', threadBotId: 'hermes:b', historyOlder: false,
     historyTried: { 'hermes:a': true }, history: [], askedText: '', bubbleBody: '', asking: false,
     findBot: (id) => ({ id, provider: 'hermes' }), runHistory(id) { runs.push(id); return true },
-    applyHistory() {},
+    applyHistory() {}, refreshHistory() {},
   }, { Qt: { callLater: (fn) => queued.push(fn) } })
   root.finishHistory(0, '{"items":[],"nextCursor":null}')
   queued.forEach((fn) => fn())
