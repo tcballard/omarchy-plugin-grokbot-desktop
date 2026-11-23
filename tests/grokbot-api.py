@@ -145,9 +145,10 @@ class GrokBotTests(unittest.IsolatedAsyncioTestCase):
             proc.stdin.close()
             marker = self.home/'worker'
             for _ in range(200):
-                if marker.exists(): break
+                if marker.exists() and marker.read_text().strip(): break
                 await asyncio.sleep(.01)
-            self.assertTrue(marker.exists())
+            # The child creates the file before it writes its pid: wait for the pid itself.
+            self.assertTrue(marker.exists() and marker.read_text().strip())
             pid = int(marker.read_text())
             proc.terminate()
             await asyncio.wait_for(proc.wait(), 8)
@@ -172,9 +173,10 @@ while True: time.sleep(.1)
         await self.send()
         marker = self.home/'descendant'
         for _ in range(200):
-            if marker.exists(): break
+            if marker.exists() and marker.read_text().strip(): break
             await asyncio.sleep(.01)
-        self.assertTrue(marker.exists())
+        # The child creates the file before it writes its pid: wait for the pid itself.
+        self.assertTrue(marker.exists() and marker.read_text().strip())
         pid = int(marker.read_text())
         result = await asyncio.wait_for(self.adapter.call('request.cancel', dict(requestId='turn')), 5)
         self.assertEqual(result['scope'], 'local')
