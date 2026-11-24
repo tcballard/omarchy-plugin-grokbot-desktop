@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# Every suite runs against a throwaway home, so nothing reads or writes the real
+# ~/.config/omarchy (a synced roster there changes which wake phrases route).
+sandbox="$(mktemp -d)"
+trap 'rm -rf "$sandbox"' EXIT
+export HOME="$sandbox" XDG_CONFIG_HOME="$sandbox/.config"
+mkdir -p "$XDG_CONFIG_HOME"
 node scripts/check.mjs
 python3 tests/provider-api.py
 python3 tests/grokbot-api.py

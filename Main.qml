@@ -2152,7 +2152,8 @@ Item {
       if (code !== 0 || text === "") return
       root.dictating = false
       root.openBubble()
-      if (bubblePanel) bubblePanel.insertText(text)
+      // The card lives in each output's window; hostBubble is the one on screen.
+      if (root.hostBubble) root.hostBubble.insertText(text)
     }
   }
 
