@@ -46,7 +46,7 @@ function promptHarness() {
     threadBotId: 'hermes:a', askBotId: 'hermes:a', asking: true, askStreaming: true,
     history: [], threads: {}, noticeLinks: [], clarifyWaiting: {}, activePrompts: {}, pendingAnswers: {},
     pendingFiles: [], promptDraft: '', approvalLabels: { once: 'Allow once', deny: 'Deny' },
-    findBot: (id) => ({ id }), cleanText: plain, plainLine: plain, flashExpression() {},
+    findBot: (id) => ({ id }), cleanText: plain, plainLine: plain, flashExpression() {}, noteInteraction() {},
     appendReply() { throw new Error('Answer failure must retain the prompt') },
   }, { askProc, askTimeout: { stop() {} } })
   Object.defineProperty(root, 'clarifyHere', { get: () => root.clarifyWaiting[root.threadBotId] !== undefined })

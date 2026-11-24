@@ -95,6 +95,7 @@ function makeRoot(env, log) {
     showActiveCue(text) { log.push('activeCue:' + text); },
     showPeekCue(botId, text) { log.push('peekCue:' + botId + ':' + text); },
     retargetAppearance() {}, scheduleSave() {}, settleChosenBot() {}, applyBots() {}, maybeLoadHistory() {},
+    noteInteraction() {},
   };
   let chosen = root.defaultBotId, pending = [], bots = [], body = '';
   root.bodies = [];
