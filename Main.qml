@@ -306,6 +306,19 @@ Item {
   property bool claimed: false
   property bool pointerNear: false
   property bool dodgeOn: true
+  // Fade the open card when another window is focused, so that window can be read.
+  property bool yieldOn: true
+  // Minutes of no click or hover before the mark fades. 0 leaves it solid.
+  property int idleMinutes: 5
+  property bool otherWindowFocused: false
+  property real yieldOpacity: 1
+  property real idleOpacity: 1
+  // A lit dot is a notice the user has not read yet, so the mark stays at full
+  // visibility for as long as the dot is up, through the Dodge fade and the
+  // Rest fade alike. With no dot the mark follows the fades it is configured
+  // with, Rest included.
+  readonly property real markFade: replyUnread ? 1 : dodgeOpacity * idleOpacity * (bubbleOpen ? yieldOpacity : 1)
+  property real lastInteractAt: 0
   property bool idleOn: true
   property string motionName: "calm"
   property string anchorName: "br"
@@ -906,6 +919,9 @@ Item {
     root.customShape = String(root.setting("shape", "teardrop"))
     root.customColor = String(root.setting("color", "orange"))
     root.dodgeOn = root.setting("dodge", true) !== false
+    root.yieldOn = root.setting("yield", true) !== false
+    root.idleMinutes = root.settingInt("idleMinutes", 5, 0, 60)
+    root.lastInteractAt = Date.now()
     var motion = String(root.setting("motion", ""))
     if (motion !== "calm" && motion !== "playful" && motion !== "hyper")
       motion = root.setting("idleMotion", false) === true ? "playful" : "calm"
@@ -1005,6 +1021,9 @@ Item {
       root.screensaverLayers++
     } else if (name === "closelayer" && data === root.screensaverName) {
       root.screensaverLayers = Math.max(0, root.screensaverLayers - 1)
+    } else if (name === "activewindow") {
+      root.otherWindowFocused = data.split(",")[0] !== ""
+      root.updatePresence()
     }
   }
 
@@ -1086,6 +1105,8 @@ Item {
     settings.size = root.sizeName
     settings.sizePx = root.sizePx
     settings.dodge = root.dodgeOn
+    settings.yield = root.yieldOn
+    settings.idleMinutes = root.idleMinutes
     settings.motion = root.motionName
     settings.anchor = root.anchorName
     settings.idleMotion = root.motionName !== "calm"
@@ -1414,6 +1435,21 @@ Item {
     root.scheduleSave()
   }
 
+  function setYield(value) {
+    root.yieldOn = value === true
+    root.updatePresence()
+    root.scheduleSave()
+  }
+
+  function setIdleMinutes(value) {
+    var minutes = Math.round(Number(value) || 0)
+    if (minutes !== 0 && minutes !== 1 && minutes !== 3 && minutes !== 5 && minutes !== 10) return
+    root.idleMinutes = minutes
+    root.lastInteractAt = Date.now()
+    root.idleOpacity = 1
+    root.scheduleSave()
+  }
+
   function setMotion(name) {
     if (name !== "calm" && name !== "playful" && name !== "hyper") return
     root.motionName = name
@@ -1502,6 +1538,7 @@ Item {
     root.present = true
     root.cardPage = "chat"
     root.bubbleOpen = true
+    root.noteInteraction()
     root.replyUnread = false
     root.clearReplyCue()
     Qt.callLater(root.maybeLoadHistory)
@@ -1729,7 +1766,10 @@ Item {
   // while the bubble is closed, or the hop would be the only sign.
   function markUnread(botId) {
     if (root.unreadBots.indexOf(botId) < 0) root.unreadBots = root.unreadBots.concat([botId])
-    if (!root.bubbleOpen) root.replyUnread = true
+    if (!root.bubbleOpen) {
+      root.replyUnread = true
+      root.noteInteraction()
+    }
     root.hop()
   }
 
@@ -2292,7 +2332,10 @@ Item {
       root.appendReply(bot, text, links)
     }
     root.flashExpression("alert", 1200)
-    if (!root.bubbleOpen) root.replyUnread = true
+    if (!root.bubbleOpen) {
+      root.replyUnread = true
+      root.noteInteraction()
+    }
   }
 
   function dropPromptLinks(promptId, note) {
@@ -2412,6 +2455,7 @@ Item {
   function replyLanded() {
     if (root.bubbleOpen) return
     root.replyUnread = true
+    root.noteInteraction()
     root.hop()
   }
 
@@ -2783,7 +2827,13 @@ Item {
       else if (step === "flashHappy") root.flashExpression("happy", 1600)
       else if (step === "syllables") syllableAnim.restart()
       else if (step === "replyLanded") root.replyLanded()
-      else if (step === "unread") { if (!root.bubbleOpen) root.replyUnread = true; root.hop() }
+      else if (step === "unread") {
+        if (!root.bubbleOpen) {
+          root.replyUnread = true
+          root.noteInteraction()
+        }
+        root.hop()
+      }
       else if (step === "activeCue") { if (text !== "" && root.canShowReplyCue(botId)) root.showActiveCue(text) }
       else if (step === "peekCue") { if (text !== "" && root.canShowReplyCue(botId)) root.showPeekCue(botId, text) }
       else if (step === "summon") root.summon()
@@ -2869,7 +2919,10 @@ Item {
     root.noticeLinks = []
     root.bubbleBody = root.daemonTellLater
     root.daemonTellLater = ""
-    if (!root.bubbleOpen) root.replyUnread = true
+    if (!root.bubbleOpen) {
+      root.replyUnread = true
+      root.noteInteraction()
+    }
     root.hop()
   }
 
@@ -2915,6 +2968,7 @@ Item {
     gazeFrames.running = true
     root.pointerNear = root.pointerIsNear()
     root.updateDodge()
+    root.updatePresence()
   }
 
   function updateGazeTarget() {
@@ -2993,18 +3047,42 @@ Item {
     if (askProc.running) askProc.running = false
   }
 
-  function stageRect() {
+  function itemScreenRect(item) {
     var screen = root.activeScreen
     var host = root.hostWin
-    var item = root.hostStage
     if (!screen || !host || !host.screen || host.screen.name !== screen.name || !item) return null
     var point = item.mapToItem(host.contentItem, 0, 0)
-    return {
-      x: screen.x + point.x,
-      y: screen.y + point.y,
-      w: item.width,
-      h: item.height
+    return { x: screen.x + point.x, y: screen.y + point.y, w: item.width, h: item.height }
+  }
+
+  function stageRect() { return root.itemScreenRect(root.hostStage) }
+
+  function pointerOverCard() {
+    if (!root.bubbleOpen || !root.cursorKnown) return false
+    var rect = root.itemScreenRect(root.hostBubble)
+    if (!rect) return false
+    return root.cursorX >= rect.x && root.cursorX <= rect.x + rect.w
+      && root.cursorY >= rect.y && root.cursorY <= rect.y + rect.h
+  }
+
+  function pointerOverCompanion() { return root.pointerInside() || root.pointerOverCard() }
+
+  function noteInteraction() {
+    root.lastInteractAt = Date.now()
+    if (root.idleOpacity < 1) root.idleOpacity = 1
+  }
+
+  // Yield fades the open card when another window has focus and the pointer
+  // is not on the card or the mark. Rest fades the mark after it is left alone.
+  function updatePresence() {
+    if (root.pointerOverCompanion()) root.noteInteraction()
+    var aside = root.yieldOn && root.bubbleOpen && root.otherWindowFocused && !root.pointerOverCompanion() && !root.dragging && !root.menuOpen
+    root.yieldOpacity = aside ? 0.16 : 1
+    if (!root.present || root.idleMinutes <= 0 || root.bubbleOpen || root.pointerInside() || root.dragging) {
+      root.idleOpacity = 1
+      return
     }
+    root.idleOpacity = Date.now() - root.lastInteractAt >= root.idleMinutes * 60000 ? 0.22 : 1
   }
 
   function pointerIsNear() {
@@ -3063,6 +3141,13 @@ Item {
   FrameAnimation {
     running: root.dodgeOn && root.present && !root.surfacesOpen && root.pointerNear
     onTriggered: root.updateDodge()
+  }
+
+  Timer {
+    interval: 15000
+    repeat: true
+    running: root.present && root.idleMinutes > 0
+    onTriggered: root.updatePresence()
   }
 
   Timer {
@@ -3501,8 +3586,8 @@ Item {
       Region {
         x: bubblePanel.x
         y: bubblePanel.y
-        width: win.activeHere && root.bubbleOpen ? bubblePanel.width : 0
-        height: win.activeHere && root.bubbleOpen ? bubblePanel.height : 0
+        width: win.activeHere && root.bubbleOpen && root.yieldOpacity > 0.5 ? bubblePanel.width : 0
+        height: win.activeHere && root.bubbleOpen && root.yieldOpacity > 0.5 ? bubblePanel.height : 0
       }
     }
 
@@ -3523,7 +3608,7 @@ Item {
       readonly property bool shown: root.bubbleOpen && !root.choosingFiles && win.activeHere
       growsUp: y < stage.y
       visible: opacity > 0.01
-      opacity: shown ? 1 : 0
+      opacity: shown ? root.yieldOpacity : 0
       // A short settle from slightly smaller, with no overshoot, so the card
       // lands where it stays instead of bouncing past it.
       scale: shown ? 1 : 0.96
@@ -3840,7 +3925,7 @@ Item {
         border.color: Theme.lifted
         x: Math.max(-stage.x, Math.min(root.screenW - stage.x - width, (parent.width - width) / 2))
         y: parent.height - height
-        opacity: root.dodgeOpacity
+        opacity: root.markFade
         Text {
           id: nameText
           anchors.centerIn: parent
@@ -3890,7 +3975,7 @@ Item {
           if (!root.syncOn || !bot || !bot.avatarImage) return ""
           return "file://" + bot.avatarImage
         }
-        opacity: root.dodgeOpacity
+        opacity: root.markFade
         scale: root.breathe * root.talkScale * root.morphPop * root.hoverScale * root.cornerScale * (1 + 0.06 * root.dragLift)
         // Hovering lifts the mark a little; the eyes keep their size.
         attention: 1
@@ -3948,6 +4033,7 @@ Item {
           root.claimed = true
           root.ghost = false
           root.dodgeOpacity = 1
+          root.noteInteraction()
           if (mouse.button === Qt.RightButton) {
             root.menuOpen = !root.menuOpen
             mouse.accepted = true
