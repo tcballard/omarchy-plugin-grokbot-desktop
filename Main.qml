@@ -14,6 +14,7 @@ import "qml/screens.js" as Screens
 import "qml/openbotavatar.js" as Avatar
 import "qml/pointer.js" as Pointer
 import "qml/backend.js" as Wire
+import "qml/thread.js" as Thread
 
 // Grok Bot desktop companion. A service inside omarchy-shell: a transparent
 // layer-shell window, click-through except for the mark (and the bubble or
@@ -289,6 +290,9 @@ Item {
   // backend reports its state here, so every exit path clears it.
   property bool dictating: false
   property bool replyUnread: false
+  // Last Bot Chat row the reader has already been shown. A later row while
+  // the card is closed lights the dot on the mark.
+  property string seenTail: ""
   // Floating reply cues: a toast for the active bot, or a peeking avatar for
   // another bot. Shown only while the companion bubble is closed and the
   // Grok Bot desktop app is not open.
@@ -1134,6 +1138,9 @@ Item {
   property var historyTried: ({})
   property string historyBot: ""
   property bool historyOlder: false
+  // A re-read of the latest page from the host gateway, merged into the thread
+  // already on screen. Distinct from the first fill and from "load earlier".
+  property bool historyRefresh: false
   readonly property bool olderHere: !root.daemonMode && !!(root.olderInfo[root.threadBotId] && root.olderInfo[root.threadBotId].more)
     && root.history.length < root.olderCap
   readonly property bool olderLoading: !!(root.olderInfo[root.threadBotId] && root.olderInfo[root.threadBotId].loading)
@@ -1152,7 +1159,8 @@ Item {
     for (i = 0; i < (items || []).length; i++) {
       var body = root.cleanText(items[i].body, 4000)
       if (body === "") continue
-      list.push({ asked: root.cleanText(items[i].asked, 4000), files: [], body: body, links: [], wait: "" })
+      list.push({ asked: root.cleanText(items[i].asked, 4000), files: [], body: body, links: [], wait: "",
+                  key: String(items[i].key || "") })
     }
     return list
   }
@@ -1180,13 +1188,29 @@ Item {
     var bot = root.findBot(botId)
     if (!bot || !bot.provider || bot.provider === "grokbot") return
     if (root.history.length > 0 || root.askedText !== "" || root.bubbleBody !== "" || root.asking) return
+    // A refresh still in flight keeps its flag: clearing it here would file that
+    // page as a first fill and reset the "load earlier" cursor.
     if (!root.runHistory(botId, "")) return
+    root.historyRefresh = false
     var tried = Object.assign({}, root.historyTried)
     tried[botId] = true
     root.historyTried = tried
   }
 
-  onAskingChanged: if (!root.asking) Qt.callLater(root.maybeLoadHistory)
+  // The Hermes app writes the same Bot Chat through the one host gateway.
+  // Re-read the latest page while the mark is on screen and append what it has
+  // that this thread does not. An ask in flight is left alone: its own reply
+  // lands through the live slot, and the refresh after it ends files the turn.
+  function refreshHistory() {
+    if (root.daemonMode || !root.present || root.asking || historyProc.running) return
+    var botId = root.threadBotId
+    var bot = root.findBot(botId)
+    if (!bot || !bot.provider || bot.provider === "grokbot") return
+    root.historyRefresh = true
+    if (!root.runHistory(botId, "")) root.historyRefresh = false
+  }
+
+  onAskingChanged: if (!root.asking) Qt.callLater(function () { root.maybeLoadHistory(); root.refreshHistory() })
   onDaemonModeChanged: if (!root.daemonMode) Qt.callLater(root.maybeLoadHistory)
 
   function finishHistory(code, output) {
@@ -1195,6 +1219,7 @@ Item {
       var tried = Object.assign({}, root.historyTried)
       delete tried[botId]
       root.historyTried = tried
+      root.historyRefresh = false
       root.setOlder(botId, { loading: false })
       return
     }
@@ -1206,13 +1231,34 @@ Item {
       var tried = Object.assign({}, root.historyTried)
       delete tried[botId]
       root.historyTried = tried
+      root.historyRefresh = false
       root.setOlder(botId, { loading: false })
     } else {
       var next = typeof data.nextCursor === "string" ? data.nextCursor : ""
       if (root.historyOlder) root.applyOlder(botId, data.items, next)
+      else if (root.historyRefresh) root.applyRefresh(botId, data.items)
       else root.applyHistory(botId, data.items, next)
+      root.historyRefresh = false
     }
-    if (botId !== root.threadBotId) Qt.callLater(root.maybeLoadHistory)
+    if (root.olderWanted) {
+      root.olderWanted = false
+      var wanted = root.threadBotId
+      root.setOlder(wanted, { loading: false })
+      Qt.callLater(function () { if (root.loadOlder() !== "ok") root.setOlder(wanted, { loading: false }) })
+      return
+    }
+    if (botId !== root.threadBotId) Qt.callLater(function () { root.maybeLoadHistory(); root.refreshHistory() })
+  }
+
+  Timer {
+    id: historyRefreshTimer
+    // Every read is a new helper process and a gateway call. Poll briskly only
+    // while the card is open; with it closed, a slow poll still lights the dot.
+    interval: root.bubbleOpen ? 2000 : 30000
+    repeat: true
+    triggeredOnStart: true
+    running: root.present && !root.daemonMode
+    onTriggered: root.refreshHistory()
   }
 
   Process {
@@ -1246,12 +1292,50 @@ Item {
     root.threads = threads
   }
 
+  // Latest page from the host gateway, folded onto the thread. Does not move
+  // the "load earlier" cursor: paging back and a refresh must not fight.
+  function applyRefresh(botId, items) {
+    var incoming = root.historyEntries(items)
+    var live = botId === root.threadBotId ? { asked: root.askedText, body: root.bubbleBody, key: "" } : null
+    function folded(existing) {
+      return Thread.mergeExchanges(existing, incoming, live, root.historyLimit)
+    }
+    if (botId === root.threadBotId) {
+      var before = root.history
+      var next = folded(before)
+      if (!Thread.sameThread(before, next)) {
+        root.history = next
+        root.rememberTail(next)
+      }
+      return
+    }
+    var threads = Object.assign({}, root.threads)
+    var thread = Object.assign({}, threads[botId] || {})
+    var merged = folded(thread.history || [])
+    if (Thread.sameThread(thread.history || [], merged)) return
+    thread.history = merged
+    threads[botId] = thread
+    root.threads = threads
+  }
+
+  // "Load earlier" asked for while a refresh held the history process.
+  property bool olderWanted: false
+
   function loadOlder() {
     var bot = root.threadBotId
     var info = root.olderInfo[bot]
     if (!info || !info.more || info.loading || !info.key) return "nothing"
     if (root.history.length >= root.olderCap) return "limit"
+    // A background refresh may hold the one history process. Wait for it
+    // instead of reporting busy, and keep its flag so its page files correctly.
+    if (historyProc.running) {
+      if (!root.historyRefresh) return "busy"
+      root.olderWanted = true
+      root.setOlder(bot, { loading: true })
+      return "ok"
+    }
     if (!root.runHistory(bot, info.key)) return "busy"
+    root.historyRefresh = false
     root.setOlder(bot, { loading: true })
     return "ok"
   }
@@ -1335,6 +1419,9 @@ Item {
     root.chosenBotId = id
     if (changed) {
       root.loadThread(id)
+      // The stash is what this card last showed. The Hermes app may have
+      // written newer Bot Chat rows since then, so re-read the gateway.
+      Qt.callLater(root.refreshHistory)
       if (root.expression === "work" || root.expression === "idle") root.expression = root.busyHere ? "work" : "idle"
     }
     root.recentBots = [id].concat(root.recentBots.filter(function (other) { return other !== id })).slice(0, 6)
@@ -1503,14 +1590,16 @@ Item {
     root.cardPage = "chat"
     root.bubbleOpen = true
     root.replyUnread = false
+    root.unreadBots = root.unreadBots.filter(function (other) { return other !== root.threadBotId })
     root.clearReplyCue()
-    Qt.callLater(root.maybeLoadHistory)
+    Qt.callLater(function () { root.maybeLoadHistory(); root.refreshHistory() })
     root.menuOpen = false
     root.wake()
     Qt.callLater(function () { if (root.hostBubble) root.hostBubble.focusPrompt() })
   }
 
   function closeBubble() {
+    root.seenTail = root.tailOf(root.history)
     root.bubbleOpen = false
     root.dictating = false
     root.switcherOpen = false
@@ -1733,6 +1822,35 @@ Item {
     root.hop()
   }
 
+  function tailOf(list) {
+    if (!list || list.length === 0) return ""
+    var last = list[list.length - 1]
+    return String(last.asked || "") + "\n" + String(last.body || "")
+  }
+
+  // The card is closed. A tail we have not seen lights the dot once.
+  function rememberTail(list) {
+    var tail = root.tailOf(list)
+    if (root.bubbleOpen) {
+      root.seenTail = tail
+      return
+    }
+    if (root.seenTail === "") {
+      root.seenTail = tail
+      return
+    }
+    if (tail !== root.seenTail) root.noteClosedNews(root.threadBotId)
+  }
+
+  // A Bot Chat turn arrived while the card was closed. Light the dot once.
+  function noteClosedNews(botId) {
+    if (root.bubbleOpen) return
+    if (root.unreadBots.indexOf(botId) < 0) root.unreadBots = root.unreadBots.concat([botId])
+    if (root.replyUnread) return
+    root.replyUnread = true
+    root.hop()
+  }
+
   // The answer to a waiting webhook ask goes under the question it answers,
   // in that bot's conversation, wherever the question now sits. Returns
   // whether it is on screen.
@@ -1911,7 +2029,8 @@ Item {
     var prompt = root.plainPrompt(value, 4000)
     // Attachments can go on their own, as in a chat app.
     if (prompt === "" && root.pendingFiles.length > 0) prompt = "Have a look at this."
-    if (prompt === "" || root.asking) return
+    if (prompt === "") return
+    if (root.asking) return
     // The last ask is still exiting after Stop. Keep the draft and send it
     // once the process is gone, instead of dropping it as busy.
     if (askProc.running) {
@@ -3483,6 +3602,10 @@ Item {
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.namespace: root.layerNamespace
     WlrLayershell.layer: WlrLayer.Top
+    // OnDemand: the card takes the keyboard only while one of its text
+    // fields has focus. Exclusive kept the keyboard even after a hover or
+    // click on the window beside the card, so that window could not be used
+    // until the card was closed.
     WlrLayershell.keyboardFocus: root.surfacesOpen && activeHere ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
 
@@ -3916,8 +4039,8 @@ Item {
           width: Math.max(12, root.shownSize * 0.11)
           height: width
           radius: width / 2
-          x: mark.width * 0.7
-          y: mark.height * 0.14
+          x: mark.width * 0.68
+          y: -height * 0.35
           color: Theme.text
           border.width: 2
           border.color: Theme.surface

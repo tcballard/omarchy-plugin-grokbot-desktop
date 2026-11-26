@@ -50,8 +50,39 @@ test('code blocks are literal, and unfinished markers stay as typed', () => {
 test('replies render through the converter, and links open through openLink', () => {
   const panel = fs.readFileSync(path.join(root, 'BubblePanel.qml'), 'utf8')
   assert.match(panel, /import "qml\/markdown\.js" as Markdown/)
-  assert.match(panel, /text: exchange\.body === "" \? "" : Markdown\.toHtml\(exchange\.body, bubble\.markdownStyle\)/)
+  assert.match(panel, /Markdown\.blocks\(exchange\.body, bubble\.markdownStyle\)/)
+  assert.match(panel, /text: block\.kind === "prose" \? block\.html : ""/)
+  // History rows are repeater delegates. The block comes from this exchange, not modelData.
+  assert.match(panel, /readonly property var block: exchange\.parts\[index\]/)
   assert.match(panel, /textFormat: TextEdit\.RichText\n\s*onLinkActivated: function \(link\) \{ app\.openLink\(link\) \}/)
-  // Rich text only ever comes from the converter.
+  // Rich text only ever comes from the converter. Code canvases stay plain.
   assert.equal((panel.match(/TextEdit\.RichText|Text\.RichText|MarkdownText|AutoText/g) || []).length, 1)
+})
+
+test('a fenced block is its own canvas, separate from the prose', () => {
+  const parts = context.blocks('Hello\n\n```bash\necho "<hi>"\n```\n\nAfter')
+  assert.equal(parts.length, 3)
+  assert.equal(parts[0].kind, 'prose')
+  assert.match(parts[0].html, /Hello/)
+  assert.doesNotMatch(parts[0].html, /<pre/)
+  assert.equal(parts[1].kind, 'code')
+  assert.equal(parts[1].text, 'echo "<hi>"')
+  assert.match(parts[2].html, /After/)
+})
+
+test('the code canvas has a Copy button, and Super+C is a copy chord', () => {
+  const panel = fs.readFileSync(path.join(root, 'BubblePanel.qml'), 'utf8')
+  assert.match(panel, /id: copyChip/)
+  assert.match(panel, /id: copyMark/)
+  assert.match(panel, /label: "Copy"/)
+  assert.match(panel, /contentWidth: width/)
+  assert.doesNotMatch(panel, /layoutDirection: Qt\.RightToLeft/)
+  assert.match(panel, /onActivated: bubble\.copyText\(block\.text\)/)
+  assert.match(panel, /function isCopyChord\(event\)/)
+  assert.match(panel, /function isPasteChord\(event\)/)
+  assert.match(panel, /function pasteIntoPrompt\(\)/)
+  // Super+C arrives as Ctrl+Shift+C while a terminal is the active window.
+  assert.doesNotMatch(panel, /AltModifier \| Qt\.ShiftModifier/)
+  assert.match(panel, /Qt\.MetaModifier/)
+  assert.match(panel, /Keys\.priority: Keys\.BeforeItem/)
 })

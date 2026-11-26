@@ -208,3 +208,36 @@ function toHtml(source, style) {
     return n === 0 ? b : "<div style=\"font-size:" + st.gap + "px;\">&nbsp;</div>" + b
   }).join("").replace(/<p>/g, "<p style=\"margin:0;\">")
 }
+
+// Prose stays rich text. Each fenced block is its own canvas so the bubble can
+// put a Copy control on it, the way the Hermes app does. An open fence (a reply
+// still streaming) is a canvas of the text so far.
+function blocks(source, style) {
+  var lines = String(source || "").replace(/\r\n?/g, "\n").split("\n")
+  var out = []
+  var buf = []
+  var i = 0
+  function flush() {
+    if (buf.length === 0) return
+    var html = toHtml(buf.join("\n"), style)
+    buf = []
+    if (html !== "") out.push({ kind: "prose", html: html })
+  }
+  while (i < lines.length) {
+    var fence = /^\s*(```+|~~~+)\s*([\w+.-]*)\s*$/.exec(lines[i])
+    if (!fence) {
+      buf.push(lines[i])
+      i++
+      continue
+    }
+    flush()
+    var close = fence[1]
+    var code = []
+    i++
+    while (i < lines.length && lines[i].trim().indexOf(close) !== 0) code.push(lines[i++])
+    if (i < lines.length) i++
+    out.push({ kind: "code", text: code.join("\n") })
+  }
+  flush()
+  return out
+}

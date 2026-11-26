@@ -1720,6 +1720,7 @@ test('each bot keeps a scrolling history of its conversation', () => {
   assert.match(panel, /model: app \? app\.history : \[\]\n\s*delegate: Exchange \{/)
   assert.match(panel, /Exchange \{\s*id: latest/)
   assert.match(panel, /var end = Math\.max\(0, contentHeight - Math\.min\(threadBox\.cap, contentHeight\)\)\n\s*var target = Math\.min\(end, Math\.max\(0, latest\.y\)\)/)
+  assert.match(panel, /if \(!wasAtEnd\) return/)
   assert.match(panel, /readonly property real cap: Math\.max\(140, bubble\.maxHeight - 28 - headerGroup\.height - dividerReveal\.height/)
 })
 
@@ -2104,6 +2105,12 @@ test('a provider bot opens on its recent history, and earlier pages load twenty 
   // Once per bot, only into a conversation that is still empty here, never for Grok.
   const maybe = qmlFunction(main, 'maybeLoadHistory')
   assert.match(maybe, /if \(root\.history\.length > 0 \|\| root\.askedText !== "" \|\| root\.bubbleBody !== "" \|\| root\.asking\) return/)
+  // A later read from the host gateway folds new Hermes-app rows onto that
+  // thread. The fold, the re-read on a bot switch and the guard in
+  // refreshHistory are driven in pointer.test.mjs; what is left here is the
+  // timer wiring, which no harness can trigger.
+  assert.match(main, /id: historyRefreshTimer\n\s*\/\/[\s\S]*?interval: root\.bubbleOpen \? 2000 : 30000/)
+  assert.match(main, /running: root\.present && !root\.daemonMode/)
   assert.match(qmlFunction(main, 'runHistory'), /bot\.provider === "grokbot"/)
   assert.match(qmlFunction(main, 'loadOlder'), /if \(root\.history\.length >= root\.olderCap\) return "limit"/)
   assert.match(main, /readonly property int olderCap: 100/)
