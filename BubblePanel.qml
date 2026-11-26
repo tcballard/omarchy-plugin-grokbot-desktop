@@ -17,7 +17,7 @@ Rectangle {
   function chord(event, key) {
     if (!event || event.key !== key) return false
     if (event.modifiers & Qt.AltModifier) return false
-    return (event.modifiers & Qt.ControlModifier) || (event.modifiers & Qt.MetaModifier)
+    return !!(event.modifiers & Qt.ControlModifier) || !!(event.modifiers & Qt.MetaModifier)
   }
   function isCopyChord(event) { return bubble.chord(event, Qt.Key_C) }
   function isPasteChord(event) { return bubble.chord(event, Qt.Key_V) }
@@ -1335,7 +1335,10 @@ Rectangle {
                   if (promptField.selectedText !== "") promptField.copy()
                   return
                 }
-                if (bubble.isPasteChord(event)) {
+                // The Super chord, plus the StandardKey paste (Ctrl+V and
+                // Shift+Insert) SafeTextArea already answers. This handler
+                // replaces that one, so both chords belong here.
+                if (bubble.isPasteChord(event) || event.matches(StandardKey.Paste)) {
                   event.accepted = true
                   bubble.pasteIntoPrompt()
                 }
