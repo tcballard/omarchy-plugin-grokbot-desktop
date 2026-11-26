@@ -2045,15 +2045,6 @@ Item {
     // Attachments can go on their own, as in a chat app.
     if (prompt === "" && root.pendingFiles.length > 0) prompt = "Have a look at this."
     if (prompt === "") return
-    // Hermes sends a typed line during a live turn ("send now"): stop this
-    // bot's run and send the new line as soon as that process is gone.
-    if (root.asking && root.askBotId === root.threadBotId) {
-      root.queuedPrompt = { value: prompt, botId: root.threadBotId, since: Date.now(), sendNow: true }
-      root.promptDraft = ""
-      root.cancelAsk()
-      queuedPromptTimer.restart()
-      return
-    }
     if (root.asking) return
     // The last ask is still exiting after Stop. Keep the draft and send it
     // once the process is gone, instead of dropping it as busy.
@@ -2085,17 +2076,12 @@ Item {
   function retryQueuedPrompt() {
     var queued = root.queuedPrompt
     if (!queued) return "none"
-    if (askProc.running || (queued.sendNow && root.asking)) {
+    if (askProc.running) {
       if (Date.now() - queued.since < 5000) return "waiting"
       root.queuedPrompt = null
       return "gave up"
     }
     root.queuedPrompt = null
-    if (queued.sendNow) {
-      if (queued.botId !== root.threadBotId) return "dropped"
-      root.launchAsk(queued.value)
-      return "sent"
-    }
     if (root.asking || queued.botId !== root.threadBotId || queued.value !== root.promptDraft) return "dropped"
     root.submitPrompt(queued.value)
     return "sent"

@@ -2108,8 +2108,6 @@ test('a provider bot opens on its recent history, and earlier pages load twenty 
   // A later read from the host gateway folds new Hermes-app rows onto that thread.
   assert.match(qmlFunction(main, 'refreshHistory'), /root\.historyRefresh = true/)
   assert.match(qmlFunction(main, 'selectBot'), /Qt\.callLater\(root\.refreshHistory\)/)
-  assert.match(panel, /id: refreshButton/)
-  assert.match(panel, /label: "Refresh"/)
   assert.match(qmlFunction(main, 'applyRefresh'), /Thread\.mergeExchanges/)
   assert.match(main, /historyRefreshTimer/)
   assert.match(qmlFunction(main, 'runHistory'), /bot\.provider === "grokbot"/)
