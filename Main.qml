@@ -1210,21 +1210,6 @@ Item {
     if (!root.runHistory(botId, "")) root.historyRefresh = false
   }
 
-  // Super+C/V land here only while a text field in the card has focus.
-  // The card does not keep the keyboard while it is merely open.
-  function copyFocusedText() {
-    var panel = root.hostWin
-    var item = panel && panel.activeFocusItem
-    if (!item || String(item.selectedText || "") === "" || !item.copy) return "nothing"
-    item.copy()
-    return "ok"
-  }
-  function pasteFocusedText() {
-    if (!root.hostBubble) return "nothing"
-    root.hostBubble.pasteIntoPrompt()
-    return "ok"
-  }
-
   onAskingChanged: if (!root.asking) Qt.callLater(function () { root.maybeLoadHistory(); root.refreshHistory() })
   onDaemonModeChanged: if (!root.daemonMode) Qt.callLater(root.maybeLoadHistory)
 
